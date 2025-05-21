@@ -6,7 +6,7 @@ import { upcomingDraft, previousDrafts } from '$lib/stores';
 import { getLeagueRosters } from './leagueRosters';
 
 import { localDrafts } from './localDrafts.js';       // array of objects like officialDraft
-import { localDraftSummaries } from './draft_summary.js'; // array of player pick data like playersRes
+import { draftSummaries } from './draft_summary.js'; // array of player pick data like playersRes
 
 export const getUpcomingDraft = async () => {
     if (get(upcomingDraft).draft) {
