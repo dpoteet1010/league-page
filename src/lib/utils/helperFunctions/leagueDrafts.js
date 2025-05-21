@@ -5,8 +5,8 @@ import { get } from 'svelte/store';
 import { upcomingDraft, previousDrafts } from '$lib/stores';
 import { getLeagueRosters } from './leagueRosters';
 
-// Import the local drafts data (from localDrafts.js)
-import { localDrafts } from './localDrafts.js'; // adjust the path as needed
+import { localDrafts } from './localDrafts.js';       // array of objects like officialDraft
+import { localDraftSummaries } from './draft_summary.js'; // array of player pick data like playersRes
 
 export const getUpcomingDraft = async () => {
     if (get(upcomingDraft).draft) {
@@ -192,14 +192,32 @@ export const getPreviousDrafts = async () => {
         return get(previousDrafts);
     }
 
-    if (localDrafts && localDrafts.length > 0) {
-        // Use localDrafts if available
-        previousDrafts.update(() => localDrafts);
-        return localDrafts;
-    }
+const drafts = [];
 
-    let curSeason = leagueID;
-    const drafts = [];
+    // Add static local drafts first
+    if (draftSummaries && localDraftsData && draftSummaries.length === localDraftsData.length) {
+        for (let i = 0; i < draftSummaries.length; i++) {
+            const officialDraft = draftSummaries[i];
+            const players = localDraftsData[i];
+
+            const buildRes = buildConfirmed(
+                officialDraft.slot_to_roster_id,
+                officialDraft.settings.rounds,
+                [], // no picks
+                players,
+                officialDraft.type
+            );
+
+            drafts.push({
+                year: parseInt(officialDraft.season),
+                draft: buildRes.draft,
+                draftOrder: buildRes.draftOrder,
+                draftType: officialDraft.type,
+                reversalRound: officialDraft.settings.reversal_round,
+            });
+        }
+    }
+    let curSeason = leagueID;    
 
     while (curSeason && curSeason != 0) {
         const [leagueData, completedDraftsInfo] = await waitForAll(
