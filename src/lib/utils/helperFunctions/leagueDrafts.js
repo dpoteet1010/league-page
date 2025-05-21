@@ -153,18 +153,33 @@ const buildConfirmed = (draftOrderObj, rounds, picks, players = null, type = nul
 const completedNonAuction = ({ players, draft, picks, draftOrder, rounds }) => {
     for (const playerData of players) {
         const player = playerData.player_id;
-        draft[playerData.round - 1][playerData.draft_slot - 1] = { player };
-    }
-    for (const pick of picks) {
-        if (pick.owner_id == pick.roster_id || pick.round > rounds) continue;
-        try {
-            draft[pick.round - 1][draftOrder.indexOf(pick.roster_id)].newOwner = pick.owner_id;
-        } catch (error) {
-            console.error(`Possibly invaid roster ID?: ${pick.roster_id}`, error);
+        const round = playerData.round - 1;
+        const slot = playerData.draft_slot - 1;
+        if (draft[round][slot] === undefined) {
+            draft[round][slot] = { player };
+        } else {
+            draft[round][slot].player = player;
         }
     }
+
+    for (const pick of picks) {
+        if (pick.owner_id == pick.roster_id || pick.round > rounds) continue;
+
+        const round = pick.round - 1;
+        const col = draftOrder.indexOf(pick.roster_id);
+
+        if (round >= 0 && round < draft.length && col >= 0 && col < draft[round].length) {
+            if (!draft[round][col]) {
+                draft[round][col] = {};
+            }
+            draft[round][col].newOwner = pick.owner_id;
+        } else {
+            console.warn(`Invalid pick position: round ${round + 1}, roster ${pick.roster_id}`);
+        }
+    }
+
     return draft;
-}
+};
 
 const completedAuction = ({ players, draft, draftOrder, draftOrderObj }) => {
     const rosters = {};
