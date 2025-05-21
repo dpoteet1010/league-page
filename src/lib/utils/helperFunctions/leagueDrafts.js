@@ -188,6 +188,7 @@ const completedAuction = ({ players, draft, draftOrder, draftOrderObj }) => {
 
 // Fetch previous drafts and include localDrafts if no data is found
 // Fetch previous drafts and include localDrafts if no data is found
+// Fetch previous drafts and include localDrafts if no data is found
 export const getPreviousDrafts = async () => {
     if (get(previousDrafts).length > 0) {
         return get(previousDrafts);
@@ -195,45 +196,45 @@ export const getPreviousDrafts = async () => {
 
     const drafts = [];
 
-    // Add static local drafts first
-    if (Array.isArray(draftSummaries) && Array.isArray(localDrafts) && draftSummaries.length === localDrafts.length) {
-        for (let i = 0; i < draftSummaries.length; i++) {
-            const officialDraft = draftSummaries[i];
-            const players = localDrafts[i]?.draft || [];
-
-            if (!officialDraft || !players || !Array.isArray(players)) {
+    // Add static local drafts first for both 2023 and 2024 seasons
+    if (Array.isArray(localDrafts) && localDrafts.length > 0) {
+        for (let i = 0; i < localDrafts.length; i++) {
+            const draft = localDrafts[i];
+            if (!draft || !draft.draft || !draft.draftOrder) {
                 console.warn('Skipping invalid local draft at index', i);
                 continue;
             }
 
             try {
-                if (!officialDraft.slot_to_roster_id || !officialDraft.settings.rounds) {
-                    console.warn('Missing critical data in draftSummary at index', i);
+                // Extract year, draft order, and draft picks
+                const year = draft.year;
+                const draftOrder = draft.draftOrder;
+                const draftPicks = draft.draft;
+
+                if (!Array.isArray(draftPicks) || !draftOrder || !draftOrder[1]) {
+                    console.warn(`Missing critical data in draft at index ${i} (year: ${year})`);
                     continue;
                 }
 
-                const buildRes = buildConfirmed(
-                    officialDraft.slot_to_roster_id,
-                    officialDraft.settings.rounds,
-                    [], // no picks (you can populate this if needed)
-                    players,
-                    officialDraft.type
-                );
+                // Build the draft with available data (you can modify this based on your `buildConfirmed` function logic)
+                const buildRes = buildConfirmed(draftOrder, draftPicks.length, draftPicks, [], draft.draftType);
 
                 if (!Array.isArray(buildRes.draft)) {
                     console.warn('Invalid draft format at index', i, buildRes.draft);
                     continue;
                 }
 
+                // Push the final result
                 drafts.push({
-                    year: parseInt(officialDraft.season),
+                    year,
                     draft: buildRes.draft,
                     draftOrder: buildRes.draftOrder,
-                    draftType: officialDraft.type,
-                    reversalRound: officialDraft.settings.reversal_round,
+                    draftType: draft.draftType,
+                    reversalRound: draft.reversalRound,
                 });
+
             } catch (err) {
-                console.error('Error building local draft at index', i, err);
+                console.error('Error processing local draft at index', i, err);
             }
         }
     }
@@ -325,4 +326,5 @@ export const getPreviousDrafts = async () => {
     console.log('Finished retrieving previous drafts.');
     return drafts;
 };
+
 
