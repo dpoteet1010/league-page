@@ -219,14 +219,34 @@ const drafts = [];
     }
     let curSeason = leagueID;    
 
-    while (curSeason && curSeason != 0) {
-        const [leagueData, completedDraftsInfo] = await waitForAll(
-            getLeagueData(curSeason).catch((err) => { console.error(err); }),
-            fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`, { compress: true }),
-        ).catch((err) => { console.error(err); });
+while (curSeason && curSeason != 0) {
+    const [leagueData, completedDraftsInfo] = await waitForAll(
+        getLeagueData(curSeason).catch((err) => { console.error(err); }),
+        fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`, { compress: true }),
+    ).catch((err) => {
+        console.error("waitForAll error in draft fetch:", err);
+        return [null, null]; // return fallback so destructuring doesn't break
+    });
 
-        const completedDrafts = await completedDraftsInfo.json();
-        curSeason = leagueData.previous_league_id;
+    if (!leagueData || !completedDraftsInfo) {
+        console.warn("Skipping season due to missing leagueData or draft response");
+        break; // Or continue; depending on your use case
+    }
+
+    let completedDrafts;
+    try {
+        completedDrafts = await completedDraftsInfo.json();
+    } catch (e) {
+        console.error("Failed to parse completedDraftsInfo JSON:", e);
+        break;
+    }
+
+    if (!Array.isArray(completedDrafts)) {
+        console.warn("Expected an array for completedDrafts, got:", completedDrafts);
+        break;
+    }
+
+    curSeason = leagueData.previous_league_id;
 
         for (const completedDraft of completedDrafts) {
             const draftID = completedDraft.draft_id;
