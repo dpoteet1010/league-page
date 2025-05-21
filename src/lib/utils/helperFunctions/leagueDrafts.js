@@ -292,13 +292,13 @@ if (!leagueData || !completedDraftsInfo.ok) {
                 const [officialDraftRes, picksRes, playersRes] = await waitForAll(
                     fetch(`https://api.sleeper.app/v1/draft/${draftID}`, { compress: true }),
                     fetch(`https://api.sleeper.app/v1/draft/${draftID}/traded_picks`, { compress: true }),
-                    fetch(`https://api.sleeper.app/v1/draft/${draftID}/picks`, { compress: true }),
+                    fetch(`https://api.sleeper.app/v1/draft/${draftID}/picks`, { compress: true })
                 ).catch((err) => { console.error('Error fetching draft details for draft ID', draftID, err); });
 
                 const [officialDraft, picks, players] = await waitForAll(
                     officialDraftRes.json(),
                     picksRes.json(),
-                    playersRes.json(),
+                    playersRes.json()
                 ).catch((err) => { console.error('Error parsing draft details for draft ID', draftID, err); });
 
                 if (officialDraft.status !== "complete") {
