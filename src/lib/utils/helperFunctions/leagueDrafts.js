@@ -192,61 +192,64 @@ export const getPreviousDrafts = async () => {
         return get(previousDrafts);
     }
 
-const drafts = [];
+    const drafts = [];
 
     // Add static local drafts first
-    if (draftSummaries && localDrafts && draftSummaries.length === localDrafts.length) {
+    if (Array.isArray(draftSummaries) && Array.isArray(localDrafts) && draftSummaries.length === localDrafts.length) {
         for (let i = 0; i < draftSummaries.length; i++) {
             const officialDraft = draftSummaries[i];
-            const players = localDrafts[i];
+            const players = localDrafts[i]?.draft || []; // Ensure we are referencing the correct array inside each localDraft entry
 
-            const buildRes = buildConfirmed(
-                officialDraft.slot_to_roster_id,
-                officialDraft.settings.rounds,
-                [], // no picks
-                players,
-                officialDraft.type
-            );
+            if (!officialDraft || !players || !Array.isArray(players)) {
+                console.warn('Skipping invalid local draft at index', i);
+                continue;
+            }
 
-            drafts.push({
-                year: parseInt(officialDraft.season),
-                draft: buildRes.draft,
-                draftOrder: buildRes.draftOrder,
-                draftType: officialDraft.type,
-                reversalRound: officialDraft.settings.reversal_round,
-            });
+            try {
+                // Ensure draftSummaries data has necessary fields
+                if (!officialDraft.slot_to_roster_id || !officialDraft.settings.rounds) {
+                    console.warn('Missing critical data in draftSummary at index', i);
+                    continue;
+                }
+
+                const buildRes = buildConfirmed(
+                    officialDraft.slot_to_roster_id,
+                    officialDraft.settings.rounds,
+                    [], // no picks
+                    players,
+                    officialDraft.type
+                );
+
+                // Ensure that buildRes returns a valid draft
+                if (!Array.isArray(buildRes.draft)) {
+                    console.warn('Invalid draft format at index', i, buildRes.draft);
+                    continue;
+                }
+
+                drafts.push({
+                    year: parseInt(officialDraft.season),
+                    draft: buildRes.draft,
+                    draftOrder: buildRes.draftOrder,
+                    draftType: officialDraft.type,
+                    reversalRound: officialDraft.settings.reversal_round,
+                });
+            } catch (err) {
+                console.error('Error building local draft at index', i, err);
+            }
         }
     }
-    let curSeason = leagueID;    
 
-while (curSeason && curSeason != 0) {
-    const [leagueData, completedDraftsInfo] = await waitForAll(
-        getLeagueData(curSeason).catch((err) => { console.error(err); }),
-        fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`, { compress: true }),
-    ).catch((err) => {
-        console.error("waitForAll error in draft fetch:", err);
-        return [null, null]; // return fallback so destructuring doesn't break
-    });
+    // Fetch historical drafts (from the API)
+    let curSeason = leagueID;
 
-    if (!leagueData || !completedDraftsInfo) {
-        console.warn("Skipping season due to missing leagueData or draft response");
-        break; // Or continue; depending on your use case
-    }
+    while (curSeason && curSeason !== 0) {
+        const [leagueData, completedDraftsInfo] = await waitForAll(
+            getLeagueData(curSeason).catch((err) => { console.error(err); }),
+            fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`, { compress: true }),
+        ).catch((err) => { console.error(err); });
 
-    let completedDrafts;
-    try {
-        completedDrafts = await completedDraftsInfo.json();
-    } catch (e) {
-        console.error("Failed to parse completedDraftsInfo JSON:", e);
-        break;
-    }
-
-    if (!Array.isArray(completedDrafts)) {
-        console.warn("Expected an array for completedDrafts, got:", completedDrafts);
-        break;
-    }
-
-    curSeason = leagueData.previous_league_id;
+        const completedDrafts = await completedDraftsInfo.json();
+        curSeason = leagueData.previous_league_id;
 
         for (const completedDraft of completedDrafts) {
             const draftID = completedDraft.draft_id;
@@ -264,7 +267,7 @@ while (curSeason && curSeason != 0) {
                 playersRes.json(),
             ).catch((err) => { console.error(err); });
 
-            if (officialDraft.status != "complete") continue;
+            if (officialDraft.status !== "complete") continue;
 
             let draft;
             let draftOrder;
