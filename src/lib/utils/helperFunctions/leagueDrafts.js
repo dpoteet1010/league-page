@@ -195,10 +195,10 @@ export const getPreviousDrafts = async () => {
 const drafts = [];
 
     // Add static local drafts first
-    if (draftSummaries && localDraftsData && draftSummaries.length === localDraftsData.length) {
+    if (draftSummaries && localDrafts && draftSummaries.length === localDrafts.length) {
         for (let i = 0; i < draftSummaries.length; i++) {
             const officialDraft = draftSummaries[i];
-            const players = localDraftsData[i];
+            const players = localDrafts[i];
 
             const buildRes = buildConfirmed(
                 officialDraft.slot_to_roster_id,
