@@ -273,6 +273,12 @@ export const getPreviousDrafts = async () => {
                 break;
             }
 
+            // Check if we have any drafts
+            if (completedDrafts.length === 0) {
+                console.log(`No completed drafts found for season ${curSeason}`);
+                continue;
+            }
+
             for (const completedDraft of completedDrafts) {
                 const draftID = completedDraft.draft_id;
                 const year = parseInt(completedDraft.season);
@@ -290,7 +296,10 @@ export const getPreviousDrafts = async () => {
                     playersRes.json(),
                 ).catch((err) => { console.error('Error parsing draft details for draft ID', draftID, err); });
 
-                if (officialDraft.status !== "complete") continue;
+                if (officialDraft.status !== "complete") {
+                    console.log(`Draft ID ${draftID} is not complete. Skipping.`);
+                    continue;
+                }
 
                 let draft;
                 let draftOrder;
@@ -298,6 +307,8 @@ export const getPreviousDrafts = async () => {
                 const buildRes = buildConfirmed(officialDraft.slot_to_roster_id, officialDraft.settings.rounds, picks, players, officialDraft.type);
                 draft = buildRes.draft;
                 draftOrder = buildRes.draftOrder;
+
+                console.log(`Pushing draft for year ${year} into drafts array`);
 
                 const newDraft = {
                     year,
