@@ -1,3 +1,4 @@
+export const draftSummaries = [
 {
     "created": 1723594403712,
     "creators": ["1211171582181912576"],
@@ -136,6 +137,7 @@
         "8": 7,
         "9": 4
     },
+];
     "sport": "nfl",
     "start_time": "",
     "status": "complete",
