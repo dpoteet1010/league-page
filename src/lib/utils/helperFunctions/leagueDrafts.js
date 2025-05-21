@@ -187,6 +187,7 @@ const completedAuction = ({ players, draft, draftOrder, draftOrderObj }) => {
 }
 
 // Fetch previous drafts and include localDrafts if no data is found
+// Fetch previous drafts and include localDrafts if no data is found
 export const getPreviousDrafts = async () => {
     if (get(previousDrafts).length > 0) {
         return get(previousDrafts);
@@ -194,7 +195,7 @@ export const getPreviousDrafts = async () => {
 
     const drafts = [];
 
-    // Step 1: Add static local drafts first
+    // Add static local drafts first
     if (Array.isArray(draftSummaries) && Array.isArray(localDrafts) && draftSummaries.length === localDrafts.length) {
         for (let i = 0; i < draftSummaries.length; i++) {
             const officialDraft = draftSummaries[i];
@@ -214,7 +215,7 @@ export const getPreviousDrafts = async () => {
                 const buildRes = buildConfirmed(
                     officialDraft.slot_to_roster_id,
                     officialDraft.settings.rounds,
-                    [], // no picks
+                    [], // no picks (you can populate this if needed)
                     players,
                     officialDraft.type
                 );
@@ -237,7 +238,7 @@ export const getPreviousDrafts = async () => {
         }
     }
 
-    // Step 2: Fetch historical drafts (from the API)
+    // Fetch historical drafts (from the API) if needed
     let curSeason = leagueID;
     let iterationCount = 0;
     const maxIterations = 10;
@@ -324,3 +325,4 @@ export const getPreviousDrafts = async () => {
     console.log('Finished retrieving previous drafts.');
     return drafts;
 };
+
