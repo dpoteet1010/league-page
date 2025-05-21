@@ -194,7 +194,7 @@ export const getPreviousDrafts = async () => {
 
     const drafts = [];
 
-    // Add static local drafts first
+    // Step 1: Add static local drafts first
     if (Array.isArray(draftSummaries) && Array.isArray(localDrafts) && draftSummaries.length === localDrafts.length) {
         for (let i = 0; i < draftSummaries.length; i++) {
             const officialDraft = draftSummaries[i];
@@ -237,7 +237,7 @@ export const getPreviousDrafts = async () => {
         }
     }
 
-    // Fetch historical drafts (from the API)
+    // Step 2: Fetch historical drafts (from the API)
     let curSeason = leagueID;
     let iterationCount = 0;
     const maxIterations = 10;
@@ -324,4 +324,3 @@ export const getPreviousDrafts = async () => {
     console.log('Finished retrieving previous drafts.');
     return drafts;
 };
-
