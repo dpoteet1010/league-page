@@ -249,16 +249,21 @@ export const getPreviousDrafts = async () => {
         iterationCount++;
         console.log(`Iteration ${iterationCount}: Fetching drafts for season ${curSeason}...`);
 
-        try {
-            const [leagueData, completedDraftsInfo] = await waitForAll(
-                getLeagueData(curSeason).catch((err) => { console.error('Error fetching league data', err); }),
-                fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`, { compress: true }).catch((err) => { console.error('Error fetching drafts info', err); }),
-            ).catch((err) => { console.error('Error fetching data', err); });
+       let leagueData, completedDraftsInfo;
+try {
+    [leagueData, completedDraftsInfo] = await Promise.all([
+        getLeagueData(curSeason),
+        fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`)
+    ]);
+} catch (err) {
+    console.error('Error fetching data', err);
+    break;
+}
 
-            if (!leagueData || !completedDraftsInfo) {
-                console.error('Failed to retrieve league data or drafts info for season', curSeason);
-                break;
-            }
+if (!leagueData || !completedDraftsInfo.ok) {
+    console.error('Invalid response received.');
+    break;
+}
 
             const completedDrafts = await completedDraftsInfo.json();
             console.log(`Fetched ${completedDrafts.length} drafts for season ${curSeason}`);
