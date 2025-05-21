@@ -6,7 +6,7 @@ import { upcomingDraft, previousDrafts } from '$lib/stores';
 import { getLeagueRosters } from './leagueRosters';
 
 // Import the local drafts data (from localDrafts.js)
-import { localDrafts } from './path/to/localDrafts.js'; // adjust the path as needed
+import { localDrafts } from './localDrafts.js'; // adjust the path as needed
 
 export const getUpcomingDraft = async () => {
     if (get(upcomingDraft).draft) {
