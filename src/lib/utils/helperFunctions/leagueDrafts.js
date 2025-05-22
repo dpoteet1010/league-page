@@ -342,6 +342,8 @@ export const getPreviousDrafts = async () => {
     }
 
     previousDrafts.update(() => drafts);
+        // ✅ Log before returning
+    console.log('✅ Final previousDrafts being returned:', drafts);
     console.log('✅ Finished retrieving previous drafts.');
     return drafts;
 };
