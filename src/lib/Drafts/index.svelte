@@ -23,7 +23,7 @@
     }
 </style>
 
-
+<!-- Awaiting upcoming draft data -->
 {#await waitForAll(upcomingDraftData, leagueTeamManagersData, playersData) }
 	<div class="loading">
 		<p>Retrieving upcoming draft...</p>
@@ -34,30 +34,31 @@
     <h4>Upcoming {upcomingDraft.year} Draft</h4>
     <Draft draftData={upcomingDraft} {leagueTeamManagers} year={upcomingDraft.year} {players} />
 {:catch error}
-	<!-- promise was rejected -->
+	<!-- Error handling for upcoming drafts -->
 	<p>Something went wrong: {error.message}</p>
 {/await}
 
-
+<!-- Awaiting previous drafts data -->
 {#await waitForAll(previousDraftsData, leagueTeamManagersData, playersData) }
-	<hr />
-	<h4>Previous Drafts</h4>
 	<div class="loading">
 		<p>Retrieving previous drafts...</p>
 		<br />
 		<LinearProgress indeterminate />
 	</div>
 {:then [previousDrafts, leagueTeamManagers, {players}] }
-	<!-- Don't display anything unless there are previous drafts -->
-	{#if previousDrafts.length}
+	<!-- Only show previous drafts if there is data -->
+	{#if previousDrafts && previousDrafts.length > 0}
 		<hr />
 		<h4>Previous Drafts</h4>
 		{#each previousDrafts as previousDraft}
 			<h6>{previousDraft.year} Draft</h6>
 			<Draft draftData={previousDraft} previous={true} {leagueTeamManagers} year={previousDraft.year} {players} />
 		{/each}
+	{:else}
+		<!-- If no previous drafts, show a message -->
+		<p>No previous drafts available.</p>
 	{/if}
 {:catch error}
-	<!-- promise was rejected -->
+	<!-- Error handling for previous drafts -->
 	<p>Something went wrong: {error.message}</p>
 {/await}
