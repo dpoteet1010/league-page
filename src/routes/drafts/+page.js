@@ -1,13 +1,10 @@
 import { getUpcomingDraft, getPreviousDrafts, getLeagueTeamManagers, loadPlayers } from '$lib/utils/helper';
 
 export async function load({ fetch }) {
-    // Await the necessary async data
-    const [upcomingDraftData, previousDraftsData, leagueTeamManagersData, playersData] = await Promise.all([
-        getUpcomingDraft(),
-        getPreviousDrafts(),
-        getLeagueTeamManagers(),
-        loadPlayers(fetch),
-    ]);
+    const upcomingDraftData = await getUpcomingDraft();
+    const previousDraftsData = await getPreviousDrafts();
+    const leagueTeamManagersData = await getLeagueTeamManagers();
+    const playersData = await loadPlayers(fetch);
 
     return {
         upcomingDraftData,
