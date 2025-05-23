@@ -208,67 +208,65 @@ export const getPreviousDrafts = async () => {
     }
 
     const drafts = [];
-/*
+
     // ✅ Add static local drafts (match by draft id)
-   if (Array.isArray(draftSummaries) && Array.isArray(localDrafts)) {
-    // Group local picks by draft_id
-    const groupedLocalDrafts = localDrafts.reduce((acc, pick) => {
-        const year = parseInt(pick.draft_id);
-        if (!acc[year]) acc[year] = [];
-        acc[year].push(pick);
-        return acc;
-    }, {});
+    if (Array.isArray(draftSummaries) && Array.isArray(localDrafts)) {
+        const groupedLocalDrafts = localDrafts.reduce((acc, pick) => {
+            const year = parseInt(pick.draft_id);
+            if (!acc[year]) acc[year] = [];
+            acc[year].push(pick);
+            return acc;
+        }, {});
 
-    for (const officialDraft of draftSummaries) {
-        const year = parseInt(officialDraft.season);
-        const players = groupedLocalDrafts[year];
+        for (const officialDraft of draftSummaries) {
+            const year = parseInt(officialDraft.season);
+            const players = groupedLocalDrafts[year];
 
-        if (!players || players.length === 0) {
-            console.warn(`No matching local draft for year ${year}`);
-            continue;
-        }
-
-        if (!officialDraft.slot_to_roster_id || !officialDraft.settings.rounds) {
-            console.warn('Missing critical data in draftSummary for year', year);
-            continue;
-        }
-
-        try {
-            const buildRes = buildConfirmed(
-                officialDraft.slot_to_roster_id,
-                officialDraft.settings.rounds,
-                [], // no traded picks
-                players,
-                officialDraft.type
-            );
-
-            if (!Array.isArray(buildRes.draft)) {
-                console.warn('Invalid draft format for year', year, buildRes.draft);
+            if (!players || players.length === 0) {
+                console.warn(`No matching local draft picks for year ${year}`);
                 continue;
             }
 
-            drafts.push({
-                year,
-                draft: buildRes.draft,
-                draftOrder: buildRes.draftOrder,
-                draftType: officialDraft.type,
-                reversalRound: officialDraft.settings.reversal_round,
-            });
+            if (!officialDraft.slot_to_roster_id || !officialDraft.settings?.rounds) {
+                console.warn(`Missing data for draft summary in year ${year}`);
+                continue;
+            }
 
-            console.log(`✅ Added local draft for year ${year}`);
-        } catch (err) {
-            console.error('❌ Error building local draft for year', year, err);
+            try {
+                const buildRes = buildConfirmed(
+                    officialDraft.slot_to_roster_id,
+                    officialDraft.settings.rounds,
+                    [], // No traded picks
+                    players,
+                    officialDraft.type
+                );
+
+                if (!Array.isArray(buildRes.draft)) {
+                    console.warn(`Invalid local draft format for year ${year}`);
+                    continue;
+                }
+
+                drafts.push({
+                    year,
+                    draft: buildRes.draft,
+                    draftOrder: buildRes.draftOrder,
+                    draftType: officialDraft.type,
+                    reversalRound: officialDraft.settings.reversal_round || 0,
+                });
+
+                console.log(`✅ Added local draft for year ${year}`);
+            } catch (err) {
+                console.error(`❌ Error building local draft for year ${year}`, err);
+            }
         }
     }
-}
-*/
 
     // ✅ Fetch historical drafts from Sleeper API
     let curSeason = leagueID;
     let iterationCount = 0;
     const maxIterations = 10;
 
-    console.log('Starting to fetch previous drafts...');
+    console.log('Starting to fetch previous drafts from API...');
 
     while (curSeason && curSeason !== 0 && iterationCount < maxIterations) {
         iterationCount++;
@@ -280,32 +278,22 @@ export const getPreviousDrafts = async () => {
                 fetch(`https://api.sleeper.app/v1/league/${curSeason}/drafts`)
             ]);
 
-            console.log('Fetched league data for season', curSeason, leagueData);
-
             if (!leagueData || !completedDraftsInfo.ok) {
-                console.error('Invalid response received for league data or drafts');
+                console.error('Invalid response received from API');
                 break;
             }
 
             const completedDrafts = await completedDraftsInfo.json();
-            console.log(`Fetched ${completedDrafts.length} drafts for season ${curSeason}`);
 
             if (completedDrafts.length === 0) {
-                console.log(`No completed drafts found for season ${curSeason}`);
-                // Still try to continue to previous season if available
+                console.log(`No drafts found for season ${curSeason}`);
                 curSeason = leagueData.previous_league_id;
-                console.log('Next season ID to fetch:', curSeason);
-                if (!curSeason || curSeason === 0) {
-                    console.log('No more seasons to fetch or previous season ID is missing.');
-                    break;
-                }
                 continue;
             }
 
             for (const completedDraft of completedDrafts) {
                 const draftID = completedDraft.draft_id;
                 const year = parseInt(completedDraft.season);
-                console.log(`Processing draft ID ${draftID} for season ${year}`);
 
                 const [officialDraftRes, picksRes, playersRes] = await waitForAll(
                     fetch(`https://api.sleeper.app/v1/draft/${draftID}`, { compress: true }),
@@ -319,11 +307,8 @@ export const getPreviousDrafts = async () => {
                     playersRes.json()
                 );
 
-                console.log(`Official draft status: ${officialDraft.status}`);
-                console.log(`Picks count: ${picks.length}, Players count: ${players.length}`);
-
                 if (officialDraft.status !== "complete") {
-                    console.log(`Draft ID ${draftID} is not complete. Skipping.`);
+                    console.log(`Draft ${draftID} is incomplete. Skipping.`);
                     continue;
                 }
 
@@ -340,31 +325,22 @@ export const getPreviousDrafts = async () => {
                     draft: buildRes.draft,
                     draftOrder: buildRes.draftOrder,
                     draftType: officialDraft.type,
-                    reversalRound: officialDraft.settings.reversal_round,
+                    reversalRound: officialDraft.settings.reversal_round || 0,
                 });
 
                 console.log(`✅ Added API draft for year ${year}`);
             }
 
-            // Update curSeason after processing drafts
             curSeason = leagueData.previous_league_id;
-            console.log('Next season ID to fetch:', curSeason);
-
-            if (!curSeason || curSeason === 0) {
-                console.log('No more seasons to fetch or previous season ID is missing.');
-                break;
-            }
-
         } catch (error) {
-            console.error('❌ Error during iteration', error);
+            console.error('❌ Error during API draft fetching', error);
             break;
         }
     }
 
-    previousDrafts.update(() => drafts);
+    previousDrafts.set(drafts);
 
-    // ✅ Log before returning
-    console.log('✅ Final previousDrafts being returned:', drafts);
+    console.log('✅ Final previousDrafts being returned:');
     console.dir(drafts, { depth: null });
     console.log('✅ Finished retrieving previous drafts.');
 
