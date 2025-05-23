@@ -9,7 +9,6 @@
 	console.log('upcomingDraftData:', upcomingDraftData);
 	console.log('previousDraftsData:', previousDraftsData);
 	console.log('leagueTeamManagersData:', leagueTeamManagersData);
-	console.log('playersData:', playersData);
 </script>
 
 <style>
