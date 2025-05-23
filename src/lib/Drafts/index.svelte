@@ -14,7 +14,6 @@
 	console.log('upcomingDraftData (raw):', upcomingDraftData);
 	console.log('previousDraftsData (raw):', previousDraftsData);
 	console.log('leagueTeamManagersData (raw):', leagueTeamManagersData);
-	console.log('playersData (raw):', playersData);
 </script>
 
 <style>
