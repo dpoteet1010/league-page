@@ -65,15 +65,17 @@
 		<hr />
 		<h4>Previous Drafts</h4>
 		{#each previousDrafts as previousDraft}
-			<h6>{previousDraft.year} Draft</h6>
-			<Draft
-				draftData={previousDraft}
-				previous={true}
-				{leagueTeamManagers}
-				year={previousDraft.year}
-				players={playersRaw.players ?? playersRaw}
-			/>
-		{/each}
+  <h6>{previousDraft.year} Draft</h6>
+  <pre>{JSON.stringify(previousDraft.draft, null, 2)}</pre>
+  <Draft
+    draftData={previousDraft}
+    previous={true}
+    {leagueTeamManagers}
+    year={previousDraft.year}
+    players={playersRaw.players ?? playersRaw}
+  />
+{/each}
+
 	{:else}
 		<p>No previous drafts available.</p>
 	{/if}
