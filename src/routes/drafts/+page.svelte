@@ -3,6 +3,8 @@
 
     export let data;
     const {upcomingDraftData, previousDraftsData, leagueTeamManagersData, playersData} = data;
+
+	console.log('previousDraftsData:', previousDraftsData);
 </script>
 
 <style>
