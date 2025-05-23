@@ -1,14 +1,20 @@
 <script>
-	import { waitForAll } from '$lib/utils/helper';
 	import LinearProgress from '@smui/linear-progress';
 	import Draft from './Draft.svelte';
 
 	export let upcomingDraftData, previousDraftsData, leagueTeamManagersData, playersData;
 
-	// Debug logs to check data shape
-	console.log('upcomingDraftData:', upcomingDraftData);
-	console.log('previousDraftsData:', previousDraftsData);
-	console.log('leagueTeamManagersData:', leagueTeamManagersData);
+	// Wrap in Promise.resolve to ensure they are promises
+	const upcomingDraftPromise = Promise.resolve(upcomingDraftData);
+	const previousDraftsPromise = Promise.resolve(previousDraftsData);
+	const leagueTeamManagersPromise = Promise.resolve(leagueTeamManagersData);
+	const playersPromise = Promise.resolve(playersData);
+
+	// Debug logs to verify data types
+	console.log('upcomingDraftData (raw):', upcomingDraftData);
+	console.log('previousDraftsData (raw):', previousDraftsData);
+	console.log('leagueTeamManagersData (raw):', leagueTeamManagersData);
+	console.log('playersData (raw):', playersData);
 </script>
 
 <style>
@@ -26,7 +32,7 @@
 </style>
 
 <!-- Await upcoming draft data -->
-{#await waitForAll(upcomingDraftData, leagueTeamManagersData, playersData)}
+{#await Promise.all([upcomingDraftPromise, leagueTeamManagersPromise, playersPromise])}
 	<div class="loading">
 		<p>Retrieving upcoming draft...</p>
 		<br />
@@ -49,7 +55,7 @@
 {/await}
 
 <!-- Await previous drafts data -->
-{#await waitForAll(previousDraftsData, leagueTeamManagersData, playersData)}
+{#await Promise.all([previousDraftsPromise, leagueTeamManagersPromise, playersPromise])}
 	<div class="loading">
 		<p>Retrieving previous drafts...</p>
 		<br />
