@@ -209,19 +209,58 @@ export const getPreviousDrafts = async () => {
 
     const drafts = [];
 
-    // ✅ Add static local drafts (fixed: match by year/season)
-    if (Array.isArray(draftSummaries) && Array.isArray(localDrafts)) {
-        for (const officialDraft of draftSummaries) {
-            const year = parseInt(officialDraft.season);
-            const matchingLocal = localDrafts.find(d => parseInt(d.year) === year);
+    // ✅ Add static local drafts (match by draft id)
+   if (Array.isArray(draftSummaries) && Array.isArray(localDrafts)) {
+    // Group local picks by draft_id
+    const groupedLocalDrafts = localDrafts.reduce((acc, pick) => {
+        const year = parseInt(pick.draft_id);
+        if (!acc[year]) acc[year] = [];
+        acc[year].push(pick);
+        return acc;
+    }, {});
 
-            if (!matchingLocal) {
-                console.warn(`No matching local draft for year ${year}`);
+    for (const officialDraft of draftSummaries) {
+        const year = parseInt(officialDraft.season);
+        const players = groupedLocalDrafts[year];
+
+        if (!players || players.length === 0) {
+            console.warn(`No matching local draft for year ${year}`);
+            continue;
+        }
+
+        if (!officialDraft.slot_to_roster_id || !officialDraft.settings.rounds) {
+            console.warn('Missing critical data in draftSummary for year', year);
+            continue;
+        }
+
+        try {
+            const buildRes = buildConfirmed(
+                officialDraft.slot_to_roster_id,
+                officialDraft.settings.rounds,
+                [], // no traded picks
+                players,
+                officialDraft.type
+            );
+
+            if (!Array.isArray(buildRes.draft)) {
+                console.warn('Invalid draft format for year', year, buildRes.draft);
                 continue;
             }
 
-            const players = matchingLocal.draft || [];
+            drafts.push({
+                year,
+                draft: buildRes.draft,
+                draftOrder: buildRes.draftOrder,
+                draftType: officialDraft.type,
+                reversalRound: officialDraft.settings.reversal_round,
+            });
 
+            console.log(`✅ Added local draft for year ${year}`);
+        } catch (err) {
+            console.error('❌ Error building local draft for year', year, err);
+        }
+    }
+}
             if (!officialDraft.slot_to_roster_id || !officialDraft.settings.rounds) {
                 console.warn('Missing critical data in draftSummary for year', year);
                 continue;
