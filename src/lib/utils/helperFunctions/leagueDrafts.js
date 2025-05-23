@@ -208,7 +208,7 @@ export const getPreviousDrafts = async () => {
     }
 
     const drafts = [];
-
+/*
     // ✅ Add static local drafts (match by draft id)
    if (Array.isArray(draftSummaries) && Array.isArray(localDrafts)) {
     // Group local picks by draft_id
@@ -261,6 +261,7 @@ export const getPreviousDrafts = async () => {
         }
     }
 }
+*/
     // ✅ Fetch historical drafts from Sleeper API
     let curSeason = leagueID;
     let iterationCount = 0;
