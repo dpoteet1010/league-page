@@ -1,17 +1,4 @@
 <script>
-    export let upcomingDraftData;
-    export let previousDraftsData;
-    export let leagueTeamManagersData;
-    export let playersData;
-
-    console.log('🧪 Drafts received props:', {
-        upcomingDraftData,
-        previousDraftsData,
-        leagueTeamManagersData,
-        playersData
-    });
-</script>
-<script>
 	import { Drafts } from '$lib/components';
 
     export let data;
