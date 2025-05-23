@@ -262,6 +262,7 @@ export const getPreviousDrafts = async () => {
     }
 }
 */
+
     // ✅ Fetch historical drafts from Sleeper API
     let curSeason = leagueID;
     let iterationCount = 0;
@@ -289,22 +290,22 @@ export const getPreviousDrafts = async () => {
             const completedDrafts = await completedDraftsInfo.json();
             console.log(`Fetched ${completedDrafts.length} drafts for season ${curSeason}`);
 
-            curSeason = leagueData.previous_league_id;
-            console.log('Next season ID to fetch:', curSeason);
-
-            if (!curSeason || curSeason === 0 || !leagueData.previous_league_id) {
-                console.log('No more seasons to fetch or previous season ID is missing.');
-                break;
-            }
-
             if (completedDrafts.length === 0) {
                 console.log(`No completed drafts found for season ${curSeason}`);
+                // Still try to continue to previous season if available
+                curSeason = leagueData.previous_league_id;
+                console.log('Next season ID to fetch:', curSeason);
+                if (!curSeason || curSeason === 0) {
+                    console.log('No more seasons to fetch or previous season ID is missing.');
+                    break;
+                }
                 continue;
             }
 
             for (const completedDraft of completedDrafts) {
                 const draftID = completedDraft.draft_id;
                 const year = parseInt(completedDraft.season);
+                console.log(`Processing draft ID ${draftID} for season ${year}`);
 
                 const [officialDraftRes, picksRes, playersRes] = await waitForAll(
                     fetch(`https://api.sleeper.app/v1/draft/${draftID}`, { compress: true }),
@@ -317,6 +318,9 @@ export const getPreviousDrafts = async () => {
                     picksRes.json(),
                     playersRes.json()
                 );
+
+                console.log(`Official draft status: ${officialDraft.status}`);
+                console.log(`Picks count: ${picks.length}, Players count: ${players.length}`);
 
                 if (officialDraft.status !== "complete") {
                     console.log(`Draft ID ${draftID} is not complete. Skipping.`);
@@ -341,6 +345,16 @@ export const getPreviousDrafts = async () => {
 
                 console.log(`✅ Added API draft for year ${year}`);
             }
+
+            // Update curSeason after processing drafts
+            curSeason = leagueData.previous_league_id;
+            console.log('Next season ID to fetch:', curSeason);
+
+            if (!curSeason || curSeason === 0) {
+                console.log('No more seasons to fetch or previous season ID is missing.');
+                break;
+            }
+
         } catch (error) {
             console.error('❌ Error during iteration', error);
             break;
@@ -348,9 +362,11 @@ export const getPreviousDrafts = async () => {
     }
 
     previousDrafts.update(() => drafts);
-        // ✅ Log before returning
+
+    // ✅ Log before returning
     console.log('✅ Final previousDrafts being returned:', drafts);
     console.dir(drafts, { depth: null });
     console.log('✅ Finished retrieving previous drafts.');
+
     return drafts;
 };
