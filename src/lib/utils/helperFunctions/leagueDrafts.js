@@ -261,40 +261,6 @@ export const getPreviousDrafts = async () => {
         }
     }
 }
-            if (!officialDraft.slot_to_roster_id || !officialDraft.settings.rounds) {
-                console.warn('Missing critical data in draftSummary for year', year);
-                continue;
-            }
-
-            try {
-                const buildRes = buildConfirmed(
-                    officialDraft.slot_to_roster_id,
-                    officialDraft.settings.rounds,
-                    [], // no traded picks
-                    players,
-                    officialDraft.type
-                );
-
-                if (!Array.isArray(buildRes.draft)) {
-                    console.warn('Invalid draft format for year', year, buildRes.draft);
-                    continue;
-                }
-
-                drafts.push({
-                    year,
-                    draft: buildRes.draft,
-                    draftOrder: buildRes.draftOrder,
-                    draftType: officialDraft.type,
-                    reversalRound: officialDraft.settings.reversal_round,
-                });
-
-                console.log(`✅ Added local draft for year ${year}`);
-            } catch (err) {
-                console.error('❌ Error building local draft for year', year, err);
-            }
-        }
-    }
-
     // ✅ Fetch historical drafts from Sleeper API
     let curSeason = leagueID;
     let iterationCount = 0;
