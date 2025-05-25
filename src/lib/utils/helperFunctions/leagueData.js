@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { leagueData } from '$lib/stores';
 import { leagueID } from '$lib/utils/leagueInfo';
-import { legacyLeagueData } from './legacyLeagueData.json';
+import { legacyLeagueData } from './legacyLeagueData.js';
 
 let legacyAppended = false; // Ensures we only append once per session
 
