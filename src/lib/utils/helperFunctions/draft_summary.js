@@ -20,7 +20,7 @@ export const draftSummaries = [
     last_message_id: "",
     last_message_time: "",
     last_picked: "",
-    league_id: "1211171901003550720",
+    league_id: "2023",
     metadata: {
       description: "",
       name: "",
@@ -92,7 +92,7 @@ export const draftSummaries = [
     last_message_id: "",
     last_message_time: "",
     last_picked: "",
-    league_id: "1211171901003550720",
+    league_id: "2024",
     metadata: {
       description: "",
       name: "",
