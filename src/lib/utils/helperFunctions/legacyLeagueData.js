@@ -1,4 +1,5 @@
-{
+export default {
+"2024": {
     "name": "National Liver Failure League",
     "status": "complete",
     "metadata": {
@@ -127,8 +128,8 @@
     "loser_bracket_id": 20242,
     "loser_bracket_overrides_id": null,
     "total_rosters": 12
-}
-{
+},
+"2023": {
     "name": "National Liver Failure League",
     "status": "complete",
     "metadata": {
@@ -258,3 +259,4 @@
     "loser_bracket_overrides_id": null,
     "total_rosters": 12
 }
+    };
