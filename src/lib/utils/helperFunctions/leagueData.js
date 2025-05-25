@@ -1,6 +1,19 @@
 import { get } from 'svelte/store';
 import {leagueData} from '$lib/stores';
-import { leagueID } from '$lib/utils/leagueInfo';
+import { leagueID } from '$lib/utils/leagueInfo'
+import legacyLeagueData from '$lib/utils/helperFunctions/legacyLeagueData';
+
+export function appendLegacyLeagueData() {
+    leagueData.update(current => {
+        const merged = { ...current };
+        for (const key in legacyLeagueData) {
+            if (!merged[key]) {
+                merged[key] = legacyLeagueData[key];
+            }
+        }
+        return merged;
+    });
+}
 
 export const getLeagueData = async (queryLeagueID = leagueID) => {
 	if(get(leagueData)[queryLeagueID]) {
