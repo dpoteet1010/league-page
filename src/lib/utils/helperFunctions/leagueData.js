@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { leagueData } from '$lib/stores';
 import { leagueID } from '$lib/utils/leagueInfo';
-import legacyLeagueData from '$lib/data/legacyLeagueData.json'; // Path to your legacy JSON
+import legacyLeagueData from './legacyLeagueData.json';
 
 let legacyAppended = false; // Ensures we only append once per session
 
