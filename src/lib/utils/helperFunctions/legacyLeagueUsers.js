@@ -1,4 +1,4 @@
-const legacyLeagueUsers = {
+export const legacyLeagueUsers = {
   "2024": [
     {
       "avatar": "15d7cf259bc30eab8f6120f45f652fb6",
