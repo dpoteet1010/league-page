@@ -365,7 +365,7 @@ export const getPreviousDrafts = async () => {
       break; // Break loop on critical error to avoid infinite stuck state
     }
   }
-
+  drafts.sort((a, b) => b.year - a.year);
   previousDrafts.set(drafts);
 
   console.log('✅ Final previousDrafts being returned:');
