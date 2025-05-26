@@ -1,7 +1,7 @@
 import { leagueID } from '$lib/utils/leagueInfo';
 import { get } from 'svelte/store';
 import { rostersStore } from '$lib/stores';
-import { legacyRosters } from '$lib/utils/legacyRosters.js';
+import { legacyLeagueRosters } from './legacyLeagueRosters.js';
 
 let legacyAppended = false; // Ensures static data is added only once
 
