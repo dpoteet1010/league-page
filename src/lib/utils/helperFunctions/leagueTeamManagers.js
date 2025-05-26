@@ -58,7 +58,7 @@ export const getLeagueTeamManagers = async () => {
     for (const year in legacyLeagueUsers) {
         const seasonYear = parseInt(year);
         const seasonUsers = legacyLeagueUsers[seasonYear] || {};
-        const seasonRosters = legacyLeagueRosters[seasonYear] || [];
+        const seasonRostersMap = legacyLeagueRosters[seasonYear]?.rosters || {};
 
         teamManagersMap[seasonYear] = {};
 
@@ -69,12 +69,13 @@ export const getLeagueTeamManagers = async () => {
             }
         }
 
-        for (const roster of seasonRosters) {
-            teamManagersMap[seasonYear][roster.roster_id] = {
-                team: getTeamData(finalUsers, roster.owner_id),
-                managers: roster.managers.map(mid => finalUsers[mid]),
-            };
-        }
+        for (const rosterID in seasonRostersMap) {
+          const roster = seasonRostersMap[rosterID];
+          teamManagersMap[seasonYear][roster.roster_id] = {
+            team: getTeamData(finalUsers, roster.owner_id),
+            managers: roster.managers ? roster.managers.map(mid => finalUsers[mid]) : [],
+          };
+}
     }
 
     const response = {
