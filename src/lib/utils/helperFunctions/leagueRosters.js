@@ -10,9 +10,9 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
     if (!legacyAppended) {
         rostersStore.update(current => {
             const merged = { ...current };
-            for (const key in legacyRosters) {
+            for (const key in legacyLeagueRosters) {
                 if (!merged[key]) {
-                    merged[key] = legacyRosters[key];
+                    merged[key] = legacyLeagueRosters[key];
                 }
             }
             return merged;
