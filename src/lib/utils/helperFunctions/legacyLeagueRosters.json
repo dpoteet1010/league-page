@@ -1,5 +1,5 @@
-[
-    {
+export const legacyLeagueRosters = {
+    "2023": {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -692,7 +692,7 @@
         ],
         "taxi": null
     },
-    {
+    "2024": {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1412,4 +1412,4 @@
         ],
         "taxi": null
     }
-]
+};
