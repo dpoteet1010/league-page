@@ -1,4 +1,4 @@
-export default {
+export const legacyLeagueData = {
 "2024": {
     "name": "National Liver Failure League",
     "status": "complete",
