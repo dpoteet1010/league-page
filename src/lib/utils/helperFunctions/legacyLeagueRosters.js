@@ -200,7 +200,6 @@ export const legacyLeagueRosters = {
           "8132",
           "3225",
           "8676",
-          "6994",
           "PIT"
         ],
         "reserve": null,
@@ -1361,7 +1360,6 @@ export const legacyLeagueRosters = {
         "players": [
           "BUF",
           "HOU",
-          "6994",
           "4098",
           "9509",
           "7564",
@@ -1396,7 +1394,6 @@ export const legacyLeagueRosters = {
         },
         "starters": [
           "BUF",
-          "6994",
           "4098",
           "9509",
           "7564",
@@ -1621,7 +1618,6 @@ export const legacyLeagueRosters = {
       "3451",
       "MIN",
       "BUF",
-      "6994",
       "4098",
       "9509",
       "7564",
