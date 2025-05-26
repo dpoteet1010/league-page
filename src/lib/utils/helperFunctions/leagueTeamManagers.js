@@ -4,8 +4,8 @@ import { teamManagersStore } from '$lib/stores';
 import { waitForAll } from './multiPromise';
 import { getManagers, getTeamData } from './universalFunctions';
 import { getLeagueData } from './leagueData';
-import { legacyLeagueUsers } from '$lib/data/legacyLeagueUsers';
-import { legacyLeagueRosters } from '$lib/data/legacyLeagueRosters';
+import { legacyLeagueUsers } from './legacyLeagueUsers';
+import { legacyLeagueRosters } from './legacyLeagueRosters';
 
 export const getLeagueTeamManagers = async () => {
     if (get(teamManagersStore) && get(teamManagersStore).currentSeason) {
