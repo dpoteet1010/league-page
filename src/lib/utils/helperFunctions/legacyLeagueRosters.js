@@ -9,7 +9,7 @@ export const legacyLeagueRosters = {
           "record": "LWWLLWWWWWWWWL",
           "streak": "1L"
         },
-        "owner_id": 1211171582181912576,
+        "owner_id": "1211171582181912576",
         "player_map": null,
         "players": [
           "8183",
@@ -67,7 +67,7 @@ export const legacyLeagueRosters = {
           "record": "WLWLWWWWLLLLLL",
           "streak": "6L"
         },
-        "owner_id": 997207542067429376,
+        "owner_id": "997207542067429376",
         "player_map": null,
         "players": [
           "CHI",
@@ -125,7 +125,7 @@ export const legacyLeagueRosters = {
           "record": "LLLWWWLLLLWLWW",
           "streak": "2W"
         },
-        "owner_id": 1129215612842016768,
+        "owner_id": "1129215612842016768",
         "player_map": null,
         "players": [
           "2028",
@@ -183,7 +183,7 @@ export const legacyLeagueRosters = {
           "record": "LLWLLWLWLWLLLL",
           "streak": "4L"
         },
-        "owner_id": 1228199076927909888,
+        "owner_id": "1228199076927909888",
         "player_map": null,
         "players": [
           "6804",
@@ -240,7 +240,7 @@ export const legacyLeagueRosters = {
           "record": "WLWLWLLWWLWWLW",
           "streak": "1L"
         },
-        "owner_id": 1,
+        "owner_id": "1",
         "player_map": null,
         "players": [
           "7591",
@@ -297,7 +297,7 @@ export const legacyLeagueRosters = {
           "record": "LWLWLLWLWLWWWL",
           "streak": "1L"
         },
-        "owner_id": 1002297734663237632,
+        "owner_id": "1002297734663237632",
         "player_map": null,
         "players": [
           "DEN",
@@ -355,7 +355,7 @@ export const legacyLeagueRosters = {
           "record": "WWLLLLLLLLLWWW",
           "streak": "3W"
         },
-        "owner_id": 1227846679458230272,
+        "owner_id": "1227846679458230272",
         "player_map": null,
         "players": [
           "4892",
@@ -412,7 +412,7 @@ export const legacyLeagueRosters = {
           "record": "WLWWLWWLWWWWLL",
           "streak": "2L"
         },
-        "owner_id": 1129950475123781632,
+        "owner_id": "1129950475123781632",
         "player_map": null,
         "players": [
           "DAL",
@@ -470,7 +470,7 @@ export const legacyLeagueRosters = {
           "record": "WWLWLWWLLWLLLW",
           "streak": "1W"
         },
-        "owner_id": 862540586538921984,
+        "owner_id": "862540586538921984",
         "player_map": null,
         "players": [
           "3163",
@@ -528,7 +528,7 @@ export const legacyLeagueRosters = {
           "record": "WLLLWLWWWWLWWW",
           "streak": "3W"
         },
-        "owner_id": 1137981174678462464,
+        "owner_id": "1137981174678462464",
         "player_map": null,
         "players": [
           "4984",
@@ -586,7 +586,7 @@ export const legacyLeagueRosters = {
           "record": "LWWWWLLLWWWLLW",
           "streak": "1W"
         },
-        "owner_id": 732863490657738752,
+        "owner_id": "732863490657738752",
         "player_map": null,
         "players": [
           "BUF",
@@ -644,7 +644,7 @@ export const legacyLeagueRosters = {
           "record": "LWLWWLLWLLLLWL",
           "streak": "1L"
         },
-        "owner_id": 1128923498258219008,
+        "owner_id": "1128923498258219008",
         "player_map": null,
         "players": [
           "421",
@@ -815,7 +815,7 @@ export const legacyLeagueRosters = {
           "record": "LLLWWWWLLWLWLL",
           "streak": "2L"
         },
-        "owner_id": 1211171582181912576,
+        "owner_id": "1211171582181912576",
         "player_map": null,
         "players": [
           "PHI",
@@ -875,7 +875,7 @@ export const legacyLeagueRosters = {
           "record": "LWWLWWWLWWLWWL",
           "streak": "1L"
         },
-        "owner_id": 1228199076927909888,
+        "owner_id": "1228199076927909888",
         "player_map": null,
         "players": [
           "GB",
@@ -935,7 +935,7 @@ export const legacyLeagueRosters = {
           "record": "LWLLWWWWLLWWLL",
           "streak": "2L"
         },
-        "owner_id": 1129215612842016768,
+        "owner_id": "1129215612842016768",
         "player_map": null,
         "players": [
           "WAS",
@@ -995,7 +995,7 @@ export const legacyLeagueRosters = {
           "record": "LLLWLLWLLWLLLW",
           "streak": "1W"
         },
-        "owner_id": 997207542067429376,
+        "owner_id": "997207542067429376",
         "player_map": null,
         "players": [
           "LAC",
@@ -1055,7 +1055,7 @@ export const legacyLeagueRosters = {
           "record": "WLWWLWLWWLWLLW",
           "streak": "1W"
         },
-        "owner_id": 1,
+        "owner_id": "1",
         "player_map": null,
         "players": [
           "CIN",
@@ -1115,7 +1115,7 @@ export const legacyLeagueRosters = {
           "record": "WLLWLLLLWWWLWL",
           "streak": "1L"
         },
-        "owner_id": 1002297734663237632,
+        "owner_id": "1002297734663237632",
         "player_map": null,
         "players": [
           "IND",
@@ -1175,7 +1175,7 @@ export const legacyLeagueRosters = {
           "record": "WWWLLLLWWWWLLW",
           "streak": "1W"
         },
-        "owner_id": 1227846679458230272,
+        "owner_id": "1227846679458230272",
         "player_map": null,
         "players": [
           "ARI",
@@ -1235,7 +1235,7 @@ export const legacyLeagueRosters = {
           "record": "WWLLWWWLLLLLWL",
           "streak": "1L"
         },
-        "owner_id": 1129950475123781632,
+        "owner_id": "1129950475123781632",
         "player_map": null,
         "players": [
           "TB",
@@ -1295,7 +1295,7 @@ export const legacyLeagueRosters = {
           "record": "WWLWWLWWWLLLLW",
           "streak": "1W"
         },
-        "owner_id": 862540586538921984,
+        "owner_id": "862540586538921984",
         "player_map": null,
         "players": [
           "3163",
@@ -1355,7 +1355,7 @@ export const legacyLeagueRosters = {
           "record": "WLWWWWLWWWWWWW",
           "streak": "7W"
         },
-        "owner_id": 1137981174678462464,
+        "owner_id": "1137981174678462464",
         "player_map": null,
         "players": [
           "BUF",
@@ -1413,7 +1413,7 @@ export const legacyLeagueRosters = {
           "record": "LLWLLLLLLLLWWL",
           "streak": "1L"
         },
-        "owner_id": 732863490657738752,
+        "owner_id": "732863490657738752",
         "player_map": null,
         "players": [
           "11564",
@@ -1473,7 +1473,7 @@ export const legacyLeagueRosters = {
           "record": "LWWLLLLWLLWWWW",
           "streak": "4W"
         },
-        "owner_id": 1128923498258219008,
+        "owner_id": "1128923498258219008",
         "player_map": null,
         "players": [
           "DET",
