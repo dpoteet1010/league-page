@@ -55,28 +55,31 @@ export const getLeagueTeamManagers = async () => {
     }
 
     // 2. Append legacy data from files
-    for (const year in legacyLeagueUsers) {
-        const seasonYear = parseInt(year);
-        const seasonUsers = legacyLeagueUsers[seasonYear] || {};
-        const seasonRostersMap = legacyLeagueRosters[seasonYear]?.rosters || {};
+for (const year in legacyLeagueUsers) {
+    const seasonYear = parseInt(year);
+    const seasonUsersArray = legacyLeagueUsers[seasonYear] || [];
+    const seasonRostersMap = legacyLeagueRosters[seasonYear]?.rosters || {};
 
-        teamManagersMap[seasonYear] = {};
+    teamManagersMap[seasonYear] = {};
 
-        // Add static users to finalUsers
-        for (const userID in seasonUsers) {
-            if (!finalUsers[userID]) {
-                finalUsers[userID] = seasonUsers[userID];
-            }
+    // Convert user array to a map by user_id
+    const seasonUsers = {};
+    for (const user of seasonUsersArray) {
+        seasonUsers[user.user_id] = user;
+        // Add to finalUsers as well
+        if (!finalUsers[user.user_id]) {
+            finalUsers[user.user_id] = user;
         }
-
-        for (const rosterID in seasonRostersMap) {
-          const roster = seasonRostersMap[rosterID];
-          teamManagersMap[seasonYear][roster.roster_id] = {
-            team: getTeamData(finalUsers, roster.owner_id),
-            managers: roster.managers ? roster.managers.map(mid => finalUsers[mid]) : [],
-          };
-}
     }
+
+    for (const rosterID in seasonRostersMap) {
+        const roster = seasonRostersMap[rosterID];
+        teamManagersMap[seasonYear][roster.roster_id] = {
+            team: getTeamData(seasonUsers, roster.owner_id),
+            managers: roster.managers ? roster.managers.map(mid => seasonUsers[mid]) : [],
+        };
+    }
+}
 
     const response = {
         currentSeason,
