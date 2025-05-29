@@ -201,37 +201,22 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const draftPicks = transaction.draft_picks || [];
 
 	if (transaction.type === "trade") {
-		// Get all unique players involved in trade
-		const playersInvolved = new Set([...Object.keys(adds), ...Object.keys(drops)]);
-
-		console.log(`Processing trade transaction ${transaction.transaction_id}`);
-		for (let player of playersInvolved) {
+		// Only show added players in trades, not dropped players (like original code)
+		for (let player in adds) {
 			if (!player) continue;
 
 			const toRoster = adds[player];
-			const fromRoster = drops[player];
 
 			let move = new Array(transactionRosters.length).fill(null);
-
-			if (fromRoster !== undefined && transactionRosters.includes(fromRoster)) {
-				const idx = transactionRosters.indexOf(fromRoster);
-				move[idx] = {
-					type: "Dropped", // Properly show traded away players as dropped
-					player
-				};
-				console.log(`Player ${player} dropped by roster ${fromRoster}`);
-			}
 
 			if (toRoster !== undefined && transactionRosters.includes(toRoster)) {
 				const idx = transactionRosters.indexOf(toRoster);
 				move[idx] = {
-					type: "Received",
+					type: "Added",
 					player
 				};
-				console.log(`Player ${player} received by roster ${toRoster}`);
+				digestedTransaction.moves.push(move);
 			}
-
-			digestedTransaction.moves.push(move);
 		}
 
 		// Also handle draft picks in trades
@@ -243,14 +228,12 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 						type: "Traded Away Pick",
 						pick
 					};
-					console.log(`Pick traded away by roster ${pick.previous_owner_id}:`, pick);
 				}
 				if (transactionRosters.includes(pick.owner_id)) {
 					move[transactionRosters.indexOf(pick.owner_id)] = {
 						type: "Received Pick",
 						pick
 					};
-					console.log(`Pick received by roster ${pick.owner_id}:`, pick);
 				}
 				digestedTransaction.moves.push(move);
 			}
@@ -293,7 +276,6 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 
 	return { digestedTransaction, season, success: true };
 };
-
 
 const handleAdds = (rosterIDs, adds, drops, player, bid) => {
 	let move = new Array(rosterIDs.length).fill(null);
