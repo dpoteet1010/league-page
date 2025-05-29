@@ -204,6 +204,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 		// Get all unique players involved in trade
 		const playersInvolved = new Set([...Object.keys(adds), ...Object.keys(drops)]);
 
+		console.log(`Processing trade transaction ${transaction.transaction_id}`);
 		for (let player of playersInvolved) {
 			if (!player) continue;
 
@@ -218,6 +219,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 					type: "Dropped", // Properly show traded away players as dropped
 					player
 				};
+				console.log(`Player ${player} dropped by roster ${fromRoster}`);
 			}
 
 			if (toRoster !== undefined && transactionRosters.includes(toRoster)) {
@@ -226,6 +228,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 					type: "Received",
 					player
 				};
+				console.log(`Player ${player} received by roster ${toRoster}`);
 			}
 
 			digestedTransaction.moves.push(move);
@@ -240,12 +243,14 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 						type: "Traded Away Pick",
 						pick
 					};
+					console.log(`Pick traded away by roster ${pick.previous_owner_id}:`, pick);
 				}
 				if (transactionRosters.includes(pick.owner_id)) {
 					move[transactionRosters.indexOf(pick.owner_id)] = {
 						type: "Received Pick",
 						pick
 					};
+					console.log(`Pick received by roster ${pick.owner_id}:`, pick);
 				}
 				digestedTransaction.moves.push(move);
 			}
@@ -288,6 +293,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 
 	return { digestedTransaction, season, success: true };
 };
+
 
 const handleAdds = (rosterIDs, adds, drops, player, bid) => {
 	let move = new Array(rosterIDs.length).fill(null);
