@@ -157,7 +157,7 @@ const digestTransactions = async ({ transactionsData, currentSeason }) => {
 	}
 
 	// Sort by date descending
-	processedTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+	processedTransactions.sort((a, b) => new Date(a.date) - new Date(b.date));
 
 	// Calculate totals for trades and waivers
 	const totals = {
@@ -176,7 +176,6 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 		return { success: false };
 	}
 
-	const handled = [];
 	const transactionRosters = transaction.roster_ids;
 	const bid = transaction.settings?.waiver_bid;
 	const date = digestDate(transaction.status_updated);
@@ -186,15 +185,10 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 		id: transaction.transaction_id,
 		date,
 		season,
-		type: "waiver",
+		type: transaction.type, // use actual type here
 		rosters: transactionRosters,
 		moves: []
 	};
-
-	if (transaction.type === "trade") {
-		digestedTransaction.type = "trade";
-		console.log("Digesting trade:", digestedTransaction);
-	}
 
 	if (season !== currentSeason) {
 		digestedTransaction.previousOwners = true;
@@ -204,31 +198,77 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const drops = transaction.drops || {};
 	const draftPicks = transaction.draft_picks || [];
 
-	for (let player in adds) {
-		if (!player) continue;
-		handled.push(player);
-		digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, bid));
-	}
+	if (transaction.type === "trade") {
+		// For trades, each player involved has adds and drops
+		for (let player in adds) {
+			if (!player) continue;
+			const toRoster = adds[player];
+			const fromRoster = drops[player];
 
-	for (let player in drops) {
-		if (handled.includes(player)) continue;
-		if (!player) continue;
+			let move = new Array(transactionRosters.length).fill(null);
 
-		let move = new Array(transactionRosters.length).fill(null);
-		move[transactionRosters.indexOf(drops[player])] = {
-			type: "Dropped",
-			player
-		};
-		digestedTransaction.moves.push(move);
-	}
+			if (fromRoster !== undefined) {
+				move[transactionRosters.indexOf(fromRoster)] = {
+					type: "Traded Away",
+					player
+				};
+			}
 
-	for (let pick of draftPicks) {
-		let move = new Array(transactionRosters.length).fill(null);
-		move[transactionRosters.indexOf(pick.owner_id)] = {
-			type: "Draft Pick",
-			pick
-		};
-		digestedTransaction.moves.push(move);
+			if (toRoster !== undefined) {
+				move[transactionRosters.indexOf(toRoster)] = {
+					type: "Received",
+					player
+				};
+			}
+
+			digestedTransaction.moves.push(move);
+		}
+
+		// Also handle draft picks in trades
+		for (let pick of draftPicks) {
+			let move = new Array(transactionRosters.length).fill(null);
+			if (pick.previous_owner_id !== undefined && pick.owner_id !== undefined) {
+				move[transactionRosters.indexOf(pick.previous_owner_id)] = {
+					type: "Traded Away Pick",
+					pick
+				};
+				move[transactionRosters.indexOf(pick.owner_id)] = {
+					type: "Received Pick",
+					pick
+				};
+				digestedTransaction.moves.push(move);
+			}
+		}
+	} else {
+		// For waivers and other transaction types, handle normally
+		const handled = [];
+
+		for (let player in adds) {
+			if (!player) continue;
+			handled.push(player);
+			digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, bid));
+		}
+
+		for (let player in drops) {
+			if (handled.includes(player)) continue;
+			if (!player) continue;
+
+			let move = new Array(transactionRosters.length).fill(null);
+			move[transactionRosters.indexOf(drops[player])] = {
+				type: "Dropped",
+				player
+			};
+			digestedTransaction.moves.push(move);
+		}
+
+		for (let pick of draftPicks) {
+			let move = new Array(transactionRosters.length).fill(null);
+			move[transactionRosters.indexOf(pick.owner_id)] = {
+				type: "Draft Pick",
+				pick
+			};
+			digestedTransaction.moves.push(move);
+		}
 	}
 
 	return { digestedTransaction, season, success: true };
