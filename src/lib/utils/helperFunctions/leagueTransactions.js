@@ -185,9 +185,9 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	let digestedTransaction = {
 		id: transaction.transaction_id,
 		date,
-		timestamp,          // <-- add timestamp here
+		timestamp,
 		season,
-		type: transaction.type, // use actual type here
+		type: transaction.type,
 		rosters: transactionRosters,
 		moves: []
 	};
@@ -212,15 +212,17 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 
 			let move = new Array(transactionRosters.length).fill(null);
 
-			if (fromRoster !== undefined) {
-				move[transactionRosters.indexOf(fromRoster)] = {
-					type: "Dropped",   // changed here from "Traded Away"
+			if (fromRoster !== undefined && transactionRosters.includes(fromRoster)) {
+				const idx = transactionRosters.indexOf(fromRoster);
+				move[idx] = {
+					type: "Dropped", // Properly show traded away players as dropped
 					player
 				};
 			}
 
-			if (toRoster !== undefined) {
-				move[transactionRosters.indexOf(toRoster)] = {
+			if (toRoster !== undefined && transactionRosters.includes(toRoster)) {
+				const idx = transactionRosters.indexOf(toRoster);
+				move[idx] = {
 					type: "Received",
 					player
 				};
@@ -233,19 +235,23 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 		for (let pick of draftPicks) {
 			let move = new Array(transactionRosters.length).fill(null);
 			if (pick.previous_owner_id !== undefined && pick.owner_id !== undefined) {
-				move[transactionRosters.indexOf(pick.previous_owner_id)] = {
-					type: "Traded Away Pick",
-					pick
-				};
-				move[transactionRosters.indexOf(pick.owner_id)] = {
-					type: "Received Pick",
-					pick
-				};
+				if (transactionRosters.includes(pick.previous_owner_id)) {
+					move[transactionRosters.indexOf(pick.previous_owner_id)] = {
+						type: "Traded Away Pick",
+						pick
+					};
+				}
+				if (transactionRosters.includes(pick.owner_id)) {
+					move[transactionRosters.indexOf(pick.owner_id)] = {
+						type: "Received Pick",
+						pick
+					};
+				}
 				digestedTransaction.moves.push(move);
 			}
 		}
 	} else {
-		// For waivers and other transaction types, handle normally
+		// For waivers and other transaction types
 		const handled = [];
 
 		for (let player in adds) {
@@ -259,20 +265,24 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 			if (!player) continue;
 
 			let move = new Array(transactionRosters.length).fill(null);
-			move[transactionRosters.indexOf(drops[player])] = {
-				type: "Dropped",
-				player
-			};
-			digestedTransaction.moves.push(move);
+			if (transactionRosters.includes(drops[player])) {
+				move[transactionRosters.indexOf(drops[player])] = {
+					type: "Dropped",
+					player
+				};
+				digestedTransaction.moves.push(move);
+			}
 		}
 
 		for (let pick of draftPicks) {
 			let move = new Array(transactionRosters.length).fill(null);
-			move[transactionRosters.indexOf(pick.owner_id)] = {
-				type: "Draft Pick",
-				pick
-			};
-			digestedTransaction.moves.push(move);
+			if (transactionRosters.includes(pick.owner_id)) {
+				move[transactionRosters.indexOf(pick.owner_id)] = {
+					type: "Draft Pick",
+					pick
+				};
+				digestedTransaction.moves.push(move);
+			}
 		}
 	}
 
