@@ -146,105 +146,26 @@ const combThroughTransactions = async (week, currentLeagueID) => {
 	return { transactionsData, currentSeason };
 };
 
-const digestTransaction = ({ transaction, currentSeason }) => {
-	if (transaction.status === 'failed') return { success: false };
+const digestTransactions = async ({ transactionsData, currentSeason }) => {
+	const processedTransactions = [];
 
-	if (!transaction.roster_ids || transaction.roster_ids.length === 0) {
-		console.warn("Transaction missing roster_ids:", transaction.transaction_id);
-		return { success: false };
+	for (const transaction of transactionsData) {
+		const { digestedTransaction, success } = digestTransaction({ transaction, currentSeason });
+		if (success) {
+			processedTransactions.push(digestedTransaction);
+		}
 	}
 
-	const handled = [];
-	const transactionRosters = transaction.roster_ids;
-	const bid = transaction.settings?.waiver_bid;
-	const date = digestDate(transaction.status_updated);
-	const season = parseInt(date.split(',')[0].split(' ')[2]);
+	// Sort by date descending
+	processedTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-	let digestedTransaction = {
-		id: transaction.transaction_id,
-		date,
-		season,
-		type: transaction.type,
-		rosters: transactionRosters,
-		moves: []
+	// Calculate totals for trades and waivers
+	const totals = {
+		trades: processedTransactions.filter(t => t.type === "trade").length,
+		waivers: processedTransactions.filter(t => t.type === "waiver").length,
 	};
 
-	if (season !== currentSeason) {
-		digestedTransaction.previousOwners = true;
-	}
-
-	const adds = transaction.adds || {};
-	const drops = transaction.drops || {};
-	const draftPicks = transaction.draft_picks || [];
-
-	if (transaction.type === "trade") {
-		// Handle player trades
-		for (let player in adds) {
-			const toRoster = adds[player];
-			const fromRoster = drops[player];
-
-			if (toRoster !== undefined && fromRoster !== undefined) {
-				let move = new Array(transactionRosters.length).fill(null);
-				move[transactionRosters.indexOf(fromRoster)] = {
-					type: "Traded Away",
-					player
-				};
-				move[transactionRosters.indexOf(toRoster)] = {
-					type: "Received",
-					player
-				};
-				digestedTransaction.moves.push(move);
-			}
-		}
-
-		// Handle draft pick trades
-		for (let pick of draftPicks) {
-			let move = new Array(transactionRosters.length).fill(null);
-			if (pick.previous_owner_id !== undefined && pick.owner_id !== undefined) {
-				move[transactionRosters.indexOf(pick.previous_owner_id)] = {
-					type: "Traded Away Pick",
-					pick
-				};
-				move[transactionRosters.indexOf(pick.owner_id)] = {
-					type: "Received Pick",
-					pick
-				};
-				digestedTransaction.moves.push(move);
-			}
-		}
-	} else {
-		// Handle waivers
-		for (let player in adds) {
-			if (!player) continue;
-			handled.push(player);
-			digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, bid));
-		}
-
-		for (let player in drops) {
-			if (handled.includes(player)) continue;
-			if (!player) continue;
-
-			let move = new Array(transactionRosters.length).fill(null);
-			move[transactionRosters.indexOf(drops[player])] = {
-				type: "Dropped",
-				player
-			};
-			digestedTransaction.moves.push(move);
-		}
-	}
-
-	return { digestedTransaction, season, success: true };
-};
-
-const digestDate = (tStamp) => {
-	const a = new Date(tStamp);
-	const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-	const year = a.getFullYear();
-	const month = months[a.getMonth()];
-	const date = a.getDate();
-	const hour = a.getHours();
-	const min = a.getMinutes();
-	return month + ' ' + date + ' ' + year + ', ' + (hour % 12 == 0 ? 12 : hour % 12) + ':' + min + (hour / 12 >= 1 ? "PM" : "AM");
+	return { transactions: processedTransactions, totals };
 };
 
 const digestTransaction = ({ transaction, currentSeason }) => {
@@ -333,4 +254,15 @@ const handleAdds = (rosterIDs, adds, drops, player, bid) => {
 	};
 
 	return move;
+};
+
+const digestDate = (tStamp) => {
+	const a = new Date(tStamp);
+	const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	const year = a.getFullYear();
+	const month = months[a.getMonth()];
+	const date = a.getDate();
+	const hour = a.getHours();
+	const min = a.getMinutes();
+	return month + ' ' + date + ' ' + year + ', ' + (hour % 12 == 0 ? 12 : hour % 12) + ':' + (min < 10 ? '0' + min : min) + (hour / 12 >= 1 ? "PM" : "AM");
 };
