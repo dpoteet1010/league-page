@@ -201,45 +201,57 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const draftPicks = transaction.draft_picks || [];
 
 	if (transaction.type === "trade") {
-		// Only show added players in trades, not dropped players (like original code)
+		// Handle player moves: mark origin as 'origin' (dropping team)
 		for (let player in adds) {
 			if (!player) continue;
 
 			const toRoster = adds[player];
+			const fromRoster = drops[player]; // The dropping team
 
 			let move = new Array(transactionRosters.length).fill(null);
 
+			// Mark origin (dropping) team with "origin"
+			if (fromRoster !== undefined && transactionRosters.includes(fromRoster)) {
+				move[transactionRosters.indexOf(fromRoster)] = "origin";
+			}
+
+			// Mark destination team with player info
 			if (toRoster !== undefined && transactionRosters.includes(toRoster)) {
-				const idx = transactionRosters.indexOf(toRoster);
-				move[idx] = {
+				move[transactionRosters.indexOf(toRoster)] = {
 					type: "Added",
 					player
 				};
-				digestedTransaction.moves.push(move);
 			}
+
+			// Debug log to check origin/dest setup for players
+			console.log(`Trade move for player ${player}:`, move);
+
+			digestedTransaction.moves.push(move);
 		}
 
-		// Also handle draft picks in trades
+		// Handle draft picks: mark origin and destination explicitly
 		for (let pick of draftPicks) {
 			let move = new Array(transactionRosters.length).fill(null);
-			if (pick.previous_owner_id !== undefined && pick.owner_id !== undefined) {
-				if (transactionRosters.includes(pick.previous_owner_id)) {
-					move[transactionRosters.indexOf(pick.previous_owner_id)] = {
-						type: "Traded Away Pick",
-						pick
-					};
-				}
-				if (transactionRosters.includes(pick.owner_id)) {
-					move[transactionRosters.indexOf(pick.owner_id)] = {
-						type: "Received Pick",
-						pick
-					};
-				}
-				digestedTransaction.moves.push(move);
+
+			if (pick.previous_owner_id !== undefined && transactionRosters.includes(pick.previous_owner_id)) {
+				move[transactionRosters.indexOf(pick.previous_owner_id)] = "origin";  // origin cell for pick
 			}
+
+			if (pick.owner_id !== undefined && transactionRosters.includes(pick.owner_id)) {
+				move[transactionRosters.indexOf(pick.owner_id)] = {
+					type: "Received Pick",
+					pick
+				};
+			}
+
+			// Debug log for picks
+			console.log("Trade move for pick:", move);
+
+			digestedTransaction.moves.push(move);
 		}
 	} else {
 		// For waivers and other transaction types
+
 		const handled = [];
 
 		for (let player in adds) {
