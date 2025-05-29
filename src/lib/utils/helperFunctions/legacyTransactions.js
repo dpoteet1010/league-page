@@ -1,4 +1,4 @@
-{
+export const legacyTransactions = {
   "2023": [
     {
       "status": "complete",
