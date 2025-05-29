@@ -156,8 +156,8 @@ const digestTransactions = async ({ transactionsData, currentSeason }) => {
 		}
 	}
 
-	// Sort by date descending
-	processedTransactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+	// Sort by date descending (latest first)
+	processedTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
 	// Calculate totals for trades and waivers
 	const totals = {
@@ -199,9 +199,12 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const draftPicks = transaction.draft_picks || [];
 
 	if (transaction.type === "trade") {
-		// For trades, each player involved has adds and drops
-		for (let player in adds) {
+		// Get all unique players involved in trade
+		const playersInvolved = new Set([...Object.keys(adds), ...Object.keys(drops)]);
+
+		for (let player of playersInvolved) {
 			if (!player) continue;
+
 			const toRoster = adds[player];
 			const fromRoster = drops[player];
 
