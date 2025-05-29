@@ -156,8 +156,8 @@ const digestTransactions = async ({ transactionsData, currentSeason }) => {
 		}
 	}
 
-	// Sort by date descending (latest first)
-	processedTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+	// Sort by raw timestamp descending (latest first)
+	processedTransactions.sort((a, b) => b.timestamp - a.timestamp);
 
 	// Calculate totals for trades and waivers
 	const totals = {
@@ -178,12 +178,14 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 
 	const transactionRosters = transaction.roster_ids;
 	const bid = transaction.settings?.waiver_bid;
-	const date = digestDate(transaction.status_updated);
+	const timestamp = transaction.status_updated;  // raw timestamp for sorting
+	const date = digestDate(timestamp);
 	const season = parseInt(date.split(',')[0].split(' ')[2]);
 
 	let digestedTransaction = {
 		id: transaction.transaction_id,
 		date,
+		timestamp,          // <-- add timestamp here
 		season,
 		type: transaction.type, // use actual type here
 		rosters: transactionRosters,
@@ -212,7 +214,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 
 			if (fromRoster !== undefined) {
 				move[transactionRosters.indexOf(fromRoster)] = {
-					type: "Traded Away",
+					type: "Dropped",   // changed here from "Traded Away"
 					player
 				};
 			}
