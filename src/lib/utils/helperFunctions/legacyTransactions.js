@@ -31,7 +31,7 @@ export const legacyTransactions = {
                     8,
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1698710400000,
                 "waiver_budget": []
             },
             {
@@ -64,7 +64,7 @@ export const legacyTransactions = {
                     8,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1700179200000,
                 "waiver_budget": []
             },
             {
@@ -97,7 +97,7 @@ export const legacyTransactions = {
                     9,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1698105600000,
                 "waiver_budget": []
             },
             {
@@ -126,7 +126,7 @@ export const legacyTransactions = {
                     5,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -155,7 +155,7 @@ export const legacyTransactions = {
                     1,
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1701302400000,
                 "waiver_budget": []
             },
             {
@@ -184,7 +184,7 @@ export const legacyTransactions = {
                     1,
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1696291200000,
                 "waiver_budget": []
             },
             {
@@ -215,7 +215,7 @@ export const legacyTransactions = {
                     2,
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1699488000000,
                 "waiver_budget": []
             },
             {
@@ -248,7 +248,7 @@ export const legacyTransactions = {
                     9,
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1695859200000,
                 "waiver_budget": []
             },
             {
@@ -279,7 +279,7 @@ export const legacyTransactions = {
                     2,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -310,7 +310,7 @@ export const legacyTransactions = {
                     2,
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1697241600000,
                 "waiver_budget": []
             },
             {
@@ -339,7 +339,7 @@ export const legacyTransactions = {
                     10,
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1699488000000,
                 "waiver_budget": []
             },
             {
@@ -374,7 +374,7 @@ export const legacyTransactions = {
                     10,
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1695945600000,
                 "waiver_budget": []
             },
             {
@@ -403,7 +403,7 @@ export const legacyTransactions = {
                     2,
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -432,7 +432,7 @@ export const legacyTransactions = {
                     2,
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1700784000000,
                 "waiver_budget": []
             },
             {
@@ -461,7 +461,7 @@ export const legacyTransactions = {
                     9,
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -490,7 +490,7 @@ export const legacyTransactions = {
                     2,
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1696636800000,
                 "waiver_budget": []
             },
             {
@@ -519,7 +519,7 @@ export const legacyTransactions = {
                     2,
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -554,7 +554,7 @@ export const legacyTransactions = {
                     9,
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -583,7 +583,7 @@ export const legacyTransactions = {
                     9,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -610,7 +610,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -637,7 +637,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -666,7 +666,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -693,7 +693,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -722,7 +722,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -751,7 +751,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -780,7 +780,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1694044800000,
                 "waiver_budget": []
             },
             {
@@ -809,7 +809,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -838,7 +838,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -865,7 +865,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -894,7 +894,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -923,7 +923,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -952,7 +952,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -981,7 +981,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -1010,7 +1010,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1694563200000,
                 "waiver_budget": []
             },
             {
@@ -1039,7 +1039,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1068,7 +1068,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1097,7 +1097,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1126,7 +1126,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1155,7 +1155,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1184,7 +1184,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1213,7 +1213,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1242,7 +1242,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1271,7 +1271,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1300,7 +1300,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1695168000000,
                 "waiver_budget": []
             },
             {
@@ -1329,7 +1329,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1358,7 +1358,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1387,7 +1387,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1416,7 +1416,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1445,7 +1445,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1474,7 +1474,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1503,7 +1503,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1532,7 +1532,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1561,7 +1561,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1590,7 +1590,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1695772800000,
                 "waiver_budget": []
             },
             {
@@ -1619,7 +1619,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1695859200000,
                 "waiver_budget": []
             },
             {
@@ -1646,7 +1646,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1696032000000,
                 "waiver_budget": []
             },
             {
@@ -1673,7 +1673,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1696377600000,
                 "waiver_budget": []
             },
             {
@@ -1702,7 +1702,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1696377600000,
                 "waiver_budget": []
             },
             {
@@ -1729,7 +1729,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1696377600000,
                 "waiver_budget": []
             },
             {
@@ -1758,7 +1758,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1696377600000,
                 "waiver_budget": []
             },
             {
@@ -1787,7 +1787,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1696377600000,
                 "waiver_budget": []
             },
             {
@@ -1816,7 +1816,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1696550400000,
                 "waiver_budget": []
             },
             {
@@ -1845,7 +1845,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1696550400000,
                 "waiver_budget": []
             },
             {
@@ -1874,7 +1874,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1696723200000,
                 "waiver_budget": []
             },
             {
@@ -1903,7 +1903,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -1932,7 +1932,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -1961,7 +1961,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -1990,7 +1990,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -2019,7 +2019,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -2048,7 +2048,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -2077,7 +2077,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -2104,7 +2104,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1696982400000,
                 "waiver_budget": []
             },
             {
@@ -2133,7 +2133,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1697068800000,
                 "waiver_budget": []
             },
             {
@@ -2162,7 +2162,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1697155200000,
                 "waiver_budget": []
             },
             {
@@ -2191,7 +2191,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1697155200000,
                 "waiver_budget": []
             },
             {
@@ -2220,7 +2220,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2249,7 +2249,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2276,7 +2276,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2305,7 +2305,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2334,7 +2334,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2363,7 +2363,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2392,7 +2392,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2421,7 +2421,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2450,7 +2450,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2479,7 +2479,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2508,7 +2508,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2537,7 +2537,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2566,7 +2566,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2595,7 +2595,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1697587200000,
                 "waiver_budget": []
             },
             {
@@ -2624,7 +2624,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1697673600000,
                 "waiver_budget": []
             },
             {
@@ -2653,7 +2653,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1697673600000,
                 "waiver_budget": []
             },
             {
@@ -2680,7 +2680,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1697673600000,
                 "waiver_budget": []
             },
             {
@@ -2709,7 +2709,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2738,7 +2738,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2767,7 +2767,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2796,7 +2796,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2825,7 +2825,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2854,7 +2854,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2883,7 +2883,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2912,7 +2912,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2941,7 +2941,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1698192000000,
                 "waiver_budget": []
             },
             {
@@ -2970,7 +2970,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1698278400000,
                 "waiver_budget": []
             },
             {
@@ -2997,7 +2997,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1698278400000,
                 "waiver_budget": []
             },
             {
@@ -3026,7 +3026,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3055,7 +3055,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3084,7 +3084,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3113,7 +3113,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3142,7 +3142,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3171,7 +3171,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3200,7 +3200,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3229,7 +3229,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1698796800000,
                 "waiver_budget": []
             },
             {
@@ -3258,7 +3258,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3287,7 +3287,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3316,7 +3316,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3345,7 +3345,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3374,7 +3374,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3403,7 +3403,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3432,7 +3432,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3461,7 +3461,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3490,7 +3490,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1699401600000,
                 "waiver_budget": []
             },
             {
@@ -3519,7 +3519,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1699488000000,
                 "waiver_budget": []
             },
             {
@@ -3548,7 +3548,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1699488000000,
                 "waiver_budget": []
             },
             {
@@ -3577,7 +3577,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1699488000000,
                 "waiver_budget": []
             },
             {
@@ -3606,7 +3606,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1699488000000,
                 "waiver_budget": []
             },
             {
@@ -3635,7 +3635,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3664,7 +3664,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3693,7 +3693,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3722,7 +3722,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3751,7 +3751,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3780,7 +3780,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3809,7 +3809,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3838,7 +3838,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3865,7 +3865,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3894,7 +3894,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1700006400000,
                 "waiver_budget": []
             },
             {
@@ -3923,7 +3923,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1700092800000,
                 "waiver_budget": []
             },
             {
@@ -3952,7 +3952,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1700092800000,
                 "waiver_budget": []
             },
             {
@@ -3981,7 +3981,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1700611200000,
                 "waiver_budget": []
             },
             {
@@ -4008,7 +4008,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1700611200000,
                 "waiver_budget": []
             },
             {
@@ -4037,7 +4037,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1700611200000,
                 "waiver_budget": []
             },
             {
@@ -4066,7 +4066,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1700611200000,
                 "waiver_budget": []
             },
             {
@@ -4095,7 +4095,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4124,7 +4124,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4153,7 +4153,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4182,7 +4182,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4209,7 +4209,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4238,7 +4238,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4267,7 +4267,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4294,7 +4294,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4321,7 +4321,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4350,7 +4350,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4379,7 +4379,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4408,7 +4408,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1701216000000,
                 "waiver_budget": []
             },
             {
@@ -4437,7 +4437,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4466,7 +4466,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4495,7 +4495,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4524,7 +4524,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4551,7 +4551,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4580,7 +4580,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4609,7 +4609,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1701820800000,
                 "waiver_budget": []
             },
             {
@@ -4638,7 +4638,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1701907200000,
                 "waiver_budget": []
             },
             {
@@ -4667,7 +4667,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1702425600000,
                 "waiver_budget": []
             },
             {
@@ -4696,7 +4696,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1702425600000,
                 "waiver_budget": []
             },
             {
@@ -4725,7 +4725,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1702425600000,
                 "waiver_budget": []
             },
             {
@@ -4754,7 +4754,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1702512000000,
                 "waiver_budget": []
             },
             {
@@ -4783,7 +4783,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1703030400000,
                 "waiver_budget": []
             },
             {
@@ -4812,7 +4812,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1703030400000,
                 "waiver_budget": []
             },
             {
@@ -4841,7 +4841,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1703030400000,
                 "waiver_budget": []
             },
             {
@@ -4870,7 +4870,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1703030400000,
                 "waiver_budget": []
             },
             {
@@ -4899,7 +4899,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1703635200000,
                 "waiver_budget": []
             }
         ]
@@ -4932,7 +4932,7 @@ export const legacyTransactions = {
                     9,
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1727913600000,
                 "waiver_budget": []
             },
             {
@@ -4965,7 +4965,7 @@ export const legacyTransactions = {
                     8,
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -4994,7 +4994,7 @@ export const legacyTransactions = {
                     1,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1729123200000,
                 "waiver_budget": []
             },
             {
@@ -5023,7 +5023,7 @@ export const legacyTransactions = {
                     1,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1729123200000,
                 "waiver_budget": []
             },
             {
@@ -5056,7 +5056,7 @@ export const legacyTransactions = {
                     2,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1726531200000,
                 "waiver_budget": []
             },
             {
@@ -5087,7 +5087,7 @@ export const legacyTransactions = {
                     11,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1729209600000,
                 "waiver_budget": []
             },
             {
@@ -5118,7 +5118,7 @@ export const legacyTransactions = {
                     2,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -5149,7 +5149,7 @@ export const legacyTransactions = {
                     2,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -5182,7 +5182,7 @@ export const legacyTransactions = {
                     1,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1726531200000,
                 "waiver_budget": []
             },
             {
@@ -5215,7 +5215,7 @@ export const legacyTransactions = {
                     1,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1729900800000,
                 "waiver_budget": []
             },
             {
@@ -5244,7 +5244,7 @@ export const legacyTransactions = {
                     12,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1732579200000,
                 "waiver_budget": []
             },
             {
@@ -5273,7 +5273,7 @@ export const legacyTransactions = {
                     2,
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1727136000000,
                 "waiver_budget": []
             },
             {
@@ -5302,7 +5302,7 @@ export const legacyTransactions = {
                     2,
                     11
                 ],
-                "status_updated": null,
+                "status_updated": 1730160000000,
                 "waiver_budget": []
             },
             {
@@ -5343,7 +5343,7 @@ export const legacyTransactions = {
                     1,
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1730937600000,
                 "waiver_budget": []
             },
             {
@@ -5378,7 +5378,7 @@ export const legacyTransactions = {
                     6,
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1732233600000,
                 "waiver_budget": []
             },
             {
@@ -5411,7 +5411,7 @@ export const legacyTransactions = {
                     2,
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1728345600000,
                 "waiver_budget": []
             },
             {
@@ -5440,7 +5440,7 @@ export const legacyTransactions = {
                     9,
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1730160000000,
                 "waiver_budget": []
             },
             {
@@ -5469,7 +5469,7 @@ export const legacyTransactions = {
                     9,
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1729728000000,
                 "waiver_budget": []
             },
             {
@@ -5498,7 +5498,7 @@ export const legacyTransactions = {
                     10,
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5529,7 +5529,7 @@ export const legacyTransactions = {
                     1,
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1730332800000,
                 "waiver_budget": []
             },
             {
@@ -5562,7 +5562,7 @@ export const legacyTransactions = {
                     8,
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1730764800000,
                 "waiver_budget": []
             },
             {
@@ -5591,7 +5591,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1725494400000,
                 "waiver_budget": []
             },
             {
@@ -5620,7 +5620,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5647,7 +5647,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5676,7 +5676,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5705,7 +5705,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5734,7 +5734,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5763,7 +5763,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5792,7 +5792,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5819,7 +5819,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5846,7 +5846,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5875,7 +5875,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1726012800000,
                 "waiver_budget": []
             },
             {
@@ -5902,7 +5902,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1726099200000,
                 "waiver_budget": []
             },
             {
@@ -5931,7 +5931,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -5960,7 +5960,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -5989,7 +5989,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6018,7 +6018,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6045,7 +6045,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6074,7 +6074,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6103,7 +6103,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6130,7 +6130,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6159,7 +6159,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6188,7 +6188,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6217,7 +6217,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6246,7 +6246,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1726617600000,
                 "waiver_budget": []
             },
             {
@@ -6275,7 +6275,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1726704000000,
                 "waiver_budget": []
             },
             {
@@ -6302,7 +6302,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1726790400000,
                 "waiver_budget": []
             },
             {
@@ -6331,7 +6331,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6360,7 +6360,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6389,7 +6389,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6418,7 +6418,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6447,7 +6447,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6474,7 +6474,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6503,7 +6503,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6532,7 +6532,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6561,7 +6561,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6590,7 +6590,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6619,7 +6619,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6648,7 +6648,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6677,7 +6677,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1727222400000,
                 "waiver_budget": []
             },
             {
@@ -6706,7 +6706,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1727308800000,
                 "waiver_budget": []
             },
             {
@@ -6733,7 +6733,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1727308800000,
                 "waiver_budget": []
             },
             {
@@ -6762,7 +6762,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6791,7 +6791,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6820,7 +6820,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6849,7 +6849,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6878,7 +6878,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6907,7 +6907,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6936,7 +6936,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6963,7 +6963,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -6990,7 +6990,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -7019,7 +7019,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -7048,7 +7048,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -7077,7 +7077,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -7106,7 +7106,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1727827200000,
                 "waiver_budget": []
             },
             {
@@ -7133,7 +7133,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1727913600000,
                 "waiver_budget": []
             },
             {
@@ -7162,7 +7162,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1727913600000,
                 "waiver_budget": []
             },
             {
@@ -7191,7 +7191,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1727913600000,
                 "waiver_budget": []
             },
             {
@@ -7218,7 +7218,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1728000000000,
                 "waiver_budget": []
             },
             {
@@ -7247,7 +7247,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1728000000000,
                 "waiver_budget": []
             },
             {
@@ -7276,7 +7276,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1728086400000,
                 "waiver_budget": []
             },
             {
@@ -7303,7 +7303,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1728172800000,
                 "waiver_budget": []
             },
             {
@@ -7332,7 +7332,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7361,7 +7361,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7390,7 +7390,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7419,7 +7419,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7448,7 +7448,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7477,7 +7477,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7506,7 +7506,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7535,7 +7535,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7564,7 +7564,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7593,7 +7593,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1728432000000,
                 "waiver_budget": []
             },
             {
@@ -7620,7 +7620,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1728518400000,
                 "waiver_budget": []
             },
             {
@@ -7649,7 +7649,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1728604800000,
                 "waiver_budget": []
             },
             {
@@ -7678,7 +7678,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7707,7 +7707,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7736,7 +7736,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7765,7 +7765,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7794,7 +7794,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7823,7 +7823,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7852,7 +7852,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7879,7 +7879,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7908,7 +7908,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1729036800000,
                 "waiver_budget": []
             },
             {
@@ -7937,7 +7937,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1729209600000,
                 "waiver_budget": []
             },
             {
@@ -7966,7 +7966,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -7995,7 +7995,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8024,7 +8024,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8053,7 +8053,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8082,7 +8082,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8109,7 +8109,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8136,7 +8136,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8165,7 +8165,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8194,7 +8194,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8223,7 +8223,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8252,7 +8252,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8279,7 +8279,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8308,7 +8308,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1729641600000,
                 "waiver_budget": []
             },
             {
@@ -8337,7 +8337,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1729728000000,
                 "waiver_budget": []
             },
             {
@@ -8364,7 +8364,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1729728000000,
                 "waiver_budget": []
             },
             {
@@ -8393,7 +8393,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1729728000000,
                 "waiver_budget": []
             },
             {
@@ -8420,7 +8420,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8449,7 +8449,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8478,7 +8478,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8507,7 +8507,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8536,7 +8536,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8565,7 +8565,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8594,7 +8594,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     1
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8623,7 +8623,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8652,7 +8652,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8681,7 +8681,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8710,7 +8710,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8737,7 +8737,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8766,7 +8766,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8795,7 +8795,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8824,7 +8824,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8853,7 +8853,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1730246400000,
                 "waiver_budget": []
             },
             {
@@ -8882,7 +8882,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1730332800000,
                 "waiver_budget": []
             },
             {
@@ -8911,7 +8911,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1730332800000,
                 "waiver_budget": []
             },
             {
@@ -8938,7 +8938,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1730505600000,
                 "waiver_budget": []
             },
             {
@@ -8967,7 +8967,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -8996,7 +8996,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9023,7 +9023,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9052,7 +9052,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9079,7 +9079,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9106,7 +9106,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9135,7 +9135,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9164,7 +9164,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9191,7 +9191,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9220,7 +9220,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9249,7 +9249,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1730851200000,
                 "waiver_budget": []
             },
             {
@@ -9278,7 +9278,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1730937600000,
                 "waiver_budget": []
             },
             {
@@ -9307,7 +9307,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9336,7 +9336,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9365,7 +9365,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9394,7 +9394,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9423,7 +9423,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9452,7 +9452,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9481,7 +9481,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9510,7 +9510,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9537,7 +9537,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9566,7 +9566,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9593,7 +9593,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1731456000000,
                 "waiver_budget": []
             },
             {
@@ -9622,7 +9622,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9651,7 +9651,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9680,7 +9680,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9709,7 +9709,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9738,7 +9738,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9767,7 +9767,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9796,7 +9796,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9825,7 +9825,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1732060800000,
                 "waiver_budget": []
             },
             {
@@ -9852,7 +9852,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1732147200000,
                 "waiver_budget": []
             },
             {
@@ -9881,7 +9881,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1732147200000,
                 "waiver_budget": []
             },
             {
@@ -9910,7 +9910,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1732147200000,
                 "waiver_budget": []
             },
             {
@@ -9937,7 +9937,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1732233600000,
                 "waiver_budget": []
             },
             {
@@ -9964,7 +9964,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1732320000000,
                 "waiver_budget": []
             },
             {
@@ -9993,7 +9993,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10022,7 +10022,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10051,7 +10051,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10080,7 +10080,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10109,7 +10109,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     10
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10138,7 +10138,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10167,7 +10167,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10196,7 +10196,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10225,7 +10225,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10254,7 +10254,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10283,7 +10283,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1732665600000,
                 "waiver_budget": []
             },
             {
@@ -10312,7 +10312,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1732752000000,
                 "waiver_budget": []
             },
             {
@@ -10341,7 +10341,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10370,7 +10370,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10399,7 +10399,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10428,7 +10428,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10457,7 +10457,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10484,7 +10484,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     5
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10511,7 +10511,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10540,7 +10540,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10569,7 +10569,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10596,7 +10596,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10625,7 +10625,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1733270400000,
                 "waiver_budget": []
             },
             {
@@ -10654,7 +10654,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1733356800000,
                 "waiver_budget": []
             },
             {
@@ -10683,7 +10683,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1733529600000,
                 "waiver_budget": []
             },
             {
@@ -10712,7 +10712,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1733875200000,
                 "waiver_budget": []
             },
             {
@@ -10741,7 +10741,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     9
                 ],
-                "status_updated": null,
+                "status_updated": 1733875200000,
                 "waiver_budget": []
             },
             {
@@ -10770,7 +10770,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1733875200000,
                 "waiver_budget": []
             },
             {
@@ -10797,7 +10797,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1733875200000,
                 "waiver_budget": []
             },
             {
@@ -10826,7 +10826,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1733875200000,
                 "waiver_budget": []
             },
             {
@@ -10855,7 +10855,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     8
                 ],
-                "status_updated": null,
+                "status_updated": 1734048000000,
                 "waiver_budget": []
             },
             {
@@ -10884,7 +10884,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     7
                 ],
-                "status_updated": null,
+                "status_updated": 1734048000000,
                 "waiver_budget": []
             },
             {
@@ -10913,7 +10913,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     3
                 ],
-                "status_updated": null,
+                "status_updated": 1734480000000,
                 "waiver_budget": []
             },
             {
@@ -10942,7 +10942,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     2
                 ],
-                "status_updated": null,
+                "status_updated": 1734480000000,
                 "waiver_budget": []
             },
             {
@@ -10971,7 +10971,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1734480000000,
                 "waiver_budget": []
             },
             {
@@ -11000,7 +11000,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1734480000000,
                 "waiver_budget": []
             },
             {
@@ -11029,7 +11029,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     12
                 ],
-                "status_updated": null,
+                "status_updated": 1734480000000,
                 "waiver_budget": []
             },
             {
@@ -11058,7 +11058,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1735084800000,
                 "waiver_budget": []
             },
             {
@@ -11087,7 +11087,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1735084800000,
                 "waiver_budget": []
             },
             {
@@ -11116,7 +11116,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     4
                 ],
-                "status_updated": null,
+                "status_updated": 1735084800000,
                 "waiver_budget": []
             },
             {
@@ -11143,7 +11143,7 @@ export const legacyTransactions = {
                 "roster_ids": [
                     6
                 ],
-                "status_updated": null,
+                "status_updated": 1735171200000,
                 "waiver_budget": []
             }
         ]
