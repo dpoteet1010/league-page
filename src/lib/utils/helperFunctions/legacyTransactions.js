@@ -11144,4 +11144,4 @@ export const legacyTransactions = {
       "waiver_budget": []
     }
   ]
-}
+};
