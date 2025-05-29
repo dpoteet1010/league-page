@@ -146,62 +146,94 @@ const combThroughTransactions = async (week, currentLeagueID) => {
 	return { transactionsData, currentSeason };
 };
 
-const digestTransactions = async ({ transactionsData, currentSeason }) => {
-	const transactions = [];
-	const totals = {
-		allTime: {},
-		seasons: {}
+const digestTransaction = ({ transaction, currentSeason }) => {
+	if (transaction.status === 'failed') return { success: false };
+
+	if (!transaction.roster_ids || transaction.roster_ids.length === 0) {
+		console.warn("Transaction missing roster_ids:", transaction.transaction_id);
+		return { success: false };
+	}
+
+	const handled = [];
+	const transactionRosters = transaction.roster_ids;
+	const bid = transaction.settings?.waiver_bid;
+	const date = digestDate(transaction.status_updated);
+	const season = parseInt(date.split(',')[0].split(' ')[2]);
+
+	let digestedTransaction = {
+		id: transaction.transaction_id,
+		date,
+		season,
+		type: transaction.type,
+		rosters: transactionRosters,
+		moves: []
 	};
 
-	const leagueTeamManagers = await getLeagueTeamManagers();
-	const transactionOrder = transactionsData.sort((a, b) => b.status_updated - a.status_updated);
+	if (season !== currentSeason) {
+		digestedTransaction.previousOwners = true;
+	}
 
-	for (const transaction of transactionOrder) {
-		if (transaction.type === "trade") {
-			console.log("Processing potential trade:", transaction.transaction_id);
-		}
-		let { digestedTransaction, season, success } = digestTransaction({ transaction, currentSeason });
-		if (!success) {
-			console.warn("Skipping failed or malformed transaction:", transaction.transaction_id);
-			continue;
-		}
-		transactions.push(digestedTransaction);
+	const adds = transaction.adds || {};
+	const drops = transaction.drops || {};
+	const draftPicks = transaction.draft_picks || [];
 
-		if (!leagueTeamManagers.teamManagersMap[season]) {
-			season--;
-			if (!leagueTeamManagers.teamManagersMap[season]) {
-				season += 2;
-			}
-		}
+	if (transaction.type === "trade") {
+		// Handle player trades
+		for (let player in adds) {
+			const toRoster = adds[player];
+			const fromRoster = drops[player];
 
-		for (const roster of digestedTransaction.rosters) {
-			const type = digestedTransaction.type;
-			for (const manager of leagueTeamManagers.teamManagersMap[season]?.[roster]?.managers || []) {
-				if (!totals.allTime[manager]) {
-					totals.allTime[manager] = {
-						trade: 0,
-						waiver: 0
-					};
-				}
-				totals.allTime[manager][type]++;
-			}
-
-			if (!totals.seasons[season]) {
-				totals.seasons[season] = {};
-			}
-			if (!totals.seasons[season][roster]) {
-				totals.seasons[season][roster] = {
-					trade: 0,
-					waiver: 0,
-					rosterID: roster,
+			if (toRoster !== undefined && fromRoster !== undefined) {
+				let move = new Array(transactionRosters.length).fill(null);
+				move[transactionRosters.indexOf(fromRoster)] = {
+					type: "Traded Away",
+					player
 				};
+				move[transactionRosters.indexOf(toRoster)] = {
+					type: "Received",
+					player
+				};
+				digestedTransaction.moves.push(move);
 			}
-			totals.seasons[season][roster][type]++;
+		}
+
+		// Handle draft pick trades
+		for (let pick of draftPicks) {
+			let move = new Array(transactionRosters.length).fill(null);
+			if (pick.previous_owner_id !== undefined && pick.owner_id !== undefined) {
+				move[transactionRosters.indexOf(pick.previous_owner_id)] = {
+					type: "Traded Away Pick",
+					pick
+				};
+				move[transactionRosters.indexOf(pick.owner_id)] = {
+					type: "Received Pick",
+					pick
+				};
+				digestedTransaction.moves.push(move);
+			}
+		}
+	} else {
+		// Handle waivers
+		for (let player in adds) {
+			if (!player) continue;
+			handled.push(player);
+			digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, bid));
+		}
+
+		for (let player in drops) {
+			if (handled.includes(player)) continue;
+			if (!player) continue;
+
+			let move = new Array(transactionRosters.length).fill(null);
+			move[transactionRosters.indexOf(drops[player])] = {
+				type: "Dropped",
+				player
+			};
+			digestedTransaction.moves.push(move);
 		}
 	}
 
-	console.log("Finished digesting transactions. Total processed:", transactions.length);
-	return { transactions, totals };
+	return { digestedTransaction, season, success: true };
 };
 
 const digestDate = (tStamp) => {
