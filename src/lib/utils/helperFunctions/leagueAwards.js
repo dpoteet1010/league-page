@@ -46,7 +46,7 @@ const getPodiums = async (previousSeasonID) => {
 
 		const divisionArr = Object.values(divisions);
 
-		const finalsMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.w);
+		const finalsMatch = winnersData.find(m => m.r === playoffRounds && (m.t1_from?.w || m.t1_from?.l));
 		const champion = finalsMatch?.w;
 		const second = finalsMatch?.l;
 
@@ -57,6 +57,7 @@ const getPodiums = async (previousSeasonID) => {
 		const toilet = toiletBowlMatch?.w;
 
 		if (!champion) {
+			console.log(`⚠️ Skipping ${year} due to missing champion`);
 			continue;
 		}
 
@@ -68,6 +69,8 @@ const getPodiums = async (previousSeasonID) => {
 			divisions: divisionArr,
 			toilet
 		};
+
+		console.log(`🏆 Processed podium for ${year}:`, podium);
 		podiums.push(podium);
 	}
 	return podiums;
@@ -78,16 +81,19 @@ const getPreviousLeagueData = async (previousSeasonID) => {
 	if (!leagueRes.ok) throw new Error('Failed to fetch league data');
 
 	const prevLeagueData = await leagueRes.json();
-	const year = prevLeagueData.season;
+	const year = +prevLeagueData.season; // ✅ ensure numeric year
 
 	const useLegacy = legacyWinnersBrackets[year] && legacyLosersBrackets[year];
 
 	let winnersData, losersData;
 
 	if (useLegacy) {
+		console.log(`✅ Using legacy brackets for ${year}`);
 		winnersData = legacyWinnersBrackets[year];
 		losersData = legacyLosersBrackets[year];
 	} else {
+		console.log(`❌ No legacy brackets for ${year}, falling back to API`);
+
 		const [losersRes, winnersRes] = await waitForAll(
 			fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/losers_bracket`, { compress: true }),
 			fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/winners_bracket`, { compress: true })
@@ -109,8 +115,9 @@ const getPreviousLeagueData = async (previousSeasonID) => {
 	const numDivisions = prevLeagueData.settings.divisions || 1;
 	previousSeasonID = prevLeagueData.previous_league_id;
 
-	const playoffRounds = winnersData[winnersData.length - 1].r;
-	const toiletRounds = losersData[losersData.length - 1].r;
+	// ✅ Guard against empty bracket arrays
+	const playoffRounds = winnersData?.length ? winnersData[winnersData.length - 1].r : 0;
+	const toiletRounds = losersData?.length ? losersData[losersData.length - 1].r : 0;
 
 	return {
 		losersData,
