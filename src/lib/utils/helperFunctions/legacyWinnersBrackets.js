@@ -1,4 +1,4 @@
-{
+export const legacyWinnersBrackets = {
   "2023": [
     {
       "m": 1,
@@ -137,4 +137,4 @@
       "t1_from": { "l": 3 }
     }
   ]
-}
+};
