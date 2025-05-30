@@ -154,4 +154,4 @@ export const legacyWinnersBrackets = {
     "t1_from": {
         "l": 3
     }
-}]
+}];
