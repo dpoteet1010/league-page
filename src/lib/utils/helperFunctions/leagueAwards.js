@@ -3,8 +3,8 @@ import { getLeagueRosters } from './leagueRosters';
 import { waitForAll } from './multiPromise';
 import { get } from 'svelte/store';
 import { awards } from '$lib/stores';
-import { legacyWinnersBrackets } from './legacyWinnersBrackets.js';
-import { legacyLosersBrackets } from './legacyLosersBrackets.js';
+import { legacyWinnersBrackets } from './legacyWinnersBrackets.json';
+import { legacyLosersBrackets } from './legacyLosersBrackets.json';
 
 export const getAwards = async () => {
 	if(get(awards).length) {
