@@ -1,5 +1,5 @@
 export const legacyLosersBrackets = {
-  2023: [
+  "2023": [
     {
       "m": 1,
       "r": 1,
@@ -84,7 +84,7 @@ export const legacyLosersBrackets = {
       }
     }
   ],
-  2024: [
+  "2024": [
     {
       "m": 1,
       "r": 1,
