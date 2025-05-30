@@ -1,198 +1,244 @@
 import { getLeagueData } from './leagueData';
+import { leagueID } from '$lib/utils/leagueInfo';
 import { getLeagueRosters } from './leagueRosters';
-import { waitForAll } from './multiPromise';
+import {waitForAll} from './multiPromise';
 import { get } from 'svelte/store';
-import { awards } from '$lib/stores';
-import { legacyWinnersBrackets } from './legacyWinnersBrackets.js';
-import { legacyLosersBrackets } from './legacyLosersBrackets.js';
+import {brackets} from '$lib/stores';
 
-let legacyBracketsAppended = false;
+export const getBrackets = async (queryLeagueID = leagueID) => {
+    if(get(brackets).champs && queryLeagueID == leagueID) {
+        return get(brackets);
+    }
 
-export const getAwards = async () => {
-	if (get(awards).length) {
-		return get(awards);
-	}
+    // get roster, user, and league data
+    const [rosterRes, leagueData] = await waitForAll(
+        getLeagueRosters(queryLeagueID),
+        getLeagueData(queryLeagueID),
+    ).catch((err) => { console.error(err); });
 
-	// Fetch current league info
-	const leagueData = await getLeagueData().catch(err => {
-		console.error(err);
-	});
+    // Number of rosters (in order to determine the number of places, i.e. 1st - 12th)
+    const numRosters = Object.keys(rosterRes.rosters).length;
 
-	let previousSeasonID = leagueData.status === "complete"
-		? leagueData.league_id
-		: leagueData.previous_league_id;
+    // get bracket data for winners and losers
+    const bracketsAndMatchupFetches = [
+        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/winners_bracket`, {compress: true}),
+        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/losers_bracket`, {compress: true}),
+    ]
 
-	const podiums = await getPodiums(previousSeasonID);
+    // variables for playoff records
+    // let numPOTeams = parseInt(leagueData.settings.playoff_teams);
+    let playoffType;
+    const year = parseInt(leagueData.season);
+    const playoffsStart = parseInt(leagueData.settings.playoff_week_start);
 
-	awards.update(() => podiums);
+    // before 2020, 1 week/round was only option; in 2020, 2 weeks/rounds added; in 2021, 1 week/round + 2 champ
+    // 0: 1 week per round
+    // 1: 1 week per round + 2 champ
+    // 2: 2 weeks per round
+    if(year > 2019) {
+        playoffType = parseInt(leagueData.settings.playoff_round_type);
+    } else {
+        playoffType = 0;
+    }
 
-	return podiums;
-};
+    // in 2020 type 1 was 2 weeks per round, this was later changed to type 2
+    if(year == 2020) {
+        if(playoffType == 1) playoffType++;
+    }
 
-const getPodiums = async (previousSeasonID) => {
-	const podiums = [];
+    // add each week after the regular season to the fetch array
+    for(let i = playoffsStart; i < 19; i++) {
+        // Get the matchup data (starters) for the playoff weeks
+        bracketsAndMatchupFetches.push(fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`, {compress: true}));
+    }
+    
+    // Simultaneously fetch the bracket and matchup data
+    const bracketsAndMatchupResps = await waitForAll(...bracketsAndMatchupFetches).catch((err) => { console.error(err); });
 
-	while (previousSeasonID && previousSeasonID !== 0) {
-		const previousSeasonData = await getPreviousLeagueData(previousSeasonID);
+    // an array to hold all the JSON being converted
+    const bracketsAndMatchupJson = [];
 
-		if (!previousSeasonData) break;
+    // convert all the returned data from JSON
+    for(const bracketsAndMatchupResp of bracketsAndMatchupResps) {
+        bracketsAndMatchupJson.push(bracketsAndMatchupResp.json());
+    }
 
-		const {
-			losersData,
-			winnersData,
-			year,
-			previousRosters,
-			numDivisions,
-			playoffRounds,
-			toiletRounds,
-			leagueMetadata
-		} = previousSeasonData;
+    // wait for promises to fulfill
+    const playoffMatchups = await waitForAll(...bracketsAndMatchupJson).catch((err) => { console.error(err); });
 
-		previousSeasonID = previousSeasonData.previousSeasonID;
+    // The first element above was the winners bracket, so remove that
+    const winnersData = playoffMatchups.shift();
 
-		const divisions = buildDivisionsAndManagers({
-			previousRosters,
-			leagueMetadata,
-			numDivisions
-		});
+    // The second element above was the winners bracket, so remove that, the remaining items are matchup weeks
+    const losersData = playoffMatchups.shift();
 
-		const divisionArr = Object.values(divisions);
+    // determine the length of the playoffs by looking at the last bracket
+    const playoffRounds = winnersData[winnersData.length - 1].r;
+    const loserRounds = losersData[losersData.length - 1].r;
 
-		const finalsMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.w);
-		const champion = finalsMatch?.w;
-		const second = finalsMatch?.l;
+    // champBracket is an object where the key will be the round number
+    // the value at each key will be an array of matchups
+    const champs = evaluateBracket(winnersData, playoffRounds, playoffMatchups, playoffType);
 
-		const runnersUpMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.l);
-		const third = runnersUpMatch?.w;
+    // champBracket is an object where the key will be the round number
+    // the value at each key will be an array of matchups
+    let losers = evaluateBracket(losersData, loserRounds, playoffMatchups, playoffType);
 
-		const toiletBowlMatch = losersData.find(m => m.r === toiletRounds && (!m.t1_from || m.t1_from.w));
-		const toilet = toiletBowlMatch?.w;
+    const finalBrackets = {
+        numRosters,
+        playoffsStart,
+        playoffRounds,
+        loserRounds,
+        champs,
+        losers,
+    }
 
-		if (!champion) continue;
+    // only update cache for most recent season
+    if(queryLeagueID == leagueID) {
+        brackets.update(() => finalBrackets);
+    }
 
-		podiums.push({
-			year,
-			champion,
-			second,
-			third,
-			divisions: divisionArr,
-			toilet
-		});
-	}
+    return finalBrackets;
+}
 
-	// Add static legacy data if not already added
-	if (!legacyBracketsAppended) {
-		for (const [yearStr, winnersData] of Object.entries(legacyWinnersBrackets)) {
-			const year = Number(yearStr);
-			if (podiums.find(p => p.year === year)) continue; // Skip if already included
+const evaluateBracket = (contestants, rounds, playoffMatchups, playoffType) => {
+    let bracket = [];
+    let consolations = [];
+    // which matches in the previous round were consolation matches
+    let consolationMs = [];
+    // which matches in the previous round came from matches where they were winners
+    let fromWs = [];
+    // teams seen
+    let teamsSeen = {};
+    for(let i = 1; i <= rounds; i++) {
+        const playoffBrackets = contestants.filter(m => m.r == i);
+        const roundMatchups = [];
+        const consolationMatchups = [];
+        let first = true;
+        const localConsolationMs = [];
+        let localFromWs = [];
+        for(const playoffBracket of playoffBrackets) {
+            if((!playoffBracket.t1_from && playoffBracket.t2_from) || (!teamsSeen[playoffBracket.t1] && teamsSeen[playoffBracket.t2])) {
+                // this was from a team that got a bye
+                let byeMatchup = processPlayoffMatchup({playoffBracket, playoffMatchups, i: i - 2, consolationMs, fromWs, playoffType, teamsSeen});
+                byeMatchup.bye = true;
+                byeMatchup[0].m = null;
+                byeMatchup[1].m = null;
+                byeMatchup[0].r--;
+                byeMatchup[1].r--;
+                // set the opponent to null
+                byeMatchup[1].roster_id = null;
+                if(first) {
+                    bracket[i - 2].unshift(byeMatchup);
+                    first = false;
+                } else {
+                    bracket[i - 2].push(byeMatchup);
+                }
+            }
+            teamsSeen[playoffBracket.t1] = playoffBracket.m;
+            teamsSeen[playoffBracket.t2] = playoffBracket.m;
+            const roundMatchup = processPlayoffMatchup({playoffBracket, playoffMatchups, i: i - 1, consolationMs, fromWs, playoffType, teamsSeen});
+            if(roundMatchup[0].winners) {
+                // This matchup came from winners
+                localFromWs.push(roundMatchup[0].m)
+            }
+            if(roundMatchup[0].consolation) {
+                // This matchup is a consolation match
+                localConsolationMs.push(roundMatchup[0].m)
+                consolationMatchups.push(roundMatchup);
+            } else {
+                roundMatchups.push(roundMatchup);
+            }
+        }
 
-			const losersData = legacyLosersBrackets[year];
-			const playoffRounds = Math.max(...winnersData.map(m => m.r));
-			const toiletRounds = Math.max(...losersData.map(m => m.r));
+        bracket.push(roundMatchups);
+        for(const consolation of consolations) {
+            for(const consolationMatchup of consolationMatchups) {
+                // if this matchup originated from winners, then it is a continuation of a previous consolation match
+                if(consolationMatchup[0].winners && consolation[i-2] && consolation[i-2] && consolationMatchup[0].t1From == consolation[i-2][0][0].m) {
+                    consolation[i-1] = [consolationMatchup];
+                }
+            }
+        }
+        // These are matchups between teams that lost their consolation matchup
+        const notFromWinners = consolationMatchups.filter(m => !m[0].fromWinners && !m[0].winners);
+        // These are matchups between teams that lost in the championship bracket
+        const fromWinners = consolationMatchups.filter(m => m[0].fromWinners && !m[0].winners)
 
-			const finalsMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.w);
-			const champion = finalsMatch?.w;
-			const second = finalsMatch?.l;
+        if(notFromWinners.length) consolations.unshift(newConsolation(notFromWinners, rounds, i));
+        if(fromWinners.length) consolations.push(newConsolation(fromWinners, rounds, i));
 
-			const runnersUpMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.l);
-			const third = runnersUpMatch?.w;
+        fromWs = localFromWs;
+        consolationMs = localConsolationMs;
+    }
+    return {bracket, consolations};
+}
 
-			const toiletBowlMatch = losersData.find(m => m.r === toiletRounds && (!m.t1_from || m.t1_from.w));
-			const toilet = toiletBowlMatch?.w;
+const newConsolation = (consolationMatchups, rounds, i) => {
+    const newCons = new Array(rounds).fill([]);
+    newCons[i - 1] = consolationMatchups;
+    return newCons;
+}
 
-			if (!champion) continue;
+const processPlayoffMatchup = ({playoffBracket, playoffMatchups, i, consolationMs, fromWs, playoffType, teamsSeen}) => {
+    const matchup = [];
+    const m = playoffBracket.m;
+    const r = playoffBracket.r;
+    const p = playoffBracket.p;
+    const t1From = teamsSeen[playoffBracket.t1];
+    const t2From = teamsSeen[playoffBracket.t2];
+    const winners = playoffBracket.t1_from?.w && playoffBracket.t2_from?.w ? true : false;
 
-			podiums.push({
-				year,
-				champion,
-				second,
-				third,
-				divisions: [], // Legacy doesn't have division info
-				toilet
-			});
-		}
-		legacyBracketsAppended = true;
-	}
+    const fromWinners = fromWs.indexOf(t2From || -999) > -1 ? true : false;
 
-	return podiums.sort((a, b) => b.year - a.year); // Sort newest first
-};
+    let consolation = false;
+    if((p && p != 1) || (playoffBracket.t1_from?.l && playoffBracket.t2_from?.l) || consolationMs.indexOf(t1From) > -1 || consolationMs.indexOf(t2From) > -1) {
+        consolation = true;
+    }
 
-const getPreviousLeagueData = async (previousSeasonID) => {
-	try {
-		const leagueRes = await fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}`, { compress: true });
-		if (!leagueRes.ok) throw new Error('Failed to fetch league data');
+    // first team in matchup
+    const t1 = playoffBracket.t1;
+    matchup.push(generateMatchupData(t1, t1From, {m, r, playoffMatchups, i, playoffType, winners, fromWinners, consolation, p}));
 
-		const prevLeagueData = await leagueRes.json();
-		const year = Number(prevLeagueData.season);
+    // second team in matchup
+    const t2 = playoffBracket.t2;
+    matchup.push(generateMatchupData(t2, t2From, {m, r, playoffMatchups, i, playoffType, winners, fromWinners, consolation, p}));
 
-		let winnersData, losersData;
+    return matchup;
+}
 
-		// Use legacy if available
-		if (legacyWinnersBrackets[year] && legacyLosersBrackets[year]) {
-			winnersData = legacyWinnersBrackets[year];
-			losersData = legacyLosersBrackets[year];
-		} else {
-			const [losersRes, winnersRes] = await waitForAll(
-				fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/losers_bracket`, { compress: true }),
-				fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/winners_bracket`, { compress: true })
-			);
+const generateMatchupData = (t, tFrom, {m, r, playoffMatchups, i, playoffType, winners, fromWinners, consolation, p}) => {
+    let matchup = {
+        roster_id: null,
+        points: undefined,
+        starters: undefined,
+        consolation,
+        tFrom,
+        m,
+        r,
+        winners,
+        fromWinners,
+    }
 
-			if (!losersRes.ok || !winnersRes.ok) throw new Error('Bracket data fetch failed');
+    if(t) {
+        const tMatchup = playoffMatchups[i].filter(ma => ma.roster_id == t)[0];
+        let tMatchupStarters = {}
+        tMatchupStarters[1] = tMatchup?.starters;
+        const tMatchupStartersPoints = {};
+        tMatchupStartersPoints[1] = tMatchup?.starters_points;
+        
+        // playoffType 2: 2 weeks per round
+        // playoffType 1: 1 weeks per round, 2 in championship round
+        if(playoffType == 2 || (p && p == 1 && playoffType == 1)) {
+            const secondWeek = playoffMatchups[i+1].filter(ma => ma.roster_id == t)[0];
+            tMatchupStarters[2] = secondWeek?.starters;
+            tMatchupStartersPoints[2] = secondWeek?.starters_points;
+        }
 
-			[losersData, winnersData] = await waitForAll(losersRes.json(), winnersRes.json());
-		}
+        matchup.starters = tMatchupStarters;
+        matchup.points = tMatchupStartersPoints;
+        matchup.roster_id = t;
+    }
 
-		const rostersData = await getLeagueRosters(previousSeasonID);
-		const previousRosters = rostersData.rosters;
-
-		const numDivisions = prevLeagueData.settings.divisions || 1;
-		const playoffRounds = winnersData[winnersData.length - 1].r;
-		const toiletRounds = losersData[losersData.length - 1].r;
-
-		return {
-			losersData,
-			winnersData,
-			year,
-			previousRosters,
-			numDivisions,
-			previousSeasonID: prevLeagueData.previous_league_id,
-			playoffRounds,
-			toiletRounds,
-			leagueMetadata: prevLeagueData.metadata
-		};
-	} catch (err) {
-		console.error("Error in getPreviousLeagueData:", err);
-		return null;
-	}
-};
-
-const buildDivisionsAndManagers = ({ previousRosters, leagueMetadata, numDivisions }) => {
-	const divisions = {};
-
-	for (let i = 1; i <= numDivisions; i++) {
-		divisions[i] = {
-			name: leagueMetadata ? leagueMetadata[`division_${i}`] : null,
-			wins: -1,
-			points: -1
-		};
-	}
-
-	for (const rosterID in previousRosters) {
-		const rSettings = previousRosters[rosterID].settings;
-		const div = !rSettings.division || rSettings.division > numDivisions ? 1 : rSettings.division;
-
-		const totalPoints = rSettings.fpts + rSettings.fpts_decimal / 100;
-		const current = divisions[div];
-
-		if (
-			rSettings.wins > current.wins ||
-			(rSettings.wins === current.wins && totalPoints > current.points)
-		) {
-			current.points = totalPoints;
-			current.wins = rSettings.wins;
-			current.rosterID = rosterID;
-		}
-	}
-
-	return divisions;
-};
+    return matchup;
+}
