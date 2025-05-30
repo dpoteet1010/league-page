@@ -4,6 +4,7 @@ import { getNflState } from "./nflState"
 import { waitForAll } from './multiPromise';
 import { getRosterIDFromManagerIDAndYear } from '$lib/utils/helperFunctions/universalFunctions';
 import { getLeagueTeamManagers } from "./leagueTeamManagers";
+import { legacyMatchups } from './legacyMatchups.js';
 
 export const getRivalryMatchups = async (userOneID, userTwoID) => {
     if(!userOneID || !userTwoID) {
@@ -36,6 +37,46 @@ export const getRivalryMatchups = async (userOneID, userTwoID) => {
         ties: 0,
         matchups: []
     }
+// Add legacy matchups first
+for (const yearStr in legacyMatchups) {
+    const year = parseInt(yearStr);
+    const weeks = legacyMatchups[yearStr];
+    const rosterIDOne = getRosterIDFromManagerIDAndYear(teamManagers, userOneID, year);
+    const rosterIDTwo = getRosterIDFromManagerIDAndYear(teamManagers, userTwoID, year);
+
+    if (!rosterIDOne || !rosterIDTwo || rosterIDOne === rosterIDTwo) continue;
+
+    for (const weekStr in weeks) {
+        const week = parseInt(weekStr);
+        const weekMatchups = weeks[weekStr];
+
+        const processed = processRivalryMatchups(weekMatchups, week, rosterIDOne, rosterIDTwo);
+        if (processed) {
+            const { matchup } = processed;
+            const sideA = matchup[0];
+            const sideB = matchup[1];
+            let sideAPoints = sideA.points.reduce((t, n) => t + n, 0);
+            let sideBPoints = sideB.points.reduce((t, n) => t + n, 0);
+
+            rivalry.points.one += sideAPoints;
+            rivalry.points.two += sideBPoints;
+
+            if (sideAPoints > sideBPoints) {
+                rivalry.wins.one++;
+            } else if (sideBPoints > sideAPoints) {
+                rivalry.wins.two++;
+            } else {
+                rivalry.ties++;
+            }
+
+            rivalry.matchups.push({
+                week,
+                year,
+                matchup
+            });
+        }
+    }
+}
 
     while(curLeagueID && curLeagueID != 0) {
         const leagueData = await getLeagueData(curLeagueID).catch((err) => { console.error(err); });
