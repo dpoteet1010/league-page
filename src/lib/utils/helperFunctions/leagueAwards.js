@@ -6,11 +6,17 @@ import { awards } from '$lib/stores';
 import { legacyWinnersBrackets } from './legacyWinnersBrackets.js';
 import { legacyLosersBrackets } from './legacyLosersBrackets.js';
 
+let legacyBracketsAppended = false;
+
 export const getAwards = async () => {
-	if(get(awards).length) {
+	if (get(awards).length) {
 		return get(awards);
 	}
-	const leagueData = await getLeagueData().catch((err) => { console.error(err); });
+
+	// Fetch current league info
+	const leagueData = await getLeagueData().catch(err => {
+		console.error(err);
+	});
 
 	let previousSeasonID = leagueData.status === "complete"
 		? leagueData.league_id
@@ -26,8 +32,10 @@ export const getAwards = async () => {
 const getPodiums = async (previousSeasonID) => {
 	const podiums = [];
 
-	while(previousSeasonID && previousSeasonID !== 0) {
+	while (previousSeasonID && previousSeasonID !== 0) {
 		const previousSeasonData = await getPreviousLeagueData(previousSeasonID);
+
+		if (!previousSeasonData) break;
 
 		const {
 			losersData,
@@ -42,11 +50,15 @@ const getPodiums = async (previousSeasonID) => {
 
 		previousSeasonID = previousSeasonData.previousSeasonID;
 
-		const divisions = buildDivisionsAndManagers({ previousRosters, leagueMetadata, numDivisions });
+		const divisions = buildDivisionsAndManagers({
+			previousRosters,
+			leagueMetadata,
+			numDivisions
+		});
 
 		const divisionArr = Object.values(divisions);
 
-		const finalsMatch = winnersData.find(m => m.r === playoffRounds && (m.t1_from?.w || m.t1_from?.l));
+		const finalsMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.w);
 		const champion = finalsMatch?.w;
 		const second = finalsMatch?.l;
 
@@ -56,80 +68,102 @@ const getPodiums = async (previousSeasonID) => {
 		const toiletBowlMatch = losersData.find(m => m.r === toiletRounds && (!m.t1_from || m.t1_from.w));
 		const toilet = toiletBowlMatch?.w;
 
-		if (!champion) {
-			console.log(`⚠️ Skipping ${year} due to missing champion`);
-			continue;
-		}
+		if (!champion) continue;
 
-		const podium = {
+		podiums.push({
 			year,
 			champion,
 			second,
 			third,
 			divisions: divisionArr,
 			toilet
-		};
-
-		console.log(`🏆 Processed podium for ${year}:`, podium);
-		podiums.push(podium);
+		});
 	}
-	return podiums;
+
+	// Add static legacy data if not already added
+	if (!legacyBracketsAppended) {
+		for (const [yearStr, winnersData] of Object.entries(legacyWinnersBrackets)) {
+			const year = Number(yearStr);
+			if (podiums.find(p => p.year === year)) continue; // Skip if already included
+
+			const losersData = legacyLosersBrackets[year];
+			const playoffRounds = Math.max(...winnersData.map(m => m.r));
+			const toiletRounds = Math.max(...losersData.map(m => m.r));
+
+			const finalsMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.w);
+			const champion = finalsMatch?.w;
+			const second = finalsMatch?.l;
+
+			const runnersUpMatch = winnersData.find(m => m.r === playoffRounds && m.t1_from?.l);
+			const third = runnersUpMatch?.w;
+
+			const toiletBowlMatch = losersData.find(m => m.r === toiletRounds && (!m.t1_from || m.t1_from.w));
+			const toilet = toiletBowlMatch?.w;
+
+			if (!champion) continue;
+
+			podiums.push({
+				year,
+				champion,
+				second,
+				third,
+				divisions: [], // Legacy doesn't have division info
+				toilet
+			});
+		}
+		legacyBracketsAppended = true;
+	}
+
+	return podiums.sort((a, b) => b.year - a.year); // Sort newest first
 };
 
 const getPreviousLeagueData = async (previousSeasonID) => {
-	const leagueRes = await fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}`, { compress: true }).catch(err => console.error(err));
-	if (!leagueRes.ok) throw new Error('Failed to fetch league data');
+	try {
+		const leagueRes = await fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}`, { compress: true });
+		if (!leagueRes.ok) throw new Error('Failed to fetch league data');
 
-	const prevLeagueData = await leagueRes.json();
-	const year = +prevLeagueData.season; // ✅ ensure numeric year
+		const prevLeagueData = await leagueRes.json();
+		const year = Number(prevLeagueData.season);
 
-	const useLegacy = legacyWinnersBrackets[year] && legacyLosersBrackets[year];
+		let winnersData, losersData;
 
-	let winnersData, losersData;
+		// Use legacy if available
+		if (legacyWinnersBrackets[year] && legacyLosersBrackets[year]) {
+			winnersData = legacyWinnersBrackets[year];
+			losersData = legacyLosersBrackets[year];
+		} else {
+			const [losersRes, winnersRes] = await waitForAll(
+				fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/losers_bracket`, { compress: true }),
+				fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/winners_bracket`, { compress: true })
+			);
 
-	if (useLegacy) {
-		console.log(`✅ Using legacy brackets for ${year}`);
-		winnersData = legacyWinnersBrackets[year];
-		losersData = legacyLosersBrackets[year];
-	} else {
-		console.log(`❌ No legacy brackets for ${year}, falling back to API`);
+			if (!losersRes.ok || !winnersRes.ok) throw new Error('Bracket data fetch failed');
 
-		const [losersRes, winnersRes] = await waitForAll(
-			fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/losers_bracket`, { compress: true }),
-			fetch(`https://api.sleeper.app/v1/league/${previousSeasonID}/winners_bracket`, { compress: true })
-		).catch((err) => { console.error(err); });
-
-		if (!losersRes.ok || !winnersRes.ok) {
-			throw new Error('Failed to fetch bracket data');
+			[losersData, winnersData] = await waitForAll(losersRes.json(), winnersRes.json());
 		}
 
-		[losersData, winnersData] = await waitForAll(
-			losersRes.json(),
-			winnersRes.json()
-		).catch((err) => { console.error(err); });
+		const rostersData = await getLeagueRosters(previousSeasonID);
+		const previousRosters = rostersData.rosters;
+
+		const numDivisions = prevLeagueData.settings.divisions || 1;
+		const playoffRounds = winnersData[winnersData.length - 1].r;
+		const toiletRounds = losersData[losersData.length - 1].r;
+
+		return {
+			losersData,
+			winnersData,
+			year,
+			previousRosters,
+			numDivisions,
+			previousSeasonID: prevLeagueData.previous_league_id,
+			playoffRounds,
+			toiletRounds,
+			leagueMetadata: prevLeagueData.metadata
+		};
+	} catch (err) {
+		console.error("Error in getPreviousLeagueData:", err);
+		return null;
 	}
-
-	const rostersData = await getLeagueRosters(previousSeasonID);
-	const previousRosters = rostersData.rosters;
-
-	const numDivisions = prevLeagueData.settings.divisions || 1;
-	previousSeasonID = prevLeagueData.previous_league_id;
-
-	// ✅ Guard against empty bracket arrays
-	const playoffRounds = winnersData?.length ? winnersData[winnersData.length - 1].r : 0;
-	const toiletRounds = losersData?.length ? losersData[losersData.length - 1].r : 0;
-
-	return {
-		losersData,
-		winnersData,
-		year,
-		previousRosters,
-		numDivisions,
-		previousSeasonID,
-		playoffRounds,
-		toiletRounds,
-		leagueMetadata: prevLeagueData.metadata
-	};
 };
 
 const buildDivisionsAndManagers = ({ previousRosters, leagueMetadata, numDivisions }) => {
