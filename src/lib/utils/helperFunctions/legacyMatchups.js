@@ -66,7 +66,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 120.53999999999999,
+        "points": 120.54,
         "players": [
           "7591",
           "4018",
@@ -258,7 +258,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 139.60000000000002,
+        "points": 139.6,
         "players": [
           "DAL",
           "6904",
@@ -322,7 +322,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 109.66000000000001,
+        "points": 109.66,
         "players": [
           "6797",
           "9509",
@@ -386,7 +386,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 119.17999999999999,
+        "points": 119.18,
         "players": [
           "6770",
           "7543",
@@ -450,7 +450,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 104.22000000000001,
+        "points": 104.22,
         "players": [
           "BUF",
           "9229",
@@ -578,7 +578,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 89.32000000000001,
+        "points": 89.32,
         "players": [
           "3294",
           "3198",
@@ -706,7 +706,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 74.08000000000001,
+        "points": 74.08,
         "players": [
           "1373",
           "7528",
@@ -772,7 +772,7 @@ export const legacyMatchups = {
     ],
     "2": [
       {
-        "points": 127.73999999999998,
+        "points": 127.74,
         "players": [
           "7591",
           "4018",
@@ -1028,7 +1028,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 112.63999999999999,
+        "points": 112.64,
         "players": [
           "BUF",
           "9229",
@@ -1412,7 +1412,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 129.22000000000003,
+        "points": 129.22,
         "players": [
           "3163",
           "4866",
@@ -1990,7 +1990,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 127.10000000000002,
+        "points": 127.1,
         "players": [
           "WAS",
           "1373",
@@ -2054,7 +2054,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 127.67999999999999,
+        "points": 127.68,
         "players": [
           "DAL",
           "6904",
@@ -2182,7 +2182,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 129.45999999999998,
+        "points": 129.46,
         "players": [
           "6768",
           "7543",
@@ -2440,7 +2440,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 71.53999999999999,
+        "points": 71.54,
         "players": [
           "1166",
           "3198",
@@ -2568,7 +2568,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 106.10000000000001,
+        "points": 106.1,
         "players": [
           "1373",
           "8136",
@@ -2760,7 +2760,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 100.74000000000001,
+        "points": 100.74,
         "players": [
           "6804",
           "8154",
@@ -2952,7 +2952,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 91.47999999999999,
+        "points": 91.48,
         "players": [
           "6768",
           "7543",
@@ -3146,7 +3146,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 102.97999999999999,
+        "points": 102.98,
         "players": [
           "7591",
           "4018",
@@ -3274,7 +3274,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 70.75999999999999,
+        "points": 70.76,
         "players": [
           "9758",
           "7528",
@@ -3402,7 +3402,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 68.97999999999999,
+        "points": 68.98,
         "players": [
           "421",
           "4199",
@@ -3466,7 +3466,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 97.33999999999999,
+        "points": 97.34,
         "players": [
           "6994",
           "5850",
@@ -3722,7 +3722,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 132.95999999999998,
+        "points": 132.96,
         "players": [
           "SF",
           "4984",
@@ -4108,7 +4108,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 129.04000000000002,
+        "points": 129.04,
         "players": [
           "4046",
           "6790",
@@ -4172,7 +4172,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 116.74000000000001,
+        "points": 116.74,
         "players": [
           "BUF",
           "4892",
@@ -4364,7 +4364,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 118.00000000000001,
+        "points": 118.0,
         "players": [
           "NYJ",
           "DAL",
@@ -4428,7 +4428,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 82.52000000000001,
+        "points": 82.52,
         "players": [
           "6994",
           "5850",
@@ -4492,7 +4492,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 90.75999999999999,
+        "points": 90.76,
         "players": [
           "SF",
           "4984",
@@ -4750,7 +4750,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 118.66000000000001,
+        "points": 118.66,
         "players": [
           "1373",
           "8136",
@@ -5070,7 +5070,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 111.86000000000001,
+        "points": 111.86,
         "players": [
           "DAL",
           "CLE",
@@ -5392,7 +5392,7 @@ export const legacyMatchups = {
     ],
     "8": [
       {
-        "points": 125.89999999999999,
+        "points": 125.9,
         "players": [
           "8183",
           "4018",
@@ -5584,7 +5584,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 140.48000000000002,
+        "points": 140.48,
         "players": [
           "3163",
           "4866",
@@ -5648,7 +5648,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 142.41999999999996,
+        "points": 142.42,
         "players": [
           "DAL",
           "6904",
@@ -5776,7 +5776,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 119.36000000000001,
+        "points": 119.36,
         "players": [
           "4984",
           "4663",
@@ -5840,7 +5840,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 95.46000000000001,
+        "points": 95.46,
         "players": [
           "1166",
           "3198",
@@ -6354,7 +6354,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 134.70000000000002,
+        "points": 134.7,
         "players": [
           "DAL",
           "6904",
@@ -6418,7 +6418,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 85.33999999999999,
+        "points": 85.34,
         "players": [
           "2028",
           "4866",
@@ -6482,7 +6482,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 114.01999999999998,
+        "points": 114.02,
         "players": [
           "4984",
           "4663",
@@ -6866,7 +6866,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 73.03999999999999,
+        "points": 73.04,
         "players": [
           "6797",
           "9509",
@@ -6932,7 +6932,7 @@ export const legacyMatchups = {
     ],
     "10": [
       {
-        "points": 87.69999999999999,
+        "points": 87.7,
         "players": [
           "TB",
           "MIA",
@@ -7060,7 +7060,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 122.57999999999998,
+        "points": 122.58,
         "players": [
           "SF",
           "4984",
@@ -7572,7 +7572,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 99.96000000000001,
+        "points": 99.96,
         "players": [
           "BUF",
           "5849",
@@ -7702,7 +7702,7 @@ export const legacyMatchups = {
     ],
     "11": [
       {
-        "points": 93.80000000000001,
+        "points": 93.8,
         "players": [
           "SF",
           "4984",
@@ -7766,7 +7766,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.13999999999999,
+        "points": 126.14,
         "players": [
           "4179",
           "4018",
@@ -7830,7 +7830,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 110.00000000000001,
+        "points": 110.0,
         "players": [
           "NYJ",
           "DAL",
@@ -7958,7 +7958,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 124.30000000000001,
+        "points": 124.3,
         "players": [
           "6768",
           "7543",
@@ -8022,7 +8022,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 139.96000000000004,
+        "points": 139.96,
         "players": [
           "6994",
           "9221",
@@ -8086,7 +8086,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 115.67999999999999,
+        "points": 115.68,
         "players": [
           "4046",
           "6790",
@@ -8150,7 +8150,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 107.19999999999999,
+        "points": 107.2,
         "players": [
           "6797",
           "4137",
@@ -8278,7 +8278,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 121.95999999999998,
+        "points": 121.96,
         "players": [
           "BUF",
           "5849",
@@ -8406,7 +8406,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 84.24000000000001,
+        "points": 84.24,
         "players": [
           "4892",
           "3198",
@@ -8536,7 +8536,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 107.13999999999999,
+        "points": 107.14,
         "players": [
           "3294",
           "8154",
@@ -8728,7 +8728,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 134.85999999999999,
+        "points": 134.86,
         "players": [
           "8183",
           "8136",
@@ -8792,7 +8792,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 113.24000000000001,
+        "points": 113.24,
         "players": [
           "BUF",
           "5849",
@@ -9048,7 +9048,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 107.32000000000001,
+        "points": 107.32,
         "players": [
           "DEN",
           "4046",
@@ -9176,7 +9176,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 97.58000000000001,
+        "points": 97.58,
         "players": [
           "3163",
           "4866",
@@ -9562,7 +9562,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 65.69999999999999,
+        "points": 65.7,
         "players": [
           "5849",
           "8155",
@@ -9626,7 +9626,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 106.91999999999999,
+        "points": 106.92,
         "players": [
           "NYJ",
           "DAL",
@@ -9882,7 +9882,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.89999999999999,
+        "points": 126.9,
         "players": [
           "TB",
           "6768",
@@ -9946,7 +9946,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 110.32000000000001,
+        "points": 110.32,
         "players": [
           "3163",
           "4035",
@@ -10012,7 +10012,7 @@ export const legacyMatchups = {
     ],
     "14": [
       {
-        "points": 113.82000000000001,
+        "points": 113.82,
         "players": [
           "7591",
           "4018",
@@ -10204,7 +10204,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 101.33999999999999,
+        "points": 101.34,
         "players": [
           "3294",
           "9221",
@@ -10332,7 +10332,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 75.32000000000001,
+        "points": 75.32,
         "players": [
           "6804",
           "8143",
@@ -10524,7 +10524,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 154.14000000000001,
+        "points": 154.14,
         "players": [
           "3163",
           "4866",
@@ -10588,7 +10588,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 93.08000000000001,
+        "points": 93.08,
         "players": [
           "NYJ",
           "DAL",
@@ -10652,7 +10652,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 107.30000000000001,
+        "points": 107.3,
         "players": [
           "6768",
           "4147",
@@ -10782,7 +10782,7 @@ export const legacyMatchups = {
     ],
     "15": [
       {
-        "points": 115.28000000000002,
+        "points": 115.28,
         "players": [
           "8183",
           "8150",
@@ -11038,7 +11038,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 90.61999999999999,
+        "points": 90.62,
         "players": [
           "3294",
           "9221",
@@ -11102,7 +11102,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 111.02000000000001,
+        "points": 111.02,
         "players": [
           "DAL",
           "NYJ",
@@ -11294,7 +11294,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 121.80000000000001,
+        "points": 121.8,
         "players": [
           "CIN",
           "4046",
@@ -11358,7 +11358,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 127.02000000000001,
+        "points": 127.02,
         "players": [
           "421",
           "9509",
@@ -11422,7 +11422,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 109.41999999999999,
+        "points": 109.42,
         "players": [
           "1234",
           "3198",
@@ -11486,7 +11486,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 78.46000000000001,
+        "points": 78.46,
         "players": [
           "6804",
           "8143",
@@ -11552,7 +11552,7 @@ export const legacyMatchups = {
     ],
     "16": [
       {
-        "points": 101.20000000000002,
+        "points": 101.2,
         "players": [
           "8183",
           "8136",
@@ -12000,7 +12000,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.52000000000001,
+        "points": 126.52,
         "players": [
           "421",
           "9509",
@@ -12064,7 +12064,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 124.01999999999998,
+        "points": 124.02,
         "players": [
           "6768",
           "3164",
@@ -12386,7 +12386,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 139.57999999999998,
+        "points": 139.58,
         "players": [
           "BUF",
           "ATL",
@@ -12578,7 +12578,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 119.52000000000002,
+        "points": 119.52,
         "players": [
           "7591",
           "4018",
@@ -12770,7 +12770,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 117.28000000000002,
+        "points": 117.28,
         "players": [
           "421",
           "9509",
@@ -12834,7 +12834,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 120.24000000000001,
+        "points": 120.24,
         "players": [
           "3163",
           "4866",
@@ -12962,7 +12962,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 124.99999999999999,
+        "points": 125.0,
         "players": [
           "CHI",
           "4046",
@@ -14026,7 +14026,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 102.83999999999999,
+        "points": 102.84,
         "players": [
           "KC",
           "5970",
@@ -14094,7 +14094,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 81.88000000000001,
+        "points": 81.88,
         "players": [
           "MIA",
           "3225",
@@ -14230,7 +14230,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 158.73999999999998,
+        "points": 158.74,
         "players": [
           "6768",
           "4046",
@@ -14298,7 +14298,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 110.67999999999999,
+        "points": 110.68,
         "players": [
           "SF",
           "",
@@ -14710,7 +14710,7 @@ export const legacyMatchups = {
     ],
     "3": [
       {
-        "points": 145.76000000000002,
+        "points": 145.76,
         "players": [
           "KC",
           "6770",
@@ -14982,7 +14982,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 124.80000000000001,
+        "points": 124.8,
         "players": [
           "CLE",
           "MIA",
@@ -15186,7 +15186,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 104.32000000000001,
+        "points": 104.32,
         "players": [
           "LV",
           "4892",
@@ -15254,7 +15254,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 99.37999999999998,
+        "points": 99.38,
         "players": [
           "DAL",
           "5849",
@@ -15322,7 +15322,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 112.74000000000001,
+        "points": 112.74,
         "players": [
           "NO",
           "6904",
@@ -15458,7 +15458,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 172.51999999999998,
+        "points": 172.52,
         "players": [
           "DET",
           "4984",
@@ -15528,7 +15528,7 @@ export const legacyMatchups = {
     ],
     "4": [
       {
-        "points": 148.20000000000002,
+        "points": 148.2,
         "players": [
           "9758",
           "8150",
@@ -15868,7 +15868,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 140.10000000000002,
+        "points": 140.1,
         "players": [
           "ATL",
           "4943",
@@ -16072,7 +16072,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 122.19999999999999,
+        "points": 122.2,
         "players": [
           "DET",
           "4984",
@@ -16414,7 +16414,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 139.54000000000002,
+        "points": 139.54,
         "players": [
           "9758",
           "8150",
@@ -16618,7 +16618,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 110.82000000000001,
+        "points": 110.82,
         "players": [
           "GB",
           "11566",
@@ -16686,7 +16686,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 110.59999999999998,
+        "points": 110.6,
         "players": [
           "NO",
           "4017",
@@ -16892,7 +16892,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 185.71999999999997,
+        "points": 185.72,
         "players": [
           "NE",
           "6994",
@@ -16960,7 +16960,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.16000000000003,
+        "points": 126.16,
         "players": [
           "CHI",
           "8183",
@@ -17506,7 +17506,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 104.69999999999999,
+        "points": 104.7,
         "players": [
           "1166",
           "9509",
@@ -17778,7 +17778,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.89999999999999,
+        "points": 126.9,
         "players": [
           "ATL",
           "3163",
@@ -17846,7 +17846,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 90.88000000000001,
+        "points": 90.88,
         "players": [
           "1373",
           "4035",
@@ -17984,7 +17984,7 @@ export const legacyMatchups = {
     ],
     "7": [
       {
-        "points": 85.75999999999999,
+        "points": 85.76,
         "players": [
           "NO",
           "6904",
@@ -18528,7 +18528,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 101.64000000000001,
+        "points": 101.64,
         "players": [
           "GB",
           "11566",
@@ -18732,7 +18732,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 128.33999999999997,
+        "points": 128.34,
         "players": [
           "BUF",
           "6994",
@@ -18802,7 +18802,7 @@ export const legacyMatchups = {
     ],
     "8": [
       {
-        "points": 117.34000000000002,
+        "points": 117.34,
         "players": [
           "11560",
           "8150",
@@ -18870,7 +18870,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 133.22000000000003,
+        "points": 133.22,
         "players": [
           "SF",
           "4984",
@@ -19414,7 +19414,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 124.82000000000002,
+        "points": 124.82,
         "players": [
           "3294",
           "9509",
@@ -19688,7 +19688,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.47999999999999,
+        "points": 126.48,
         "players": [
           "WAS",
           "6797",
@@ -19756,7 +19756,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 114.29999999999998,
+        "points": 114.3,
         "players": [
           "KC",
           "4984",
@@ -19824,7 +19824,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 93.46000000000001,
+        "points": 93.46,
         "players": [
           "5849",
           "4018",
@@ -20028,7 +20028,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 136.10000000000002,
+        "points": 136.1,
         "players": [
           "CIN",
           "4892",
@@ -20300,7 +20300,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 129.72000000000003,
+        "points": 129.72,
         "players": [
           "3294",
           "9509",
@@ -20642,7 +20642,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 129.21999999999997,
+        "points": 129.22,
         "players": [
           "LAC",
           "6770",
@@ -20982,7 +20982,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 110.98000000000002,
+        "points": 110.98,
         "players": [
           "CHI",
           "GB",
@@ -21324,7 +21324,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 103.67999999999999,
+        "points": 103.68,
         "players": [
           "SF",
           "6797",
@@ -22004,7 +22004,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 120.23999999999998,
+        "points": 120.24,
         "players": [
           "DEN",
           "PHI",
@@ -22074,7 +22074,7 @@ export const legacyMatchups = {
     ],
     "12": [
       {
-        "points": 85.32000000000001,
+        "points": 85.32,
         "players": [
           "SF",
           "6797",
@@ -22210,7 +22210,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 109.82000000000001,
+        "points": 109.82,
         "players": [
           "11563",
           "4137",
@@ -22346,7 +22346,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 200.99999999999997,
+        "points": 201.0,
         "players": [
           "GB",
           "11566",
@@ -22482,7 +22482,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 123.97999999999999,
+        "points": 123.98,
         "players": [
           "WAS",
           "6768",
@@ -22618,7 +22618,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 136.11999999999998,
+        "points": 136.12,
         "players": [
           "DEN",
           "PHI",
@@ -22686,7 +22686,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 127.05999999999999,
+        "points": 127.06,
         "players": [
           "KC",
           "2306",
@@ -22754,7 +22754,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 122.86000000000001,
+        "points": 122.86,
         "players": [
           "CLE",
           "4892",
@@ -22822,7 +22822,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 108.56000000000002,
+        "points": 108.56,
         "players": [
           "ARI",
           "NO",
@@ -22892,7 +22892,7 @@ export const legacyMatchups = {
     ],
     "13": [
       {
-        "points": 142.07999999999998,
+        "points": 142.08,
         "players": [
           "HOU",
           "6994",
@@ -23232,7 +23232,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 165.70000000000002,
+        "points": 165.7,
         "players": [
           "DAL",
           "6768",
@@ -23436,7 +23436,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 165.35999999999999,
+        "points": 165.36,
         "players": [
           "6770",
           "6813",
@@ -23504,7 +23504,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 126.49999999999999,
+        "points": 126.5,
         "players": [
           "LAC",
           "4892",
@@ -23982,7 +23982,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 105.54000000000002,
+        "points": 105.54,
         "players": [
           "PHI",
           "6804",
@@ -24050,7 +24050,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 140.16000000000003,
+        "points": 140.16,
         "players": [
           "BUF",
           "HOU",
@@ -24118,7 +24118,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 93.60000000000001,
+        "points": 93.6,
         "players": [
           "LAC",
           "4892",
@@ -24186,7 +24186,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 122.49999999999999,
+        "points": 122.5,
         "players": [
           "DET",
           "4046",
@@ -24528,7 +24528,7 @@ export const legacyMatchups = {
     ],
     "15": [
       {
-        "points": 131.70000000000002,
+        "points": 131.7,
         "players": [
           "HOU",
           "6994",
@@ -25004,7 +25004,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 128.33999999999997,
+        "points": 128.34,
         "players": [
           "6770",
           "6813",
@@ -25346,7 +25346,7 @@ export const legacyMatchups = {
     ],
     "16": [
       {
-        "points": 117.58000000000001,
+        "points": 117.58,
         "players": [
           "BUF",
           "HOU",
@@ -25482,7 +25482,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 168.32000000000002,
+        "points": 168.32,
         "players": [
           "GB",
           "11566",
@@ -25754,7 +25754,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 121.99999999999999,
+        "points": 122.0,
         "players": [
           "DET",
           "4046",
@@ -25890,7 +25890,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 171.48000000000002,
+        "points": 171.48,
         "players": [
           "IND",
           "SEA",
@@ -26094,7 +26094,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 109.03999999999999,
+        "points": 109.04,
         "players": [
           "9229",
           "7543",
@@ -26232,7 +26232,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 106.88000000000001,
+        "points": 106.88,
         "players": [
           "GB",
           "11566",
@@ -26708,7 +26708,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 176.45999999999998,
+        "points": 176.46,
         "players": [
           "PHI",
           "421",
@@ -26912,7 +26912,7 @@ export const legacyMatchups = {
         }
       },
       {
-        "points": 90.67999999999999,
+        "points": 90.68,
         "players": [
           "11564",
           "5987",
