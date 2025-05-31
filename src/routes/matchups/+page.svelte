@@ -3,7 +3,6 @@
 
 	export let data;
 
-	// Destructure loaded promises
 	const {
 		queryWeek,
 		matchupsData,
@@ -12,14 +11,12 @@
 		leagueTeamManagersData
 	} = data;
 
-	// Await matchupsData to access the current year
-	const matchups = await matchupsData;
-	const currentYear = matchups.currentYear;
+	const currentYear = matchupsData.currentYear;
 
-	// ✅ Filter only current season's matchups
+	// Filter to only current season's matchups
 	const filteredMatchupsData = {
-		...matchups,
-		matchupWeeks: matchups.matchupWeeks.filter(week => week.year === currentYear)
+		...matchupsData,
+		matchupWeeks: matchupsData.matchupWeeks.filter(week => week.year === currentYear)
 	};
 </script>
 
@@ -31,7 +28,6 @@
 </style>
 
 <div id="main">
-	<!-- ✅ Pass only current season matchups to the component -->
 	<MatchupsAndBrackets
 		{queryWeek}
 		matchupsData={filteredMatchupsData}
