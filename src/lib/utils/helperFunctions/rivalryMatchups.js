@@ -88,6 +88,73 @@ for (const yearStr in legacyMatchups) {
             week = 18;
             continue;
         }
+	const forcedSeasons = [2024, 2023];
+
+for (const forcedYear of forcedSeasons) {
+    const forcedLeagueID = forcedYear; // assuming 2023 and 2024 are valid league IDs
+    const alreadyProcessed = rivalry.matchups.some(m => m.year === forcedYear);
+    if (alreadyProcessed) continue;
+
+    const leagueData = await getLeagueData(forcedLeagueID).catch(err => {
+        console.error(`Failed to load league data for ${forcedYear}:`, err);
+        return null;
+    });
+
+    if (!leagueData) continue;
+
+    const rosterIDOne = getRosterIDFromManagerIDAndYear(teamManagers, userOneID, forcedYear);
+    const rosterIDTwo = getRosterIDFromManagerIDAndYear(teamManagers, userTwoID, forcedYear);
+    if (!rosterIDOne || !rosterIDTwo || rosterIDOne === rosterIDTwo) continue;
+
+    const matchupsPromises = [];
+    for (let i = 1; i < leagueData.settings.playoff_week_start; i++) {
+        matchupsPromises.push(
+            fetch(`https://api.sleeper.app/v1/league/${forcedLeagueID}/matchups/${i}`, { compress: true })
+        );
+    }
+
+    const matchupsRes = await waitForAll(...matchupsPromises);
+
+    const matchupsJsonPromises = [];
+    for (const matchupRes of matchupsRes) {
+        const data = matchupRes.json();
+        matchupsJsonPromises.push(data);
+        if (!matchupRes.ok) {
+            console.error(`Matchup fetch failed for week in ${forcedYear}`);
+            continue;
+        }
+    }
+
+    const matchupsData = await waitForAll(...matchupsJsonPromises).catch(err => {
+        console.error(`JSON parse failed for matchups in ${forcedYear}:`, err);
+        return [];
+    });
+
+    for (let i = 1; i <= matchupsData.length; i++) {
+        const processed = processRivalryMatchups(matchupsData[i - 1], i, rosterIDOne, rosterIDTwo);
+        if (processed) {
+            const { matchup, week } = processed;
+            const sideA = matchup[0];
+            const sideB = matchup[1];
+            let sideAPoints = sideA.points.reduce((t, nV) => t + nV, 0);
+            let sideBPoints = sideB.points.reduce((t, nV) => t + nV, 0);
+            rivalry.points.one += sideAPoints;
+            rivalry.points.two += sideBPoints;
+            if (sideAPoints > sideBPoints) {
+                rivalry.wins.one++;
+            } else if (sideAPoints < sideBPoints) {
+                rivalry.wins.two++;
+            } else {
+                rivalry.ties++;
+            }
+            rivalry.matchups.push({
+                week,
+                year: forcedYear,
+                matchup,
+            });
+        }
+    }
+}
 
         // pull in all matchup data for the season
         const matchupsPromises = [];
