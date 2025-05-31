@@ -4,9 +4,9 @@ import { getNflState } from "./nflState";
 import { waitForAll } from './multiPromise';
 import { get } from 'svelte/store';
 import { matchupsStore } from '$lib/stores';
-import { legacyMatchups } from './legacyMatchups.js'; // ⬅️ Import legacy data
+import { legacyMatchups } from './legacyMatchups.js'; // ✅ Import legacy data
 
-let legacyAppended = false; // ⬅️ Ensures static data is appended only once
+let legacyAppended = false; // ✅ Ensure legacy data is added only once per session
 
 export const getLeagueMatchups = async () => {
 	if (get(matchupsStore).matchupWeeks) {
@@ -16,7 +16,9 @@ export const getLeagueMatchups = async () => {
 	const [nflState, leagueData] = await waitForAll(
 		getNflState(),
 		getLeagueData(),
-	).catch((err) => { console.error(err); });
+	).catch((err) => {
+		console.error(err);
+	});
 
 	let week = 1;
 	if (nflState.season_type === 'regular') {
@@ -51,25 +53,29 @@ export const getLeagueMatchups = async () => {
 
 	const matchupWeeks = [];
 
-	// ⬅️ Append legacy matchups once
+	// ✅ Append legacy matchups once
 	if (!legacyAppended) {
 		for (const legacyYear in legacyMatchups) {
 			const weeks = legacyMatchups[legacyYear];
-			for (const weekData of weeks) {
-				const processed = processMatchups(weekData.matchups, weekData.week);
-				if (processed) {
-					matchupWeeks.push({
-						matchups: processed.matchups,
-						week: processed.week,
-						year: Number(legacyYear)
-					});
+			if (weeks && typeof weeks === 'object') {
+				for (const weekKey in weeks) {
+					const weekNum = Number(weekKey);
+					const matchupsArray = weeks[weekKey];
+					const processed = processMatchups(matchupsArray, weekNum);
+					if (processed) {
+						matchupWeeks.push({
+							matchups: processed.matchups,
+							week: processed.week,
+							year: Number(legacyYear)
+						});
+					}
 				}
 			}
 		}
 		legacyAppended = true;
 	}
 
-	// Add current season's matchups
+	// ✅ Process current season matchups
 	for (let i = 1; i <= matchupsData.length; i++) {
 		const processed = processMatchups(matchupsData[i - 1], i);
 		if (processed) {
@@ -89,7 +95,6 @@ export const getLeagueMatchups = async () => {
 	};
 
 	matchupsStore.update(() => matchupsResponse);
-
 	return matchupsResponse;
 };
 
