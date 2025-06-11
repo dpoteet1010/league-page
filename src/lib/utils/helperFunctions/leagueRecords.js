@@ -179,65 +179,65 @@ for (const forcedID of forcedSeasons) {
  * @param {Records} regularSeasonInfo.regularSeason the global regularSeason record object
  * @returns {Object} { season: (curSeason), year}
  */
-const processRegularSeason = async ({rosters, leagueData, curSeason, week, regularSeason}) => {
+const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason }) => {
 	let year = parseInt(leagueData.season);
 
-	// on first run, week is provided above from nflState,
-	// after that get the final week of regular season from leagueData
-	if(leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+	if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
 	}
 
-	for(const rosterID in rosters) {
-		analyzeRosters({year, roster: rosters[rosterID], regularSeason});
+	for (const rosterID in rosters) {
+		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
 	}
 
-	// loop through each week of the season
 	const matchupsPromises = [];
 	let startWeek = parseInt(week);
-	while(week > 0) {
-		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}))
+	while (week > 0) {
+		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, { compress: true }));
 		week--;
 	}
 
-	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
+	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => {
+		console.error(err);
+	});
 
-	// convert the json matchup responses
 	const matchupsJsonPromises = [];
-	for(const matchupRes of matchupsRes) {
+	for (const matchupRes of matchupsRes) {
 		const data = matchupRes.json();
-		matchupsJsonPromises.push(data)
+		matchupsJsonPromises.push(data);
 		if (!matchupRes.ok) {
 			console.error(data);
 		}
 	}
-	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
+	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => {
+		console.error(err);
+	});
 
-	// now that we've used the current season ID for everything we need, set it to the previous season
 	curSeason = leagueData.previous_league_id;
 
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
-	
-	// process all the matchups
-	for(const matchupWeek of matchupsData) {
-		const {sPR, mD, sW} =  processMatchups({matchupWeek, seasonPointsRecord, record: regularSeason, startWeek, matchupDifferentials, year})
+
+	for (const matchupWeek of matchupsData) {
+		const { sPR, mD, sW } = processMatchups({
+			matchupWeek,
+			seasonPointsRecord,
+			record: regularSeason,
+			startWeek,
+			matchupDifferentials,
+			year,
+		});
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
 	}
 
-	// sort matchup differentials
-	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential')
+	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
+	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
 
-	// sort season point records
-	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts')
-
-	// add matchupDifferentials to tha all time  records
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
-
-	if(seasonPointsHighs.length > 0) {
+	if (seasonPointsHighs.length > 0) {
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
@@ -249,12 +249,30 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 		year = null;
 	}
 
+	// ✅ Forced loop through 2023 and 2024 AFTER normal processing
+	if (parseInt(leagueData.season) !== 2023 && parseInt(leagueData.season) !== 2024) {
+		await processRegularSeason({
+			rosters,
+			leagueData: await fetchLeagueData('2024'), // replace with actual league ID or fetching logic
+			curSeason: '2024',
+			week,
+			regularSeason,
+		});
+
+		await processRegularSeason({
+			rosters,
+			leagueData: await fetchLeagueData('2023'),
+			curSeason: '2023',
+			week,
+			regularSeason,
+		});
+	}
+
 	return {
 		season: curSeason,
 		year,
-	}
-}
-
+	};
+};
 
 /**
  * Analyzes an individual roster and adds entries for that roster's
