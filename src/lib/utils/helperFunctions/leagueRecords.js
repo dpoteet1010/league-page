@@ -195,17 +195,24 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 
 	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
 
-	// convert the json matchup responses
-	const matchupsJsonPromises = [];
-	for(const matchupRes of matchupsRes) {
-		const data = matchupRes.json();
-		matchupsJsonPromises.push(data)
-		if (!matchupRes.ok) {
-			console.error(data);
-		}
+// Convert the JSON matchup responses
+const matchupsJsonPromises = [];
+for (const matchupRes of matchupsRes) {
+	if (!matchupRes.ok) {
+		console.error(`Error fetching matchup response:`, matchupRes.statusText);
 	}
-	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err);
-	matchupsData.forEach((matchupWeek, i) => {
+	matchupsJsonPromises.push(matchupRes.json());
+}
+
+let matchupsData = [];
+try {
+	matchupsData = await waitForAll(...matchupsJsonPromises);
+} catch (err) {
+	console.error("Error parsing matchup JSON data:", err);
+}
+
+// Optional: log structure of each week's matchups
+matchupsData.forEach((matchupWeek, i) => {
 	if (!Array.isArray(matchupWeek)) {
 		console.warn(`⚠️ Week ${i + 1} in season ${leagueData.season} is not iterable:`, matchupWeek);
 	} else {
