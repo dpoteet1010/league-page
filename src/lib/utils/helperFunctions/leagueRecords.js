@@ -45,64 +45,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	// Step 1: Force loop through 2023 and 2024
-	const forcedSeasons = ['2023', '2024'];
-
-for (const forcedID of forcedSeasons) {
-    try {
-        console.log(`Fetching data for forced season: ${forcedID}`);
-        const [rosterRes, leagueData] = await waitForAll(
-            getLeagueRosters(forcedID),
-            getLeagueData(forcedID),
-        );
-
-        // Log what was fetched for debugging
-        console.log(`Roster data for season ${forcedID}:`, rosterRes);
-        console.log(`League data for season ${forcedID}:`, leagueData);
-
-        const rosters = rosterRes.rosters;
-
-        let tempWeek = week;
-        if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
-            tempWeek = 99;
-        }
-
-        const {
-            season,
-            year,
-        } = await processRegularSeason({
-            leagueData,
-            rosters,
-            curSeason: forcedID,
-            week: tempWeek,
-            regularSeason
-        });
-
-        const pS = await processPlayoffs({
-            year,
-            curSeason: forcedID,
-            week: tempWeek,
-            playoffRecords,
-            rosters
-        });
-
-        if (pS) {
-            playoffRecords = pS;
-        }
-
-        lastYear = year;
-        if (!currentYear && year) currentYear = year;
-
-        // After 2024, set curSeason for while loop
-        if (forcedID === '2024') {
-            curSeason = leagueData.previous_league_id;
-        }
-    } catch (err) {
-        console.error(`Failed to process season ${forcedID}`, err);
-    }
-}
-
-	// Step 2: Continue as normal
+	// --- Step 1: Process league chain from leagueID to the earliest connected season ---
 	while (curSeason && curSeason != 0) {
 		try {
 			const [rosterRes, leagueData] = await waitForAll(
@@ -112,8 +55,9 @@ for (const forcedID of forcedSeasons) {
 
 			const rosters = rosterRes.rosters;
 
-			if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
-				week = 99;
+			let tempWeek = week;
+			if (leagueData.status == 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
+				tempWeek = 99;
 			}
 
 			const {
@@ -123,14 +67,14 @@ for (const forcedID of forcedSeasons) {
 				leagueData,
 				rosters,
 				curSeason,
-				week,
+				week: tempWeek,
 				regularSeason
 			});
 
 			const pS = await processPlayoffs({
 				year,
 				curSeason,
-				week,
+				week: tempWeek,
 				playoffRecords,
 				rosters
 			});
@@ -149,6 +93,55 @@ for (const forcedID of forcedSeasons) {
 		}
 	}
 
+	// --- Step 2: Process legacy static seasons (2024 and 2023) ---
+	const staticSeasons = ['2024', '2023'];
+
+	for (const staticID of staticSeasons) {
+		try {
+			console.log(`Processing static season: ${staticID}`);
+			const [rosterRes, leagueData] = await waitForAll(
+				getLeagueRosters(staticID),
+				getLeagueData(staticID),
+			);
+
+			const rosters = rosterRes.rosters;
+
+			let tempWeek = week;
+			if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
+				tempWeek = 99;
+			}
+
+			const {
+				season,
+				year,
+			} = await processRegularSeason({
+				leagueData,
+				rosters,
+				curSeason: staticID,
+				week: tempWeek,
+				regularSeason
+			});
+
+			const pS = await processPlayoffs({
+				year,
+				curSeason: staticID,
+				week: tempWeek,
+				playoffRecords,
+				rosters
+			});
+
+			if (pS) {
+				playoffRecords = pS;
+			}
+
+			lastYear = year;
+			if (!currentYear && year) currentYear = year;
+		} catch (err) {
+			console.error(`Error processing static season ${staticID}:`, err);
+		}
+	}
+
+	// Finalize and store results
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
@@ -179,65 +172,65 @@ for (const forcedID of forcedSeasons) {
  * @param {Records} regularSeasonInfo.regularSeason the global regularSeason record object
  * @returns {Object} { season: (curSeason), year}
  */
-const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason }) => {
+const processRegularSeason = async ({rosters, leagueData, curSeason, week, regularSeason}) => {
 	let year = parseInt(leagueData.season);
 
-	if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+	// on first run, week is provided above from nflState,
+	// after that get the final week of regular season from leagueData
+	if(leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
 	}
 
-	for (const rosterID in rosters) {
-		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
+	for(const rosterID in rosters) {
+		analyzeRosters({year, roster: rosters[rosterID], regularSeason});
 	}
 
+	// loop through each week of the season
 	const matchupsPromises = [];
 	let startWeek = parseInt(week);
-	while (week > 0) {
-		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, { compress: true }));
+	while(week > 0) {
+		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}))
 		week--;
 	}
 
-	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => {
-		console.error(err);
-	});
+	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
 
+	// convert the json matchup responses
 	const matchupsJsonPromises = [];
-	for (const matchupRes of matchupsRes) {
+	for(const matchupRes of matchupsRes) {
 		const data = matchupRes.json();
-		matchupsJsonPromises.push(data);
+		matchupsJsonPromises.push(data)
 		if (!matchupRes.ok) {
 			console.error(data);
 		}
 	}
-	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => {
-		console.error(err);
-	});
+	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
 
+	// now that we've used the current season ID for everything we need, set it to the previous season
 	curSeason = leagueData.previous_league_id;
 
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
-
-	for (const matchupWeek of matchupsData) {
-		const { sPR, mD, sW } = processMatchups({
-			matchupWeek,
-			seasonPointsRecord,
-			record: regularSeason,
-			startWeek,
-			matchupDifferentials,
-			year,
-		});
+	
+	// process all the matchups
+	for(const matchupWeek of matchupsData) {
+		const {sPR, mD, sW} =  processMatchups({matchupWeek, seasonPointsRecord, record: regularSeason, startWeek, matchupDifferentials, year})
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
 	}
 
-	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
-	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
+	// sort matchup differentials
+	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential')
 
+	// sort season point records
+	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts')
+
+	// add matchupDifferentials to tha all time  records
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
-	if (seasonPointsHighs.length > 0) {
+
+	if(seasonPointsHighs.length > 0) {
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
@@ -249,30 +242,12 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		year = null;
 	}
 
-	// ✅ Forced loop through 2023 and 2024 AFTER normal processing
-	if (parseInt(leagueData.season) !== 2023 && parseInt(leagueData.season) !== 2024) {
-		await processRegularSeason({
-			rosters,
-			leagueData: await fetchLeagueData('2024'), // replace with actual league ID or fetching logic
-			curSeason: '2024',
-			week,
-			regularSeason,
-		});
-
-		await processRegularSeason({
-			rosters,
-			leagueData: await fetchLeagueData('2023'),
-			curSeason: '2023',
-			week,
-			regularSeason,
-		});
-	}
-
 	return {
 		season: curSeason,
 		year,
-	};
-};
+	}
+}
+
 
 /**
  * Analyzes an individual roster and adds entries for that roster's
