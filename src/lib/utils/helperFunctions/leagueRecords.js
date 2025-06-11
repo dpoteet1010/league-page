@@ -16,109 +16,149 @@ import { browser } from '$app/environment';
  * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
  */
 export const getLeagueRecords = async (refresh = false) => {
-	// records temporarily cached for an individual session
-	if(get(records).leagueWeekHighs) {
+	if (get(records).leagueWeekHighs) {
 		return get(records);
 	}
 
-	// if this isn't a refresh data call, check if there are already
-	// transactions stored in localStorage (long term)
-	if(!refresh && browser) {
+	if (!refresh && browser) {
 		let localRecords = await JSON.parse(localStorage.getItem("records"));
-		// check if transactions have been saved to localStorage before
-		if(localRecords && localRecords.playoffData) {
+		if (localRecords && localRecords.playoffData) {
 			localRecords.stale = true;
 			return localRecords;
 		}
 	}
 
-	// get info about the current NFL season (week and season type)
-	const nflState = await getNflState().catch((err) => { console.error(err); });
+	const nflState = await getNflState().catch((err) => {
+		console.error(err);
+	});
 	let week = 0;
-	if(nflState.season_type == 'regular') {
+	if (nflState.season_type == 'regular') {
 		week = nflState.week - 1;
-	} else if(nflState.season_type == 'post') {
+	} else if (nflState.season_type == 'post') {
 		week = 18;
 	}
 
-	// initiate current season to be your current
-	// league page leagueID
 	let curSeason = leagueID;
-
-	// currentYear will eventually be assigned as the most recent year
-	// that has record information (current season if past week 1,
-	// previous season if not)
 	let currentYear;
-
-	// lastYear gets updated as it loops through each season, so that
-	// it will eventually be set to the last year that records exist
 	let lastYear;
 
-	// regularSeason is a Records class that stores all the data
-	// necessary to display regular season records
 	let regularSeason = new Records();
-
-	// playoffRecords is a Records class that stores all the data
-	// necessary to display playoff records
 	let playoffRecords = new Records();
 
-	// loop through each season until the previous_league_id becomes null (or in some cases 0)
-	while(curSeason && curSeason != 0) {
+	// Step 1: Force loop through 2023 and 2024
+	const forcedSeasons = ['2023', '2024'];
+
+	for (const forcedID of forcedSeasons) {
 		const [rosterRes, leagueData] = await waitForAll(
-			getLeagueRosters(curSeason),
-			getLeagueData(curSeason),
-		).catch((err) => { console.error(err); });
+			getLeagueRosters(forcedID),
+			getLeagueData(forcedID),
+		).catch((err) => {
+			console.error(err);
+			continue;
+		});
 
 		const rosters = rosterRes.rosters;
 
-		// on first run, week is provided above from nflState,
-		// after that get the final week of regular season from leagueData
-		if(leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
-			week = 99; // set it high
+		let tempWeek = week;
+		if (leagueData.status == 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
+			tempWeek = 99;
 		}
 
-		// regular season data
 		const {
 			season,
 			year,
-		} = await processRegularSeason({leagueData, rosters, curSeason, week, regularSeason})
+		} = await processRegularSeason({
+			leagueData,
+			rosters,
+			curSeason: forcedID,
+			week: tempWeek,
+			regularSeason
+		});
 
-		// post season data
-		const pS = await processPlayoffs({year, curSeason, week, playoffRecords, rosters})
+		const pS = await processPlayoffs({
+			year,
+			curSeason: forcedID,
+			week: tempWeek,
+			playoffRecords,
+			rosters
+		});
 
-		if(pS) {
-			playoffRecords = pS; // update the regular season records
+		if (pS) {
+			playoffRecords = pS;
 		}
 
 		lastYear = year;
+		if (!currentYear && year) currentYear = year;
 
-		if(!currentYear && year) {
-			currentYear = year;
+		// After 2024, set curSeason for while loop to continue walking back
+		if (forcedID === '2024') {
+			curSeason = leagueData.previous_league_id;
+		}
+	}
+
+	// Step 2: Continue as normal
+	while (curSeason && curSeason != 0) {
+		const [rosterRes, leagueData] = await waitForAll(
+			getLeagueRosters(curSeason),
+			getLeagueData(curSeason),
+		).catch((err) => {
+			console.error(err);
+			break;
+		});
+
+		const rosters = rosterRes.rosters;
+
+		if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+			week = 99;
 		}
 
-		curSeason = season;
+		const {
+			season,
+			year,
+		} = await processRegularSeason({
+			leagueData,
+			rosters,
+			curSeason,
+			week,
+			regularSeason
+		});
+
+		const pS = await processPlayoffs({
+			year,
+			curSeason,
+			week,
+			playoffRecords,
+			rosters
+		});
+
+		if (pS) {
+			playoffRecords = pS;
+		}
+
+		lastYear = year;
+		if (!currentYear && year) currentYear = year;
+
+		curSeason = leagueData.previous_league_id;
 	}
 
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
-	regularSeason.finalizeAllTimeRecords({currentYear, lastYear});
-	playoffRecords.finalizeAllTimeRecords({currentYear, lastYear});
-	
-	const regularSeasonData = regularSeason.returnRecords()
-	const playoffData = playoffRecords.returnRecords()
+	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
+	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
 
-	const recordsData = {regularSeasonData, playoffData};
+	const regularSeasonData = regularSeason.returnRecords();
+	const playoffData = playoffRecords.returnRecords();
 
-    if(browser) {
-        // update localStorage
-        localStorage.setItem("records", JSON.stringify(recordsData));
-    
-        records.update(() => recordsData);
-    }
+	const recordsData = { regularSeasonData, playoffData };
+
+	if (browser) {
+		localStorage.setItem("records", JSON.stringify(recordsData));
+		records.update(() => recordsData);
+	}
 
 	return recordsData;
-}
+};
 
 /**
  * processes a regular season by calling Sleeper APIs to get the data fro a season and turn
