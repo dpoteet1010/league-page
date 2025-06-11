@@ -48,54 +48,59 @@ export const getLeagueRecords = async (refresh = false) => {
 	// Step 1: Force loop through 2023 and 2024
 	const forcedSeasons = ['2023', '2024'];
 
-	for (const forcedID of forcedSeasons) {
-		try {
-			const [rosterRes, leagueData] = await waitForAll(
-				getLeagueRosters(forcedID),
-				getLeagueData(forcedID),
-			);
+for (const forcedID of forcedSeasons) {
+    try {
+        console.log(`Fetching data for forced season: ${forcedID}`);
+        const [rosterRes, leagueData] = await waitForAll(
+            getLeagueRosters(forcedID),
+            getLeagueData(forcedID),
+        );
 
-			const rosters = rosterRes.rosters;
+        // Log what was fetched for debugging
+        console.log(`Roster data for season ${forcedID}:`, rosterRes);
+        console.log(`League data for season ${forcedID}:`, leagueData);
 
-			let tempWeek = week;
-			if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
-				tempWeek = 99;
-			}
+        const rosters = rosterRes.rosters;
 
-			const {
-				season,
-				year,
-			} = await processRegularSeason({
-				leagueData,
-				rosters,
-				curSeason: forcedID,
-				week: tempWeek,
-				regularSeason
-			});
+        let tempWeek = week;
+        if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
+            tempWeek = 99;
+        }
 
-			const pS = await processPlayoffs({
-				year,
-				curSeason: forcedID,
-				week: tempWeek,
-				playoffRecords,
-				rosters
-			});
+        const {
+            season,
+            year,
+        } = await processRegularSeason({
+            leagueData,
+            rosters,
+            curSeason: forcedID,
+            week: tempWeek,
+            regularSeason
+        });
 
-			if (pS) {
-				playoffRecords = pS;
-			}
+        const pS = await processPlayoffs({
+            year,
+            curSeason: forcedID,
+            week: tempWeek,
+            playoffRecords,
+            rosters
+        });
 
-			lastYear = year;
-			if (!currentYear && year) currentYear = year;
+        if (pS) {
+            playoffRecords = pS;
+        }
 
-			// After 2024, set curSeason for while loop
-			if (forcedID === '2024') {
-				curSeason = leagueData.previous_league_id;
-			}
-		} catch (err) {
-			console.error(`Failed to process season ${forcedID}`, err);
-		}
-	}
+        lastYear = year;
+        if (!currentYear && year) currentYear = year;
+
+        // After 2024, set curSeason for while loop
+        if (forcedID === '2024') {
+            curSeason = leagueData.previous_league_id;
+        }
+    } catch (err) {
+        console.error(`Failed to process season ${forcedID}`, err);
+    }
+}
 
 	// Step 2: Continue as normal
 	while (curSeason && curSeason != 0) {
