@@ -204,7 +204,14 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 			console.error(data);
 		}
 	}
-	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
+	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err);
+	matchupsData.forEach((matchupWeek, i) => {
+	if (!Array.isArray(matchupWeek)) {
+		console.warn(`⚠️ Week ${i + 1} in season ${leagueData.season} is not iterable:`, matchupWeek);
+	} else {
+		console.log(`✅ Week ${i + 1} in season ${leagueData.season} contains ${matchupWeek.length} matchups.`);
+	}
+});	
 
 	// now that we've used the current season ID for everything we need, set it to the previous season
 	curSeason = leagueData.previous_league_id;
