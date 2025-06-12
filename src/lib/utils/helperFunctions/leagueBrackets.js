@@ -15,37 +15,20 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         return get(brackets);
     }
 
-    // ✅ Legacy leagues: 2023 & 2024
+    // ✅ Legacy leagues: use local bracket data
     if (queryLeagueID === '2023' || queryLeagueID === '2024') {
         console.log('🕰 Using legacy data for:', queryLeagueID);
 
         const winnersData = legacyWinnersBrackets[queryLeagueID];
         const losersData = legacyLosersBrackets[queryLeagueID];
 
-        console.log('🏆 Legacy Winners:', winnersData);
-        console.log('🥈 Legacy Losers:', losersData);
-
-        const playoffRounds = winnersData[winnersData.length - 1]?.r;
-        const loserRounds = losersData[losersData.length - 1]?.r;
-
+        const playoffRounds = winnersData?.[winnersData.length - 1]?.r || 0;
+        const loserRounds = losersData?.[losersData.length - 1]?.r || 0;
         const playoffsStart = 15;
         const playoffType = 0;
 
-        // ✅ Fetch actual matchup data for weeks 15–17
-        const matchupFetches = [];
-        for (let week = playoffsStart; week <= 17; week++) {
-            matchupFetches.push(fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${week}`, { compress: true }));
-        }
-
-        let playoffMatchups = [];
-        try {
-            const responses = await waitForAll(...matchupFetches);
-            const jsonPromises = responses.map(res => res.json());
-            playoffMatchups = await waitForAll(...jsonPromises);
-            console.log('📅 Legacy playoff matchups loaded:', playoffMatchups);
-        } catch (err) {
-            console.error('❌ Error loading legacy playoff matchups:', err);
-        }
+        // ⚠️ No API calls for legacy IDs
+        const playoffMatchups = new Array(3).fill([]); // Stubbed for weeks 15–17
 
         const champs = evaluateBracket(winnersData, playoffRounds, playoffMatchups, playoffType);
         const losers = evaluateBracket(losersData, loserRounds, playoffMatchups, playoffType);
@@ -57,14 +40,14 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
             loserRounds,
             champs,
             losers,
-            bracket: champs.bracket, // Optional compatibility
+            bracket: champs.bracket,
         };
 
         console.log('✅ Final legacy brackets:', finalBrackets);
         return finalBrackets;
     }
 
-    // ✅ Modern leagues
+    // ✅ Modern Sleeper API flow
     const [rosterRes, leagueData] = await waitForAll(
         getLeagueRosters(queryLeagueID),
         getLeagueData(queryLeagueID)
@@ -74,21 +57,17 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
 
     const numRosters = Object.keys(rosterRes.rosters).length;
 
-    const bracketsAndMatchupFetches = [
-        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/winners_bracket`, { compress: true }),
-        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/losers_bracket`, { compress: true }),
-    ];
-
     const year = parseInt(leagueData.season);
     const playoffsStart = parseInt(leagueData.settings.playoff_week_start);
 
     let playoffType = 0;
-    if (year > 2019) {
-        playoffType = parseInt(leagueData.settings.playoff_round_type);
-    }
-    if (year === 2020 && playoffType === 1) {
-        playoffType = 2;
-    }
+    if (year > 2019) playoffType = parseInt(leagueData.settings.playoff_round_type);
+    if (year === 2020 && playoffType === 1) playoffType = 2;
+
+    const bracketsAndMatchupFetches = [
+        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/winners_bracket`, { compress: true }),
+        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/losers_bracket`, { compress: true }),
+    ];
 
     for (let i = playoffsStart; i < 19; i++) {
         bracketsAndMatchupFetches.push(
@@ -112,8 +91,8 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
     const winnersData = playoffMatchups.shift();
     const losersData = playoffMatchups.shift();
 
-    const playoffRounds = winnersData[winnersData.length - 1]?.r;
-    const loserRounds = losersData[losersData.length - 1]?.r;
+    const playoffRounds = winnersData?.[winnersData.length - 1]?.r || 0;
+    const loserRounds = losersData?.[losersData.length - 1]?.r || 0;
 
     const champs = evaluateBracket(winnersData, playoffRounds, playoffMatchups, playoffType);
     const losers = evaluateBracket(losersData, loserRounds, playoffMatchups, playoffType);
@@ -125,10 +104,8 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         loserRounds,
         champs,
         losers,
-        bracket: champs.bracket, // Optional compatibility
+        bracket: champs.bracket,
     };
-
-    console.log('✅ Final computed brackets:', finalBrackets);
 
     if (queryLeagueID == leagueID) {
         brackets.update(() => finalBrackets);
