@@ -17,26 +17,32 @@ import { browser } from '$app/environment';
  */
 export const getLeagueRecords = async (refresh = false) => {
 	if (get(records).leagueWeekHighs) {
+		console.log("🛑 Records already exist in store — returning cached data");
 		return get(records);
 	}
 
 	if (!refresh && browser) {
 		let localRecords = await JSON.parse(localStorage.getItem("records"));
 		if (localRecords && localRecords.playoffData) {
+			console.log("💾 Returning records from localStorage (stale: true)");
 			localRecords.stale = true;
 			return localRecords;
 		}
 	}
 
+	console.log("🔄 Fetching NFL state...");
 	const nflState = await getNflState().catch((err) => {
-		console.error(err);
+		console.error("❌ Error fetching NFL state:", err);
 	});
+	console.log("🏈 NFL state:", nflState);
+
 	let week = 0;
-	if (nflState.season_type == 'regular') {
+	if (nflState.season_type === 'regular') {
 		week = nflState.week - 1;
-	} else if (nflState.season_type == 'post') {
+	} else if (nflState.season_type === 'post') {
 		week = 18;
 	}
+	console.log(`📆 Current analysis week: ${week}`);
 
 	let curSeason = leagueID;
 	let currentYear;
@@ -45,18 +51,20 @@ export const getLeagueRecords = async (refresh = false) => {
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	// --- Step 1: Process league chain from leagueID to the earliest connected season ---
-	while (curSeason && curSeason != 0) {
+	// Step 1: Traverse connected leagues (previous_league_id chain)
+	while (curSeason && curSeason !== 0) {
 		try {
+			console.log(`🔗 Traversing league chain. Processing league ID: ${curSeason}`);
 			const [rosterRes, leagueData] = await waitForAll(
 				getLeagueRosters(curSeason),
 				getLeagueData(curSeason),
 			);
 
 			const rosters = rosterRes.rosters;
+			console.log(`📦 League ${leagueData.name} (${leagueData.season}) — ${rosters.length} rosters loaded`);
 
 			let tempWeek = week;
-			if (leagueData.status == 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
+			if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
 				tempWeek = 99;
 			}
 
@@ -70,6 +78,7 @@ export const getLeagueRecords = async (refresh = false) => {
 				week: tempWeek,
 				regularSeason
 			});
+			console.log(`✅ Finished regular season for ${year}, leagueID ${curSeason}`);
 
 			const pS = await processPlayoffs({
 				year,
@@ -81,6 +90,7 @@ export const getLeagueRecords = async (refresh = false) => {
 
 			if (pS) {
 				playoffRecords = pS;
+				console.log(`🏆 Processed playoffs for ${year}`);
 			}
 
 			lastYear = year;
@@ -88,23 +98,24 @@ export const getLeagueRecords = async (refresh = false) => {
 
 			curSeason = leagueData.previous_league_id;
 		} catch (err) {
-			console.error(err);
+			console.error("❌ Error processing league chain season:", err);
 			break;
 		}
 	}
 
-	// --- Step 2: Process legacy static seasons (2024 and 2023) ---
+	// Step 2: Handle static legacy seasons
 	const staticSeasons = ['2024', '2023'];
 
 	for (const staticID of staticSeasons) {
 		try {
-			console.log(`Processing static season: ${staticID}`);
+			console.log(`📘 Starting legacy season ${staticID}`);
 			const [rosterRes, leagueData] = await waitForAll(
 				getLeagueRosters(staticID),
 				getLeagueData(staticID),
 			);
 
 			const rosters = rosterRes.rosters;
+			console.log(`📦 Legacy season ${staticID}: ${rosters.length} rosters from league "${leagueData.name}"`);
 
 			let tempWeek = week;
 			if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
@@ -121,6 +132,7 @@ export const getLeagueRecords = async (refresh = false) => {
 				week: tempWeek,
 				regularSeason
 			});
+			console.log(`✅ Finished regular season for legacy ${year}, leagueID ${staticID}`);
 
 			const pS = await processPlayoffs({
 				year,
@@ -132,16 +144,18 @@ export const getLeagueRecords = async (refresh = false) => {
 
 			if (pS) {
 				playoffRecords = pS;
+				console.log(`🏆 Processed playoffs for legacy ${year}`);
 			}
 
 			lastYear = year;
 			if (!currentYear && year) currentYear = year;
 		} catch (err) {
-			console.error(`Error processing static season ${staticID}:`, err);
+			console.error(`❌ Error processing static season ${staticID}:`, err);
 		}
 	}
 
-	// Finalize and store results
+	// Finalize records
+	console.log("📍 Finalizing records...");
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
@@ -151,10 +165,14 @@ export const getLeagueRecords = async (refresh = false) => {
 	const regularSeasonData = regularSeason.returnRecords();
 	const playoffData = playoffRecords.returnRecords();
 
+	console.log("📊 Final regular season data:", regularSeasonData);
+	console.log("📊 Final playoff data:", playoffData);
+
 	const recordsData = { regularSeasonData, playoffData };
 
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
+		console.log("💽 Records saved to localStorage");
 		records.update(() => recordsData);
 	}
 
@@ -178,33 +196,37 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 	let year = parseInt(leagueData.season);
 	const isLegacy = ['2023', '2024'].includes(String(year));
 
-	// On first run, week is provided above from nflState,
-	// after that get the final week of regular season from leagueData
+	console.log(`🔍 Processing regular season for year ${year}, leagueID: ${curSeason}`);
+	console.log(`📋 League status: ${leagueData.status}, playoff_week_start: ${leagueData.settings.playoff_week_start}, week param: ${week}`);
+	
 	if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
+		console.log(`⏱️ Adjusted week for complete season: ${week}`);
 	}
 
 	// Analyze rosters
+	console.log(`👥 Analyzing ${Object.keys(rosters).length} rosters...`);
 	for (const rosterID in rosters) {
 		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
 	}
+	console.log(`✅ Roster analysis complete for ${year}`);
 
-	// --- Get matchups data (legacy or API)
+	// Get matchups
 	let matchupsData = [];
 	let startWeek = parseInt(week);
 
 	if (isLegacy && legacyMatchups[year]) {
-		// ✅ Use legacy matchups
+		console.log(`📜 Using legacy matchups for year ${year}`);
 		for (let w = startWeek; w > 0; w--) {
 			if (legacyMatchups[year][w]) {
 				matchupsData.push(legacyMatchups[year][w]);
 			} else {
 				console.warn(`⚠️ No legacy matchups for week ${w} in season ${year}`);
-				matchupsData.push([]); // Ensure array consistency
+				matchupsData.push([]); // Maintain structure
 			}
 		}
 	} else {
-		// ✅ Use Sleeper API for current season
+		console.log(`🌐 Fetching matchups from Sleeper API for leagueID ${curSeason}`);
 		const matchupsPromises = [];
 		while (week > 0) {
 			matchupsPromises.push(
@@ -214,29 +236,42 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		}
 
 		const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => {
-			console.error(err);
+			console.error(`❌ Error fetching matchups from Sleeper:`, err);
 		});
 
-		const matchupsJsonPromises = matchupsRes.map((res) => res.json());
+		const matchupsJsonPromises = matchupsRes.map((res, i) => {
+			if (!res.ok) {
+				console.warn(`⚠️ Week ${startWeek - i} API response not OK`);
+			}
+			return res.json();
+		});
+
 		matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => {
-			console.error(err);
+			console.error("❌ Error parsing matchups JSON:", err);
 		});
 	}
 
-	// Validate matchups
+	console.log(`📅 Retrieved matchups for ${matchupsData.length} weeks in season ${year}`);
+
 	matchupsData.forEach((matchupWeek, i) => {
 		if (!Array.isArray(matchupWeek)) {
-			console.warn(`⚠️ Week ${i + 1} in season ${leagueData.season} is not iterable:`, matchupWeek);
+			console.warn(`⚠️ Week ${i + 1} in season ${year} is not an array:`, matchupWeek);
 		} else {
-			console.log(`✅ Week ${i + 1} in season ${leagueData.season} contains ${matchupWeek.length} matchups.`);
+			console.log(`✅ Week ${i + 1} in season ${year} has ${matchupWeek.length} matchups`);
 		}
 	});
 
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
 
-	// Process each week's matchups
+	// Process matchups week by week
 	for (const matchupWeek of matchupsData) {
+		if (!matchupWeek || matchupWeek.length === 0) {
+			console.warn(`⚠️ Skipping empty matchup week at index ${startWeek}`);
+			startWeek--;
+			continue;
+		}
+
 		const { sPR, mD, sW } = processMatchups({
 			matchupWeek,
 			seasonPointsRecord,
@@ -250,9 +285,13 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		startWeek = sW;
 	}
 
-	// Sort and store results
+	// Sort and apply to records
 	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
 	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
+
+	console.log(`📈 Processed ${matchupDifferentials.length} differentials for season ${year}`);
+	console.log(`🔥 High scoring games:`, seasonPointsHighs.slice(0, 3));
+	console.log(`🧊 Low scoring games:`, seasonPointsLows.slice(0, 3));
 
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
@@ -264,7 +303,9 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 			seasonPointsLows,
 			seasonPointsHighs,
 		});
+		console.log(`✅ Season week record added for ${year}`);
 	} else {
+		console.warn(`⚠️ No points recorded — skipping week record for ${year}`);
 		year = null;
 	}
 
@@ -283,42 +324,57 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
  * @param {Object} rosterData.roster the roster being analyzed
  * @param {Records} rosterData.regularSeason the global regularSeason object that will be updated and returned
  */
-const analyzeRosters = ({year, roster, regularSeason}) => {
-    // team name and logo are tied to the ownerID
-    const rosterID = roster.roster_id;
+const analyzeRosters = ({ year, roster, regularSeason }) => {
+	const rosterID = roster.roster_id;
+	const managers = getManagers(roster);
 
-    const managers = getManagers(roster);
+	console.log(`🔍 Analyzing roster ID: ${rosterID}, Managers: ${managers.join(', ')}`);
 
-	// season hasn't started, no records to obtain
-	if(roster.settings.wins == 0 && roster.settings.ties == 0 && roster.settings.losses == 0) return;
-
-	// fptsFor and fptsPerGame are used for both rosterRecords and seasonLongPoints
-	const fptsFor = roster.settings.fpts + (roster.settings.fpts_decimal / 100);
-	const fptsPerGame = round(fptsFor / (roster.settings.wins + roster.settings.losses + roster.settings.ties));
-
-	const rosterRecords = {
-		wins:  roster.settings.wins,
-		losses:  roster.settings.losses,
-		ties:  roster.settings.ties,
-		fptsFor,
-		fptsAgainst:  roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100),
-		fptsPerGame,
-		potentialPoints:  roster.settings.ppts + (roster.settings.ppts_decimal / 100),
-		rosterID,
-		year,
+	// Skip if the team has no record (likely inactive or preseason)
+	if (roster.settings.wins === 0 && roster.settings.ties === 0 && roster.settings.losses === 0) {
+		console.warn(`⚠️ Skipping roster ${rosterID} (no games played in season ${year})`);
+		return;
 	}
 
-	// update the roster records for this roster ID
-	regularSeason.updateManagerRecord(managers, rosterRecords);
+	const fptsFor = roster.settings.fpts + (roster.settings.fpts_decimal / 100);
+	const fptsAgainst = roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100);
+	const potentialPoints = roster.settings.ppts + (roster.settings.ppts_decimal / 100);
+	const gamesPlayed = roster.settings.wins + roster.settings.losses + roster.settings.ties;
 
-	// add season long points entry
+	if (gamesPlayed === 0) {
+		console.warn(`⚠️ Roster ${rosterID} has 0 games played — skipping`);
+		return;
+	}
+
+	const fptsPerGame = round(fptsFor / gamesPlayed);
+
+	const rosterRecords = {
+		wins: roster.settings.wins,
+		losses: roster.settings.losses,
+		ties: roster.settings.ties,
+		fptsFor,
+		fptsAgainst,
+		fptsPerGame,
+		potentialPoints,
+		rosterID,
+		year,
+	};
+
+	console.log(`📊 Roster stats for ${rosterID} (year ${year}):`, rosterRecords);
+
+	// Update manager records
+	regularSeason.updateManagerRecord(managers, rosterRecords);
+	console.log(`✅ Updated manager record for roster ${rosterID}`);
+
+	// Add to season-long points
 	regularSeason.addSeasonLongPoints({
 		rosterID,
 		fpts: fptsFor,
 		fptsPerGame,
 		year,
 	});
-}
+	console.log(`📈 Added season-long points for roster ${rosterID}`);
+};
 
 /**
  * Processes the matchups for a given week of a season. Calculates weekly points,
@@ -424,6 +480,8 @@ const processMatchups = ({matchupWeek, seasonPointsRecord, record, startWeek, ma
             pSD[away.rosterID].fptsAgainst = home.fpts;
 		}
 	}
+	console.log(`📈 Processed ${Object.keys(matchups).length} matchups in week ${startWeek + 1}`);
+	console.log(`🏆 Matchup differentials this week:`, matchupDifferentials.slice(-3)); // Show last 3 for brevity
 
 	return {
 		sPR: seasonPointsRecord,
