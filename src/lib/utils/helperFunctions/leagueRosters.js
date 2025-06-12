@@ -16,20 +16,23 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
     }
 
     // Handle legacy years
-    if (queryLeagueID === '2023' || queryLeagueID === '2024') {
-        console.log(`📦 Using legacy rosters for league ${queryLeagueID}`);
-        const legacyArray = legacyLeagueRosters[queryLeagueID];
-        if (!Array.isArray(legacyArray)) {
-            throw new Error(`❌ Legacy data for ${queryLeagueID} must be an array`);
-        }
-
-        const processed = processRosters(legacyArray);
-        rostersStore.update(r => {
-            r[queryLeagueID] = processed;
-            return r;
-        });
-        return processed;
+if (queryLeagueID === '2023' || queryLeagueID === '2024') {
+    console.log(`📦 Using legacy rosters for league ${queryLeagueID}`);
+    const legacyObject = legacyLeagueRosters[queryLeagueID];
+    if (!legacyObject || typeof legacyObject !== 'object') {
+        throw new Error(`❌ Invalid legacy data for ${queryLeagueID}`);
     }
+
+    // Convert object to array of roster values
+    const legacyArray = Object.values(legacyObject);
+
+    const processed = processRosters(legacyArray);
+    rostersStore.update(r => {
+        r[queryLeagueID] = processed;
+        return r;
+    });
+    return processed;
+}
 
     // Otherwise fetch from Sleeper API
     const res = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/rosters`, { compress: true }).catch(err => {
