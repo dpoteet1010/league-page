@@ -1,7 +1,8 @@
-export const legacyLeagueRosters = {
-  "2023": {
-    "rosters": {
-      "1": {
+export const legacyLeagueRosters = [
+  {
+    "year": 2023,
+    "rosters": [
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -9,7 +10,7 @@ export const legacyLeagueRosters = {
           "record": "LWWLLWWWWWWWWL",
           "streak": "1L"
         },
-        "owner_id": "1211171582181912576",
+        "owner_id": 1211171582181912576,
         "player_map": null,
         "players": [
           "8183",
@@ -59,7 +60,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "6": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -67,7 +68,7 @@ export const legacyLeagueRosters = {
           "record": "WLWLWWWWLLLLLL",
           "streak": "6L"
         },
-        "owner_id": "997207542067429376",
+        "owner_id": 997207542067429376,
         "player_map": null,
         "players": [
           "CHI",
@@ -117,7 +118,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "9": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -125,7 +126,7 @@ export const legacyLeagueRosters = {
           "record": "LLLWWWLLLLWLWW",
           "streak": "2W"
         },
-        "owner_id": "1129215612842016768",
+        "owner_id": 1129215612842016768,
         "player_map": null,
         "players": [
           "2028",
@@ -175,7 +176,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "12": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -183,7 +184,7 @@ export const legacyLeagueRosters = {
           "record": "LLWLLWLWLWLLLL",
           "streak": "4L"
         },
-        "owner_id": "1228199076927909888",
+        "owner_id": 1228199076927909888,
         "player_map": null,
         "players": [
           "6804",
@@ -232,7 +233,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "3": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -240,7 +241,7 @@ export const legacyLeagueRosters = {
           "record": "WLWLWLLWWLWWLW",
           "streak": "1L"
         },
-        "owner_id": "1",
+        "owner_id": 1,
         "player_map": null,
         "players": [
           "7591",
@@ -289,7 +290,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "2": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -297,7 +298,7 @@ export const legacyLeagueRosters = {
           "record": "LWLWLLWLWLWWWL",
           "streak": "1L"
         },
-        "owner_id": "1002297734663237632",
+        "owner_id": 1002297734663237632,
         "player_map": null,
         "players": [
           "DEN",
@@ -347,7 +348,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "11": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -355,7 +356,7 @@ export const legacyLeagueRosters = {
           "record": "WWLLLLLLLLLWWW",
           "streak": "3W"
         },
-        "owner_id": "1227846679458230272",
+        "owner_id": 1227846679458230272,
         "player_map": null,
         "players": [
           "4892",
@@ -404,7 +405,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "5": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -412,7 +413,7 @@ export const legacyLeagueRosters = {
           "record": "WLWWLWWLWWWWLL",
           "streak": "2L"
         },
-        "owner_id": "1129950475123781632",
+        "owner_id": 1129950475123781632,
         "player_map": null,
         "players": [
           "DAL",
@@ -462,7 +463,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "7": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -470,7 +471,7 @@ export const legacyLeagueRosters = {
           "record": "WWLWLWWLLWLLLW",
           "streak": "1W"
         },
-        "owner_id": "862540586538921984",
+        "owner_id": 862540586538921984,
         "player_map": null,
         "players": [
           "3163",
@@ -520,7 +521,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "4": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -528,7 +529,7 @@ export const legacyLeagueRosters = {
           "record": "WLLLWLWWWWLWWW",
           "streak": "3W"
         },
-        "owner_id": "1137981174678462464",
+        "owner_id": 1137981174678462464,
         "player_map": null,
         "players": [
           "4984",
@@ -578,7 +579,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "8": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -586,7 +587,7 @@ export const legacyLeagueRosters = {
           "record": "LWWWWLLLWWWLLW",
           "streak": "1W"
         },
-        "owner_id": "732863490657738752",
+        "owner_id": 732863490657738752,
         "player_map": null,
         "players": [
           "BUF",
@@ -636,7 +637,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "10": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2023,
@@ -644,7 +645,7 @@ export const legacyLeagueRosters = {
           "record": "LWLWWLLWLLLLWL",
           "streak": "1L"
         },
-        "owner_id": "1128923498258219008",
+        "owner_id": 1128923498258219008,
         "player_map": null,
         "players": [
           "421",
@@ -693,121 +694,12 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       }
-    },
-    "startersAndReserve": [
-      "8183",
-      "8136",
-      "8150",
-      "6786",
-      "2374",
-      "1466",
-      "7564",
-      "6083",
-      "JAX",
-      "CHI",
-      "4046",
-      "7543",
-      "8138",
-      "9756",
-      "10229",
-      "5022",
-      "6790",
-      "4227",
-      "2028",
-      "3164",
-      "8205",
-      "3321",
-      "7525",
-      "4217",
-      "1689",
-      "1264",
-      "GB",
-      "6804",
-      "8143",
-      "10235",
-      "5859",
-      "8121",
-      "5844",
-      "2197",
-      "1348",
-      "PIT",
-      "7591",
-      "4018",
-      "8151",
-      "6794",
-      "9997",
-      "5001",
-      "9226",
-      "4666",
-      "MIA",
-      "DEN",
-      "3294",
-      "9221",
-      "6813",
-      "2133",
-      "6803",
-      "4066",
-      "5846",
-      "2020",
-      "4892",
-      "3198",
-      "5967",
-      "4983",
-      "6819",
-      "6826",
-      "5872",
-      "10937",
-      "IND",
-      "6904",
-      "4034",
-      "5248",
-      "8144",
-      "8146",
-      "8130",
-      "4089",
-      "7042",
-      "LV",
-      "3163",
-      "4866",
-      "4035",
-      "7547",
-      "1426",
-      "4033",
-      "4199",
-      "11533",
-      "CLE",
-      "4984",
-      "4663",
-      "5892",
-      "5947",
-      "4037",
-      "8110",
-      "7588",
-      "4195",
-      "PHI",
-      "BUF",
-      "5849",
-      "8155",
-      "8139",
-      "2449",
-      "9754",
-      "8131",
-      "10232",
-      "17",
-      "421",
-      "9509",
-      "4137",
-      "2216",
-      "4039",
-      "10859",
-      "7569",
-      "650",
-      "LAR"
     ]
   },
-  "2024": {
-    "rosters": {
-      "1": {
+  {
+    "year": 2024,
+    "rosters": [
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -815,7 +707,7 @@ export const legacyLeagueRosters = {
           "record": "LLLWWWWLLWLWLL",
           "streak": "2L"
         },
-        "owner_id": "1211171582181912576",
+        "owner_id": 1211171582181912576,
         "player_map": null,
         "players": [
           "PHI",
@@ -867,7 +759,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "12": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -875,7 +767,7 @@ export const legacyLeagueRosters = {
           "record": "LWWLWWWLWWLWWL",
           "streak": "1L"
         },
-        "owner_id": "1228199076927909888",
+        "owner_id": 1228199076927909888,
         "player_map": null,
         "players": [
           "GB",
@@ -927,7 +819,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "9": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -935,7 +827,7 @@ export const legacyLeagueRosters = {
           "record": "LWLLWWWWLLWWLL",
           "streak": "2L"
         },
-        "owner_id": "1129215612842016768",
+        "owner_id": 1129215612842016768,
         "player_map": null,
         "players": [
           "WAS",
@@ -987,7 +879,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "6": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -995,7 +887,7 @@ export const legacyLeagueRosters = {
           "record": "LLLWLLWLLWLLLW",
           "streak": "1W"
         },
-        "owner_id": "997207542067429376",
+        "owner_id": 997207542067429376,
         "player_map": null,
         "players": [
           "LAC",
@@ -1047,7 +939,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "3": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1055,7 +947,7 @@ export const legacyLeagueRosters = {
           "record": "WLWWLWLWWLWLLW",
           "streak": "1W"
         },
-        "owner_id": "1",
+        "owner_id": 1,
         "player_map": null,
         "players": [
           "CIN",
@@ -1107,7 +999,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "2": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1115,7 +1007,7 @@ export const legacyLeagueRosters = {
           "record": "WLLWLLLLWWWLWL",
           "streak": "1L"
         },
-        "owner_id": "1002297734663237632",
+        "owner_id": 1002297734663237632,
         "player_map": null,
         "players": [
           "IND",
@@ -1167,7 +1059,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "11": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1175,7 +1067,7 @@ export const legacyLeagueRosters = {
           "record": "WWWLLLLWWWWLLW",
           "streak": "1W"
         },
-        "owner_id": "1227846679458230272",
+        "owner_id": 1227846679458230272,
         "player_map": null,
         "players": [
           "ARI",
@@ -1227,7 +1119,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "5": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1235,7 +1127,7 @@ export const legacyLeagueRosters = {
           "record": "WWLLWWWLLLLLWL",
           "streak": "1L"
         },
-        "owner_id": "1129950475123781632",
+        "owner_id": 1129950475123781632,
         "player_map": null,
         "players": [
           "TB",
@@ -1287,7 +1179,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "7": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1295,7 +1187,7 @@ export const legacyLeagueRosters = {
           "record": "WWLWWLWWWLLLLW",
           "streak": "1W"
         },
-        "owner_id": "862540586538921984",
+        "owner_id": 862540586538921984,
         "player_map": null,
         "players": [
           "3163",
@@ -1347,7 +1239,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "4": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1355,7 +1247,7 @@ export const legacyLeagueRosters = {
           "record": "WLWWWWLWWWWWWW",
           "streak": "7W"
         },
-        "owner_id": "1137981174678462464",
+        "owner_id": 1137981174678462464,
         "player_map": null,
         "players": [
           "BUF",
@@ -1405,7 +1297,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "8": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1413,7 +1305,7 @@ export const legacyLeagueRosters = {
           "record": "LLWLLLLLLLLWWL",
           "streak": "1L"
         },
-        "owner_id": "732863490657738752",
+        "owner_id": 732863490657738752,
         "player_map": null,
         "players": [
           "11564",
@@ -1465,7 +1357,7 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       },
-      "10": {
+      {
         "co_owners": null,
         "keepers": [],
         "league_id": 2024,
@@ -1473,7 +1365,7 @@ export const legacyLeagueRosters = {
           "record": "LWWLLLLWLLWWWW",
           "streak": "4W"
         },
-        "owner_id": "1128923498258219008",
+        "owner_id": 1128923498258219008,
         "player_map": null,
         "players": [
           "DET",
@@ -1525,127 +1417,6 @@ export const legacyLeagueRosters = {
         ],
         "taxi": null
       }
-    },
-    "startersAndReserve": [
-      "PHI",
-      "421",
-      "3198",
-      "5850",
-      "8112",
-      "11618",
-      "5012",
-      "1689",
-      "8148",
-      "3678",
-      "GB",
-      "11566",
-      "4866",
-      "8136",
-      "5045",
-      "9488",
-      "1466",
-      "5927",
-      "7571",
-      "11533",
-      "WAS",
-      "4892",
-      "9226",
-      "8143",
-      "7547",
-      "7525",
-      "5844",
-      "7569",
-      "6963",
-      "6650",
-      "LAC",
-      "6797",
-      "8150",
-      "11651",
-      "8146",
-      "8121",
-      "10859",
-      "8126",
-      "7588",
-      "4227",
-      "CIN",
-      "4984",
-      "9221",
-      "8255",
-      "9493",
-      "7049",
-      "10236",
-      "5872",
-      "9753",
-      "7042",
-      "IND",
-      "6770",
-      "6813",
-      "9224",
-      "11632",
-      "4983",
-      "4217",
-      "6801",
-      "9508",
-      "11539",
-      "ARI",
-      "6904",
-      "4199",
-      "7611",
-      "6786",
-      "1426",
-      "7553",
-      "2133",
-      "9756",
-      "5119",
-      "TB",
-      "5849",
-      "4018",
-      "11584",
-      "5859",
-      "6783",
-      "11604",
-      "11631",
-      "11655",
-      "4195",
-      "3163",
-      "4137",
-      "8155",
-      "6794",
-      "4981",
-      "3214",
-      "11628",
-      "2216",
-      "3451",
-      "MIN",
-      "BUF",
-      "4098",
-      "9509",
-      "7564",
-      "4039",
-      "8210",
-      "5947",
-      "9494",
-      "1945",
-      "11564",
-      "5987",
-      "7528",
-      "5846",
-      "1479",
-      "8130",
-      "6790",
-      "9754",
-      "10955",
-      "NYJ",
-      "DET",
-      "4046",
-      "8138",
-      "8154",
-      "11635",
-      "11624",
-      "7600",
-      "9997",
-      "9757",
-      "8259"
     ]
   }
-};
+];
