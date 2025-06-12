@@ -28,6 +28,8 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         const playoffRounds = winnersData[winnersData.length - 1]?.r;
         const loserRounds = losersData[losersData.length - 1]?.r;
 
+        // Adjust playoffs start for legacy data to weeks 15-17
+        const playoffsStart = 15;
         const playoffType = 0;
         const playoffMatchups = [];
 
@@ -36,7 +38,7 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
 
         const finalBrackets = {
             numRosters: 0,
-            playoffsStart: 14,
+            playoffsStart,
             playoffRounds,
             loserRounds,
             champs,
@@ -247,7 +249,7 @@ const generateMatchupData = (t, tFrom, { m, r, playoffMatchups, i, playoffType, 
     };
 
     if (t) {
-        const tMatchup = playoffMatchups[i].find(ma => ma.roster_id == t);
+        const tMatchup = playoffMatchups[i]?.find(ma => ma.roster_id == t);
         const starters = { 1: tMatchup?.starters };
         const startersPoints = { 1: tMatchup?.starters_points };
 
