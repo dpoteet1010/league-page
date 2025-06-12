@@ -3,36 +3,32 @@ import { get } from 'svelte/store';
 import { rostersStore } from '$lib/stores';
 import { legacyLeagueRosters } from './legacyLeagueRosters.js';
 
+let legacyAppended = false; // Ensures static data is added only once
+
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
-	console.log(`📥 getLeagueRosters called with league ID: ${queryLeagueID}`);
-
-	// Check if this league is in legacy format FIRST
-	const legacyMatch = legacyLeagueRosters.find(lr => String(lr.year) === String(queryLeagueID));
-	if (legacyMatch) {
-		console.log(`📦 Found legacy rosters for league ${queryLeagueID}`);
-		console.log(`🗃️ Raw legacy roster data:`, legacyMatch);
-
-		const legacyRosters = legacyMatch.rosters;
-
-		if (!Array.isArray(legacyRosters)) {
-			console.error(`❌ Legacy data for ${queryLeagueID} must be an array`, legacyRosters);
-			throw new Error(`❌ Legacy data for ${queryLeagueID} must be an array`);
-		}
-
-		const processed = processRosters(legacyRosters);
-		console.log(`🛠️ Processed legacy roster data:`, processed);
-
-		// Pre-store it into the Svelte store
-		rostersStore.update(r => {
-			r[queryLeagueID] = processed;
-			return r;
+	// Append and process legacy rosters once per session
+	if (!legacyAppended) {
+		console.log('📦 Preloading legacy rosters into rostersStore...');
+		rostersStore.update(current => {
+			const merged = { ...current };
+			for (const legacy of legacyLeagueRosters) {
+				const key = String(legacy.year);
+				if (!merged[key]) {
+					if (!Array.isArray(legacy.rosters)) {
+						console.error(`❌ Invalid legacy data for ${key}:`, legacy.rosters);
+						continue;
+					}
+					const processed = processRosters(legacy.rosters);
+					merged[key] = processed;
+					console.log(`✅ Legacy roster pre-stored for league ${key}`);
+				}
+			}
+			return merged;
 		});
-		console.log(`✅ Legacy roster data pre-stored for league ${queryLeagueID}`);
+		legacyAppended = true;
 	}
 
-	// Now get from store after pre-storing (if legacy)
 	const storedRoster = get(rostersStore)[queryLeagueID];
-
 	if (
 		storedRoster &&
 		typeof storedRoster.rosters === 'object' &&
@@ -43,64 +39,57 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		return storedRoster;
 	}
 
-	// Else, fetch from Sleeper API
+	// Fetch from Sleeper API
 	console.log(`🌐 Fetching rosters from Sleeper API for league ${queryLeagueID}...`);
-
-	let res, data;
+	let res;
 	try {
 		res = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/rosters`, {
 			compress: true
 		});
+	} catch (err) {
+		console.error('❌ Fetch error:', err);
+		throw new Error('Network error fetching roster data.');
+	}
+
+	let data;
+	try {
 		data = await res.json();
 	} catch (err) {
-		console.error(`❌ Error fetching or parsing data from Sleeper API for ${queryLeagueID}:`, err);
-		throw err;
+		console.error('❌ JSON parsing error:', err);
+		throw new Error('Invalid JSON in API response.');
 	}
 
 	if (res.ok) {
-		console.log(`✅ Successfully fetched roster data from API for league ${queryLeagueID}`);
-		const processed = processRosters(data);
-		console.log(`🛠️ Processed API roster data:`, processed);
-
+		const processedRosters = processRosters(data);
+		console.log(`✅ Fetched and processed API rosters for ${queryLeagueID}`);
 		rostersStore.update(r => {
-			r[queryLeagueID] = processed;
+			r[queryLeagueID] = processedRosters;
 			return r;
 		});
-
-		console.log(`📝 API roster data stored for league ${queryLeagueID}`);
-		return processed;
+		return processedRosters;
 	} else {
-		console.error(`❌ API error for league ${queryLeagueID}:`, data);
+		console.error('❌ Sleeper API error:', data);
 		throw new Error(data);
 	}
 };
 
 const processRosters = (rosters) => {
 	console.log(`🔄 Processing ${rosters.length} rosters...`);
-
 	const startersAndReserve = [];
 	const rosterMap = {};
-
 	for (const roster of rosters) {
-		console.log(`➡️ Processing roster ID ${roster.roster_id}`);
-
 		if (Array.isArray(roster.starters)) {
-			console.log(`✅ Found starters for roster ${roster.roster_id}:`, roster.starters);
-			startersAndReserve.push(...roster.starters);
+			for (const starter of roster.starters) {
+				startersAndReserve.push(starter);
+			}
 		}
-
 		if (Array.isArray(roster.reserve)) {
-			console.log(`✅ Found reserve for roster ${roster.roster_id}:`, roster.reserve);
-			startersAndReserve.push(...roster.reserve);
+			for (const ir of roster.reserve) {
+				startersAndReserve.push(ir);
+			}
 		}
-
 		rosterMap[roster.roster_id] = roster;
 	}
-
-	console.log(`✅ Completed processing rosters. Total players (starters + reserve): ${startersAndReserve.length}`);
-
-	return {
-		rosters: rosterMap,
-		startersAndReserve
-	};
+	console.log(`✅ Processed ${Object.keys(rosterMap).length} rosters`);
+	return { rosters: rosterMap, startersAndReserve };
 };
