@@ -4,8 +4,8 @@ import { getLeagueRosters } from './leagueRosters';
 import {waitForAll} from './multiPromise';
 import { get } from 'svelte/store';
 import {brackets} from '$lib/stores';
-import legacyWinnersBrackets from './legacyWinnersBrackets';
-import legacyLosersBrackets from './legacyLosersBrackets';
+import { legacyWinnersBrackets } from './legacyWinnersBrackets';
+import { legacyLosersBrackets } from './legacyLosersBrackets';
 
 export const getBrackets = async (queryLeagueID = leagueID) => {
     // Return cached brackets if available and for current league
