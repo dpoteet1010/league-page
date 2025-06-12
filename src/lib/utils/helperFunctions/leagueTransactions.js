@@ -223,9 +223,6 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 				};
 			}
 
-			// Debug log to check origin/dest setup for players
-			console.log(`Trade move for player ${player}:`, move);
-
 			digestedTransaction.moves.push(move);
 		}
 
