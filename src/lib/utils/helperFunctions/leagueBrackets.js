@@ -4,12 +4,41 @@ import { getLeagueRosters } from './leagueRosters';
 import {waitForAll} from './multiPromise';
 import { get } from 'svelte/store';
 import {brackets} from '$lib/stores';
+import legacyWinners from './legacyWinnersBrackets';
+import legacyLosers from './legacyLosersBrackets';
 
 export const getBrackets = async (queryLeagueID = leagueID) => {
+    // Return cached brackets if available and for current league
     if(get(brackets).champs && queryLeagueID == leagueID) {
         return get(brackets);
     }
 
+    // 👇 Handle legacy data
+    if (queryLeagueID === '2023' || queryLeagueID === '2024') {
+        const winnersData = legacyWinners[queryLeagueID];
+        const losersData = legacyLosers[queryLeagueID];
+
+        const playoffRounds = winnersData[winnersData.length - 1].r;
+        const loserRounds = losersData[losersData.length - 1].r;
+
+        const playoffType = 0; // You might set this to whatever your legacy data implies
+        const playoffMatchups = []; // Legacy doesn't need this
+
+        const champs = evaluateBracket(winnersData, playoffRounds, playoffMatchups, playoffType);
+        const losers = evaluateBracket(losersData, loserRounds, playoffMatchups, playoffType);
+
+        const finalBrackets = {
+            numRosters: 0, // You can adjust this based on legacy data, if needed
+            playoffsStart: 14, // Or something appropriate for your format
+            playoffRounds,
+            loserRounds,
+            champs,
+            losers,
+        };
+
+        return finalBrackets;
+    }
+    
     // get roster, user, and league data
     const [rosterRes, leagueData] = await waitForAll(
         getLeagueRosters(queryLeagueID),
