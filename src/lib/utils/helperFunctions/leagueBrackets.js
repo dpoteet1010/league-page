@@ -15,8 +15,8 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
 
     // 👇 Handle legacy data
     if (queryLeagueID === '2023' || queryLeagueID === '2024') {
-        const winnersData = legacyWinners[queryLeagueID];
-        const losersData = legacyLosers[queryLeagueID];
+        const winnersData = legacyWinnersBrackets[queryLeagueID];
+        const losersData = legacyLosersBrackets[queryLeagueID];
 
         const playoffRounds = winnersData[winnersData.length - 1].r;
         const loserRounds = losersData[losersData.length - 1].r;
