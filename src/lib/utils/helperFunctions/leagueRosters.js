@@ -1,7 +1,7 @@
 import { leagueID } from '$lib/utils/leagueInfo';
 import { get } from 'svelte/store';
 import { rostersStore } from '$lib/stores';
-import { legacyLeagueRosters } from '$lib/data/legacyRosters';
+import { legacyLeagueRosters } from '$lib/data/legacyLeagueRosters';
 
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 	const storedRoster = get(rostersStore)[queryLeagueID];
