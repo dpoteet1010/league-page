@@ -6,6 +6,7 @@ import { get } from 'svelte/store';
 import { brackets } from '$lib/stores';
 import { legacyWinnersBrackets } from './legacyWinnersBrackets';
 import { legacyLosersBrackets } from './legacyLosersBrackets';
+import { legacyMatchups } from './legacyMatchups';
 
 export const getBrackets = async (queryLeagueID = leagueID) => {
     console.log('📦 Fetching brackets for leagueID:', queryLeagueID);
@@ -15,7 +16,7 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         return get(brackets);
     }
 
-    // ✅ Legacy leagues: use local bracket data
+    // Legacy leagues: use local bracket + matchup data
     if (queryLeagueID === '2023' || queryLeagueID === '2024') {
         console.log('🕰 Using legacy data for:', queryLeagueID);
 
@@ -27,11 +28,32 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         const playoffsStart = 15;
         const playoffType = 0;
 
-        // ⚠️ No API calls for legacy IDs
-        const playoffMatchups = new Array(3).fill([]); // Stubbed for weeks 15–17
+        // Simulate fetch responses for winners, losers brackets + matchup weeks 15-17
+        const bracketsAndMatchupFetches = [
+            Promise.resolve({ json: async () => winnersData }),
+            Promise.resolve({ json: async () => losersData }),
+        ];
 
-        const champs = evaluateBracket(winnersData, playoffRounds, playoffMatchups, playoffType);
-        const losers = evaluateBracket(losersData, loserRounds, playoffMatchups, playoffType);
+        for (let week = playoffsStart; week < 18; week++) {
+            const legacyWeekMatchups = legacyMatchups?.[queryLeagueID]?.[week] || [];
+
+            bracketsAndMatchupFetches.push(
+                Promise.resolve({
+                    json: async () => legacyWeekMatchups,
+                })
+            );
+        }
+
+        const bracketsAndMatchupResps = await waitForAll(...bracketsAndMatchupFetches);
+
+        // Parse all JSON payloads
+        const playoffMatchups = await waitForAll(...bracketsAndMatchupResps.map(resp => resp.json()));
+
+        const winnersBracketData = playoffMatchups.shift();
+        const losersBracketData = playoffMatchups.shift();
+
+        const champs = evaluateBracket(winnersBracketData, playoffRounds, playoffMatchups, playoffType);
+        const losers = evaluateBracket(losersBracketData, loserRounds, playoffMatchups, playoffType);
 
         const finalBrackets = {
             numRosters: 0,
@@ -47,7 +69,7 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         return finalBrackets;
     }
 
-    // ✅ Modern Sleeper API flow
+    // Modern Sleeper API flow
     const [rosterRes, leagueData] = await waitForAll(
         getLeagueRosters(queryLeagueID),
         getLeagueData(queryLeagueID)
@@ -79,14 +101,10 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         console.error('❌ Brackets and Matchups fetch error:', err);
     });
 
-    const bracketsAndMatchupJson = [];
+    const playoffMatchups = [];
     for (const res of bracketsAndMatchupResps) {
-        bracketsAndMatchupJson.push(res.json());
+        playoffMatchups.push(await res.json());
     }
-
-    const playoffMatchups = await waitForAll(...bracketsAndMatchupJson).catch((err) => {
-        console.error('❌ JSON Parsing error for brackets/matchups:', err);
-    });
 
     const winnersData = playoffMatchups.shift();
     const losersData = playoffMatchups.shift();
