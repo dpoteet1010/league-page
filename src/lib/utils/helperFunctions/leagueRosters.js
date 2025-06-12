@@ -15,7 +15,7 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		if (!legacyData) {
 			throw new Error(`❌ No legacy data found for league ${queryLeagueID}`);
 		}
-		return { rosters: legacyData };
+		return legacyData;
 	}
 
 	// Step 1: Append legacy rosters once per session (only for non-legacy requests)
