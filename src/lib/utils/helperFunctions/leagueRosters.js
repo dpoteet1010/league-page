@@ -6,23 +6,10 @@ import { legacyLeagueRosters } from './legacyLeagueRosters.js';
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 	console.log(`📥 getLeagueRosters called with league ID: ${queryLeagueID}`);
 
-	const storedRoster = get(rostersStore)[queryLeagueID];
-
-	// If already in store and valid, return it
-	if (
-		storedRoster &&
-		typeof storedRoster.rosters === 'object' &&
-		!Array.isArray(storedRoster.rosters) &&
-		storedRoster.rosters !== null
-	) {
-		console.log(`✅ Returning roster from store for league ${queryLeagueID}`);
-		return storedRoster;
-	}
-
-	// Check if this league is in legacy format
+	// Check if this league is in legacy format FIRST
 	const legacyMatch = legacyLeagueRosters.find(lr => String(lr.year) === String(queryLeagueID));
 	if (legacyMatch) {
-		console.log(`📦 Using legacy rosters for league ${queryLeagueID}`);
+		console.log(`📦 Found legacy rosters for league ${queryLeagueID}`);
 		console.log(`🗃️ Raw legacy roster data:`, legacyMatch);
 
 		const legacyRosters = legacyMatch.rosters;
@@ -35,13 +22,25 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		const processed = processRosters(legacyRosters);
 		console.log(`🛠️ Processed legacy roster data:`, processed);
 
+		// Pre-store it into the Svelte store
 		rostersStore.update(r => {
 			r[queryLeagueID] = processed;
 			return r;
 		});
+		console.log(`✅ Legacy roster data pre-stored for league ${queryLeagueID}`);
+	}
 
-		console.log(`📝 Legacy roster data stored for league ${queryLeagueID}`);
-		return processed;
+	// Now get from store after pre-storing (if legacy)
+	const storedRoster = get(rostersStore)[queryLeagueID];
+
+	if (
+		storedRoster &&
+		typeof storedRoster.rosters === 'object' &&
+		!Array.isArray(storedRoster.rosters) &&
+		storedRoster.rosters !== null
+	) {
+		console.log(`✅ Returning roster from store for league ${queryLeagueID}`);
+		return storedRoster;
 	}
 
 	// Else, fetch from Sleeper API
