@@ -157,8 +157,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	  localStorage.setItem("records", JSON.stringify(recordsData));
 	  records.update(() => recordsData);
 	}
-	console.log('[getLeagueRecords] Regular season record data:', JSON.stringify(recordsData, null, 2));
-	//console.log('[getLeagueRecords] Final record keys:', Object.keys(recordsData));
+	console.log('[getLeagueRecords] Records keys:', Object.keys(recordsData));
 	return recordsData;
 }
 
