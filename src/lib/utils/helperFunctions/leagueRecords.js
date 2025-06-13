@@ -35,19 +35,19 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	console.log('[getLeagueRecords] Fetching NFL state...');
 	const nflState = await getNflState().catch((err) => { console.error(err); });
-
 	let week = 0;
-	if (nflState?.season_type === 'regular') {
+	if (nflState.season_type == 'regular') {
 		week = nflState.week - 1;
-	} else if (nflState?.season_type === 'post') {
+	} else if (nflState.season_type == 'post') {
 		week = 18;
 	}
-
 	console.log(`[getLeagueRecords] NFL week set to ${week}.`);
 
 	let curSeason = leagueID;
-	let currentYear;
-	let lastYear;
+	let currentYear = null;
+	const DEFAULT_LAST_YEAR = 2023;
+	let latestValidYear = null;
+
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
@@ -56,38 +56,35 @@ export const getLeagueRecords = async (refresh = false) => {
 		console.log(`[getLeagueRecords] Processing season ID: ${curSeason}`);
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
-			getLeagueData(curSeason)
+			getLeagueData(curSeason),
 		).catch((err) => { console.error(err); });
-
-		if (!rosterRes || !leagueData) {
-			console.warn(`[getLeagueRecords] Skipping season ${curSeason} due to missing data.`);
-			break;
-		}
 
 		const rosters = rosterRes.rosters;
 
-		let useFullSeason = week;
 		if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
-			useFullSeason = 99;
+			week = 99;
 		}
 
 		const { season, year } = await processRegularSeason({
 			leagueData,
 			rosters,
 			curSeason,
-			week: useFullSeason,
+			week,
 			regularSeason
 		});
 
-		if (year) {
+		if (!year) {
+			console.log(`[getLeagueRecords] No valid data for regular season ${curSeason}`);
+		} else {
 			console.log(`[getLeagueRecords] Processed regular season for year: ${year}`);
-			lastYear = year;
-			if (!currentYear) currentYear = year;
+			if (!latestValidYear || year > latestValidYear) {
+				latestValidYear = year;
+			}
 
 			const pS = await processPlayoffs({
 				year,
 				curSeason,
-				week: useFullSeason,
+				week,
 				playoffRecords,
 				rosters
 			});
@@ -96,8 +93,6 @@ export const getLeagueRecords = async (refresh = false) => {
 				console.log(`[getLeagueRecords] Processed playoffs for year: ${year}`);
 				playoffRecords = pS;
 			}
-		} else {
-			console.warn(`[getLeagueRecords] No valid data for regular season ${curSeason}`);
 		}
 
 		curSeason = season;
@@ -111,16 +106,11 @@ export const getLeagueRecords = async (refresh = false) => {
 
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(legacyID),
-			getLeagueData(legacyID)
+			getLeagueData(legacyID),
 		).catch((err) => { console.error(err); });
 
-		if (!rosterRes || !leagueData) {
-			console.warn(`[getLeagueRecords] Skipping legacy year ${legacyID} due to missing data.`);
-			continue;
-		}
-
 		const rosters = rosterRes.rosters;
-		const year = legacyID;
+		const year = legacyID; // explicitly use legacyID as year
 
 		await processRegularSeason({
 			leagueData,
@@ -141,15 +131,21 @@ export const getLeagueRecords = async (refresh = false) => {
 			useLegacy: true
 		});
 		console.log(`[getLeagueRecords] Legacy playoffs processed for year: ${year}`);
+
+		if (!latestValidYear || year > latestValidYear) {
+			latestValidYear = year;
+		}
 	}
+
+	currentYear = latestValidYear ?? null;
+	const lastYear = DEFAULT_LAST_YEAR;
 
 	console.log(`[getLeagueRecords] Finalizing records: currentYear=${currentYear}, lastYear=${lastYear}`);
 	console.log('[getLeagueRecords] Regular season record years:', Object.keys(regularSeason.recordsByYear || {}));
 	console.log('[getLeagueRecords] Playoff record years:', Object.keys(playoffRecords.recordsByYear || {}));
 
-	// finalize
-	playoffRecords.currentYear = regularSeason.currentYear;
-	playoffRecords.lastYear = regularSeason.lastYear;
+	playoffRecords.currentYear = currentYear;
+	playoffRecords.lastYear = lastYear;
 
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
