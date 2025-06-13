@@ -1,4 +1,4 @@
-import { getLeagueData } from './leagueData'; 
+import { getLeagueData } from './leagueData';
 import { leagueID } from '$lib/utils/leagueInfo';
 import { getNflState } from './nflState';
 import { getLeagueRosters } from "./leagueRosters";
@@ -16,9 +16,7 @@ import { browser } from '$app/environment';
  * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
  */
 export const getLeagueRecords = async (refresh = false) => {
-	if (get(records).leagueWeekHighs) {
-		return get(records);
-	}
+	if (get(records).leagueWeekHighs) return get(records);
 
 	if (!refresh && browser) {
 		let localRecords = await JSON.parse(localStorage.getItem("records"));
@@ -28,112 +26,92 @@ export const getLeagueRecords = async (refresh = false) => {
 		}
 	}
 
-	const nflState = await getNflState().catch(() => {});
-	
+	const nflState = await getNflState().catch((err) => console.error(err));
 	let week = 0;
-	if (nflState?.season_type === 'regular') {
+	if (nflState.season_type === 'regular') {
 		week = nflState.week - 1;
-	} else if (nflState?.season_type === 'post') {
+	} else if (nflState.season_type === 'post') {
 		week = 18;
 	}
 
 	let curSeason = leagueID;
-	let currentYear;
-	let lastYear;
+	let currentYear = null;
+	let lastYear = null;
 
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	// Step 1: Traverse connected leagues (previous_league_id chain)
+	// 🔁 STEP 1: Sleeper API loop
 	while (curSeason && curSeason !== 0) {
-		try {
-			const [rosterRes, leagueData] = await waitForAll(
-				getLeagueRosters(curSeason),
-				getLeagueData(curSeason),
-			);
+		const [rosterRes, leagueData] = await waitForAll(
+			getLeagueRosters(curSeason),
+			getLeagueData(curSeason),
+		).catch((err) => console.error(err));
 
-			const rosters = rosterRes.rosters;
+		const rosters = rosterRes.rosters;
 
-			let tempWeek = week;
-			if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
-				tempWeek = 99;
-			}
-
-			const {
-				season,
-				year,
-			} = await processRegularSeason({
-				leagueData,
-				rosters,
-				curSeason,
-				week: tempWeek,
-				regularSeason
-			});
-
-			const pS = await processPlayoffs({
-				year,
-				curSeason,
-				week: tempWeek,
-				playoffRecords,
-				rosters
-			});
-
-			if (pS) {
-				playoffRecords = pS;
-			}
-
-			lastYear = year;
-			if (!currentYear && year) currentYear = year;
-
-			curSeason = leagueData.previous_league_id;
-		} catch {
-			break;
+		if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+			week = 99;
 		}
+
+		const { season, year } = await processRegularSeason({
+			leagueData,
+			rosters,
+			curSeason,
+			week,
+			regularSeason
+		});
+
+		const pS = await processPlayoffs({
+			year,
+			curSeason,
+			week,
+			playoffRecords,
+			rosters
+		});
+		if (pS) playoffRecords = pS;
+
+		if (year) {
+			if (!currentYear || year > currentYear) currentYear = year;
+			if (!lastYear || year < lastYear) lastYear = year;
+		}
+
+		curSeason = season;
 	}
 
-	// Step 2: Handle static legacy seasons
-	const staticSeasons = ['2024', '2023'];
+	// 🟡 STEP 2: Manually process legacy seasons: 2024 and 2023
+	const legacySeasons = ['2024', '2023'];
+	for (const legacySeason of legacySeasons) {
+		const seasonID = legacySeason;
 
-	for (const staticID of staticSeasons) {
-		try {
-			const [rosterRes, leagueData] = await waitForAll(
-				getLeagueRosters(staticID),
-				getLeagueData(staticID),
-			);
+		const [rosterRes, leagueData] = await waitForAll(
+			getLeagueRosters(seasonID),
+			getLeagueData(seasonID),
+		).catch((err) => console.error(err));
 
-			const rosters = rosterRes.rosters;
+		const rosters = rosterRes.rosters;
 
-			let tempWeek = week;
-			if (leagueData.status === 'complete' || tempWeek > leagueData.settings.playoff_week_start - 1) {
-				tempWeek = 99;
-			}
+		const { year } = await processRegularSeason({
+			leagueData,
+			rosters,
+			curSeason: seasonID,
+			week: 99,
+			regularSeason
+		});
 
-			const {
-				season,
-				year,
-			} = await processRegularSeason({
-				leagueData,
-				rosters,
-				curSeason: staticID,
-				week: tempWeek,
-				regularSeason
-			});
+		const pS = await processPlayoffs({
+			year,
+			curSeason: seasonID,
+			week: 99,
+			playoffRecords,
+			rosters
+		});
+		if (pS) playoffRecords = pS;
 
-			const pS = await processPlayoffs({
-				year,
-				curSeason: staticID,
-				week: tempWeek,
-				playoffRecords,
-				rosters
-			});
-
-			if (pS) {
-				playoffRecords = pS;
-			}
-
-			lastYear = year;
-			if (!currentYear && year) currentYear = year;
-		} catch {}
+		if (year) {
+			if (!currentYear || year > currentYear) currentYear = year;
+			if (!lastYear || year < lastYear) lastYear = year;
+		}
 	}
 
 	// Finalize records
@@ -146,19 +124,14 @@ export const getLeagueRecords = async (refresh = false) => {
 	const regularSeasonData = regularSeason.returnRecords();
 	const playoffData = playoffRecords.returnRecords();
 
-	// Only logging leagueWeekHighs as requested
-	console.log("🔎 leagueWeekHighs (regularSeason):", regularSeasonData.leagueWeekHighs);
-	console.log("🔎 leagueWeekHighs (playoffs):", playoffData.leagueWeekHighs);
-
 	const recordsData = { regularSeasonData, playoffData };
-	
+
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		records.update(() => recordsData);
 	}
-	
-	return recordsData;
 
+	return recordsData;
 };
 
 /**
@@ -172,81 +145,102 @@ export const getLeagueRecords = async (refresh = false) => {
  * @param {Records} regularSeasonInfo.regularSeason the global regularSeason record object
  * @returns {Object} { season: (curSeason), year}
  */
-const processRegularSeason = async ({rosters, leagueData, curSeason, week, regularSeason}) => {
+import { legacyMatchups } from './legacyMatchups.js';
+
+const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason }) => {
 	let year = parseInt(leagueData.season);
 
-	// on first run, week is provided above from nflState,
-	// after that get the final week of regular season from leagueData
-	if(leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+	if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
 	}
 
-	for(const rosterID in rosters) {
-		analyzeRosters({year, roster: rosters[rosterID], regularSeason});
+	for (const rosterID in rosters) {
+		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
 	}
 
-	// loop through each week of the season
-	const matchupsPromises = [];
-	let startWeek = parseInt(week);
-	while(week > 0) {
-		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}))
-		week--;
-	}
+	const isLegacy = ['2023', '2024'].includes(String(curSeason));
+	let matchupsData = [];
+	let startWeek = week;
 
-	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
-
-	// convert the json matchup responses
-	const matchupsJsonPromises = [];
-	for(const matchupRes of matchupsRes) {
-		const data = matchupRes.json();
-		matchupsJsonPromises.push(data)
-		if (!matchupRes.ok) {
-			console.error(data);
+	if (isLegacy && legacyMatchups[curSeason]) {
+		// ✅ Use legacy matchups using league ID as key
+		for (let i = 1; i <= week; i++) {
+			const weekMatchups = legacyMatchups[curSeason][i];
+			if (weekMatchups && weekMatchups.length > 0) {
+				matchupsData.push(weekMatchups);
+			}
 		}
-	}
-	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
+	} else {
+		// 🔄 Live data from Sleeper API
+		const matchupsPromises = [];
+		let fetchWeek = week;
 
-	// now that we've used the current season ID for everything we need, set it to the previous season
-	curSeason = leagueData.previous_league_id;
+		while (fetchWeek > 0) {
+			matchupsPromises.push(
+				fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${fetchWeek}`, {
+					compress: true
+				})
+			);
+			fetchWeek--;
+		}
+
+		const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => {
+			console.error(err);
+		});
+
+		const matchupsJsonPromises = matchupsRes.map((res) => {
+			if (!res.ok) console.error(res.statusText);
+			return res.json();
+		});
+
+		matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => {
+			console.error(err);
+		});
+	}
 
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
-	
-	// process all the matchups
-	for(const matchupWeek of matchupsData) {
-		const {sPR, mD, sW} =  processMatchups({matchupWeek, seasonPointsRecord, record: regularSeason, startWeek, matchupDifferentials, year})
+
+	for (const matchupWeek of matchupsData) {
+		const { sPR, mD, sW } = processMatchups({
+			matchupWeek,
+			seasonPointsRecord,
+			record: regularSeason,
+			startWeek,
+			matchupDifferentials,
+			year
+		});
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
 	}
 
-	// sort matchup differentials
-	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential')
+	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
+	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
 
-	// sort season point records
-	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts')
-
-	// add matchupDifferentials to tha all time  records
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
-
-	if(seasonPointsHighs.length > 0) {
+	if (seasonPointsHighs.length > 0) {
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
 			closestMatchups,
 			seasonPointsLows,
-			seasonPointsHighs,
+			seasonPointsHighs
 		});
 	} else {
 		year = null;
 	}
 
+	if (!isLegacy) {
+		curSeason = leagueData.previous_league_id;
+	}
+
 	return {
 		season: curSeason,
-		year,
-	}
-}
+		year
+	};
+};
 
 
 /**
