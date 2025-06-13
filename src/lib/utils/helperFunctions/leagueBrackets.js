@@ -9,17 +9,11 @@ import { legacyLosersBrackets } from './legacyLosersBrackets';
 import { legacyMatchups } from './legacyMatchups';
 
 export const getBrackets = async (queryLeagueID = leagueID) => {
-    console.log('📦 Fetching brackets for leagueID:', queryLeagueID);
-
     if (get(brackets).champs && queryLeagueID == leagueID) {
-        console.log('✅ Returning cached brackets');
         return get(brackets);
     }
 
-    // Legacy leagues: use local bracket + matchup data
     if (queryLeagueID === '2023' || queryLeagueID === '2024') {
-        console.log('🕰 Using legacy data for:', queryLeagueID);
-
         const winnersData = legacyWinnersBrackets[queryLeagueID];
         const losersData = legacyLosersBrackets[queryLeagueID];
 
@@ -28,7 +22,6 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         const playoffsStart = 15;
         const playoffType = 0;
 
-        // Simulate fetch responses for winners, losers brackets + matchup weeks 15-17
         const bracketsAndMatchupFetches = [
             Promise.resolve({ json: async () => winnersData }),
             Promise.resolve({ json: async () => losersData }),
@@ -45,8 +38,6 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         }
 
         const bracketsAndMatchupResps = await waitForAll(...bracketsAndMatchupFetches);
-
-        // Parse all JSON payloads
         const playoffMatchups = await waitForAll(...bracketsAndMatchupResps.map(resp => resp.json()));
 
         const winnersBracketData = playoffMatchups.shift();
@@ -65,17 +56,13 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
             bracket: champs.bracket,
         };
 
-        console.log('✅ Final legacy brackets:', finalBrackets);
         return finalBrackets;
     }
 
-    // Modern Sleeper API flow
     const [rosterRes, leagueData] = await waitForAll(
         getLeagueRosters(queryLeagueID),
         getLeagueData(queryLeagueID)
-    ).catch((err) => {
-        console.error('❌ Roster or League Data fetch error:', err);
-    });
+    ).catch(() => {});
 
     const numRosters = Object.keys(rosterRes.rosters).length;
 
@@ -97,10 +84,7 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
         );
     }
 
-    const bracketsAndMatchupResps = await waitForAll(...bracketsAndMatchupFetches).catch((err) => {
-        console.error('❌ Brackets and Matchups fetch error:', err);
-    });
-
+    const bracketsAndMatchupResps = await waitForAll(...bracketsAndMatchupFetches).catch(() => {});
     const playoffMatchups = [];
     for (const res of bracketsAndMatchupResps) {
         playoffMatchups.push(await res.json());
@@ -133,7 +117,6 @@ export const getBrackets = async (queryLeagueID = leagueID) => {
 };
 
 const evaluateBracket = (contestants, rounds, playoffMatchups, playoffType) => {
-    console.log(`🔍 evaluateBracket called — rounds: ${rounds}, playoffType: ${playoffType}`);
     const bracket = [];
     const consolations = [];
     let consolationMs = [];
@@ -141,7 +124,6 @@ const evaluateBracket = (contestants, rounds, playoffMatchups, playoffType) => {
     const teamsSeen = {};
 
     for (let i = 1; i <= rounds; i++) {
-        console.log(`➡️ Evaluating Round ${i}`);
         const playoffBrackets = contestants.filter(m => m.r == i);
         const roundMatchups = [];
         const consolationMatchups = [];
@@ -202,15 +184,14 @@ const evaluateBracket = (contestants, rounds, playoffMatchups, playoffType) => {
         consolationMs = localConsolationMs;
     }
 
-    console.log('🏁 Bracket Evaluation Complete:', bracket);
     return { bracket, consolations };
-}
+};
 
 const newConsolation = (consolationMatchups, rounds, i) => {
     const newCons = new Array(rounds).fill([]);
     newCons[i - 1] = consolationMatchups;
     return newCons;
-}
+};
 
 const processPlayoffMatchup = ({ playoffBracket, playoffMatchups, i, consolationMs, fromWs, playoffType, teamsSeen }) => {
     const matchup = [];
@@ -234,7 +215,7 @@ const processPlayoffMatchup = ({ playoffBracket, playoffMatchups, i, consolation
     matchup.push(generateMatchupData(t2, t2From, { m, r, playoffMatchups, i, playoffType, winners, fromWinners, consolation, p }));
 
     return matchup;
-}
+};
 
 const generateMatchupData = (t, tFrom, { m, r, playoffMatchups, i, playoffType, winners, fromWinners, consolation, p }) => {
     const matchup = {
@@ -266,4 +247,4 @@ const generateMatchupData = (t, tFrom, { m, r, playoffMatchups, i, playoffType, 
     }
 
     return matchup;
-}
+};
