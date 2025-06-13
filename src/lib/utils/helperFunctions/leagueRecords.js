@@ -181,12 +181,13 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 
 	if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
+		console.log(`[processRegularSeason] Adjusted week to: ${week}`);
 	}
 
 	for (const rosterID in rosters) {
 		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
 	}
-	
+
 	const isLegacy = ['2023', '2024'].includes(String(curSeason));
 	let matchupsData = [];
 	let startWeek = week;
@@ -197,6 +198,14 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 			const weekMatchups = legacyMatchups[curSeason][i];
 			if (weekMatchups && weekMatchups.length > 0) {
 				console.log(`[processRegularSeason] Found ${weekMatchups.length} matchups for week ${i}`);
+				weekMatchups.forEach((m, index) => {
+					console.log(`[Matchup] Week ${i} - Matchup ${index + 1}:`, {
+						rosterId: m.roster_id,
+						opponentId: m.matchup_id,
+						points: m.points,
+						opponentPoints: m.points_against
+					});
+				});
 				matchupsData.push(weekMatchups);
 			} else {
 				console.log(`[processRegularSeason] No matchups for week ${i} in ${curSeason}`);
@@ -233,11 +242,26 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
 
-	for (const matchupWeek of matchupsData) {
+	for (let weekIdx = 0; weekIdx < matchupsData.length; weekIdx++) {
+		const matchupWeek = matchupsData[weekIdx];
+		const weekNumber = week - weekIdx;
+
 		if (!matchupWeek || matchupWeek.length === 0) {
-			console.log(`[processRegularSeason] Skipping empty matchup week`);
+			console.log(`[processRegularSeason] Skipping empty matchup week ${weekNumber}`);
 			continue;
 		}
+
+		console.log(`[processRegularSeason] Processing week ${weekNumber} with ${matchupWeek.length} matchups`);
+
+		matchupWeek.forEach((m, index) => {
+			console.log(`[Matchup] Week ${weekNumber} - Matchup ${index + 1}:`, {
+				rosterId: m.roster_id,
+				opponentId: m.matchup_id,
+				points: m.points,
+				opponentPoints: m.points_against
+			});
+		});
+
 		const { sPR, mD, sW } = processMatchups({
 			matchupWeek,
 			seasonPointsRecord,
@@ -246,6 +270,11 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 			matchupDifferentials,
 			year
 		});
+
+		console.log(`[processRegularSeason] Week ${weekNumber} results:`);
+		console.log(`  - SeasonPointsRecord entries: ${sPR.length}`);
+		console.log(`  - MatchupDifferentials entries: ${mD.length}`);
+
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
@@ -254,10 +283,15 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
 	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
 
+	console.log(`[processRegularSeason] Differential records: ${matchupDifferentials.length}`);
+	console.log(`[processRegularSeason] Season Points records: ${seasonPointsRecord.length}`);
+
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
 	if (seasonPointsHighs.length > 0) {
 		console.log(`[processRegularSeason] Season records generated for year: ${year}`);
+		console.log(`[processRegularSeason] High scorers:`, seasonPointsHighs);
+		console.log(`[processRegularSeason] Low scorers:`, seasonPointsLows);
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
@@ -279,7 +313,6 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		year
 	};
 };
-
 
 /**
  * Analyzes an individual roster and adds entries for that roster's
