@@ -9,60 +9,59 @@ import { getManagers, round, sortHighAndLow } from './universalFunctions';
 import { Records } from '$lib/utils/dataClasses';
 import { getBrackets } from './leagueBrackets';
 import { browser } from '$app/environment';
+import { legacyMatchups } from './legacyMatchups.js';
 
 /**
  * getLeagueRecords obtains all the record for a league since it was first created
  * @param {bool} refresh if set to false, getLeagueRecords returns the records stored in localStorage
  * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
  */
-export const getLeagueRecords = async (refresh = false) => {
-	console.log('[getLeagueRecords] Starting record generation...');
 
-	if (get(records).leagueWeekHighs) {
-		console.log('[getLeagueRecords] Returning records from store...');
+export const getLeagueRecords = async (refresh = false) => {
+	// ⏪ Return cached if already fetched this session
+	if (get(records).regularSeasonData) {
 		return get(records);
 	}
 
+	// 🌐 Return cached from localStorage if not refreshing
 	if (!refresh && browser) {
-		console.log('[getLeagueRecords] Checking localStorage...');
-		let localRecords = await JSON.parse(localStorage.getItem("records"));
-		if (localRecords && localRecords.playoffData) {
-			console.log('[getLeagueRecords] Returning records from localStorage...');
+		let localRecords = JSON.parse(localStorage.getItem("records"));
+		if (localRecords?.playoffData) {
 			localRecords.stale = true;
 			return localRecords;
 		}
 	}
 
-	console.log('[getLeagueRecords] Fetching NFL state...');
-	const nflState = await getNflState().catch((err) => { console.error(err); });
+	console.log('[getLeagueRecords] Starting record generation...');
+
+	const nflState = await getNflState();
 	let week = 0;
-	if (nflState.season_type == 'regular') {
+	if (nflState?.season_type === 'regular') {
 		week = nflState.week - 1;
-	} else if (nflState.season_type == 'post') {
+	} else if (nflState?.season_type === 'post') {
 		week = 18;
 	}
 	console.log(`[getLeagueRecords] NFL week set to ${week}.`);
 
 	let curSeason = leagueID;
 	let currentYear = null;
-	const DEFAULT_LAST_YEAR = 2023;
-	let latestValidYear = null;
+	let lastYear = null;
 
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	console.log('[getLeagueRecords] Beginning Sleeper API loop...');
-	while (curSeason && curSeason != 0) {
+	// 🔁 Loop through Sleeper seasons
+	while (curSeason && curSeason !== 0 && !isNaN(curSeason)) {
 		console.log(`[getLeagueRecords] Processing season ID: ${curSeason}`);
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
-			getLeagueData(curSeason),
-		).catch((err) => { console.error(err); });
+			getLeagueData(curSeason)
+		);
 
 		const rosters = rosterRes.rosters;
 
-		if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
-			week = 99;
+		if (leagueData?.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+			week = 99; // ensure all weeks get processed
 		}
 
 		const { season, year } = await processRegularSeason({
@@ -73,80 +72,27 @@ export const getLeagueRecords = async (refresh = false) => {
 			regularSeason
 		});
 
-		if (!year) {
-			console.log(`[getLeagueRecords] No valid data for regular season ${curSeason}`);
-		} else {
-			console.log(`[getLeagueRecords] Processed regular season for year: ${year}`);
-			if (!latestValidYear || year > latestValidYear) {
-				latestValidYear = year;
-			}
+		const pS = await processPlayoffs({
+			year,
+			curSeason,
+			week,
+			playoffRecords,
+			rosters
+		});
 
-			const pS = await processPlayoffs({
-				year,
-				curSeason,
-				week,
-				playoffRecords,
-				rosters
-			});
+		if (pS) {
+			playoffRecords = pS;
+		}
 
-			if (pS) {
-				console.log(`[getLeagueRecords] Processed playoffs for year: ${year}`);
-				playoffRecords = pS;
-			}
+		if (year) {
+			lastYear = year;
+			if (!currentYear) currentYear = year;
 		}
 
 		curSeason = season;
 	}
 
-	console.log('[getLeagueRecords] Completed Sleeper loop. Moving to legacy seasons...');
-
-	const legacySeasons = [2024, 2023];
-	for (const legacyID of legacySeasons) {
-		console.log(`[getLeagueRecords] Manually processing legacy season: ${legacyID}`);
-
-		const [rosterRes, leagueData] = await waitForAll(
-			getLeagueRosters(legacyID),
-			getLeagueData(legacyID),
-		).catch((err) => { console.error(err); });
-
-		const rosters = rosterRes.rosters;
-		const year = legacyID; // explicitly use legacyID as year
-
-		await processRegularSeason({
-			leagueData,
-			rosters,
-			curSeason: legacyID,
-			week: 99,
-			regularSeason,
-			forceYear: year
-		});
-		console.log(`[getLeagueRecords] Legacy regular season processed for year: ${year}`);
-
-		await processPlayoffs({
-			year,
-			curSeason: legacyID,
-			week: 99,
-			playoffRecords,
-			rosters,
-			useLegacy: true
-		});
-		console.log(`[getLeagueRecords] Legacy playoffs processed for year: ${year}`);
-
-		if (!latestValidYear || year > latestValidYear) {
-			latestValidYear = year;
-		}
-	}
-
-	currentYear = latestValidYear ?? null;
-	const lastYear = DEFAULT_LAST_YEAR;
-
-	console.log(`[getLeagueRecords] Finalizing records: currentYear=${currentYear}, lastYear=${lastYear}`);
-	console.log('[getLeagueRecords] Regular season record years:', Object.keys(regularSeason.recordsByYear || {}));
-	console.log('[getLeagueRecords] Playoff record years:', Object.keys(playoffRecords.recordsByYear || {}));
-
-	playoffRecords.currentYear = currentYear;
-	playoffRecords.lastYear = lastYear;
-
+	// 🧾 Finalize & return
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
 
@@ -174,71 +120,35 @@ export const getLeagueRecords = async (refresh = false) => {
  * @param {Records} regularSeasonInfo.regularSeason the global regularSeason record object
  * @returns {Object} { season: (curSeason), year}
  */
-import { legacyMatchups } from './legacyMatchups.js';
 
-const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason, forceYear }) => {
-	let year = forceYear || parseInt(leagueData.season);
-	console.log(`[processRegularSeason] Starting for season: ${curSeason}, using year: ${year}`);
+export const processRegularSeason = async ({ leagueData, rosters, curSeason, week, regularSeason }) => {
+	const year = parseInt(leagueData.season);
 
 	if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
 	}
 
-	for (const rosterID in rosters) {
-		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
+	// 🧠 Analyze roster metadata (manager names, team names, etc.)
+	for (const roster of Object.values(rosters)) {
+		analyzeRosters({ year, roster, regularSeason });
 	}
-	
-	const isLegacy = ['2023', '2024'].includes(String(curSeason));
-	let matchupsData = [];
+
+	// ⏳ Fetch matchups for each week, starting at most recent and going backwards
+	const matchupsPromises = [];
 	let startWeek = week;
-
-	if (isLegacy && legacyMatchups[curSeason]) {
-		console.log(`[processRegularSeason] Using legacy matchups for ${curSeason}`);
-		for (let i = 1; i <= week; i++) {
-			const weekMatchups = legacyMatchups[curSeason][i];
-			if (weekMatchups && weekMatchups.length > 0) {
-				console.log(`[processRegularSeason] Found ${weekMatchups.length} matchups for week ${i}`);
-				matchupsData.push(weekMatchups);
-			} else {
-				console.log(`[processRegularSeason] No matchups for week ${i} in ${curSeason}`);
-			}
-		}
-	} else {
-		console.log(`[processRegularSeason] Fetching live matchups for ${curSeason} from Sleeper API`);
-		const matchupsPromises = [];
-		let fetchWeek = week;
-
-		while (fetchWeek > 0) {
-			matchupsPromises.push(
-				fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${fetchWeek}`, {
-					compress: true
-				})
-			);
-			fetchWeek--;
-		}
-
-		const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => {
-			console.error(`[processRegularSeason] Matchup fetch failed:`, err);
-		});
-
-		const matchupsJsonPromises = matchupsRes.map((res, idx) => {
-			if (!res.ok) console.error(`[processRegularSeason] Week ${week - idx} failed with status: ${res.status}`);
-			return res.json();
-		});
-
-		matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => {
-			console.error(`[processRegularSeason] Failed to parse matchup JSON:`, err);
-		});
+	while (week > 0) {
+		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`));
+		week--;
 	}
+
+	const matchupResponses = await waitForAll(...matchupsPromises);
+	const matchupsData = await waitForAll(...matchupResponses.map(res => res.json()));
 
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
 
+	// 📊 Process weekly matchups
 	for (const matchupWeek of matchupsData) {
-		if (!matchupWeek || matchupWeek.length === 0) {
-			console.log(`[processRegularSeason] Skipping empty matchup week`);
-			continue;
-		}
 		const { sPR, mD, sW } = processMatchups({
 			matchupWeek,
 			seasonPointsRecord,
@@ -258,26 +168,21 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
 	if (seasonPointsHighs.length > 0) {
-		console.log(`[processRegularSeason] Season records generated for year: ${year}`);
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
 			closestMatchups,
 			seasonPointsLows,
-			seasonPointsHighs
+			seasonPointsHighs,
 		});
 	} else {
-		console.warn(`[processRegularSeason] No season records found, nulling year for: ${year}`);
-		year = null;
-	}
-
-	if (!isLegacy) {
-		curSeason = leagueData.previous_league_id;
+		// No valid matchups this year
+		return { season: leagueData.previous_league_id, year: null };
 	}
 
 	return {
-		season: curSeason,
-		year
+		season: leagueData.previous_league_id,
+		year,
 	};
 };
 
