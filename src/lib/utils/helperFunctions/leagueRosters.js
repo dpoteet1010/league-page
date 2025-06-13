@@ -11,18 +11,26 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		console.log('📦 Preloading legacy rosters into rostersStore...');
 		rostersStore.update(current => {
 			const merged = { ...current };
-			for (const legacy of legacyLeagueRosters) {
-				const key = String(legacy.year);
+
+			for (const [key, legacy] of Object.entries(legacyLeagueRosters)) {
 				if (!merged[key]) {
-					if (!Array.isArray(legacy.rosters)) {
+					if (
+						!legacy.rosters ||
+						typeof legacy.rosters !== 'object' ||
+						Array.isArray(legacy.rosters)
+					) {
 						console.error(`❌ Invalid legacy data for ${key}:`, legacy.rosters);
 						continue;
 					}
-					const processed = processRosters(legacy.rosters);
+
+					// Convert legacy rosters object to array
+					const rosterArray = Object.values(legacy.rosters);
+					const processed = processRosters(rosterArray);
 					merged[key] = processed;
 					console.log(`✅ Legacy roster pre-stored for league ${key}`);
 				}
 			}
+
 			return merged;
 		});
 		legacyAppended = true;
@@ -77,6 +85,7 @@ const processRosters = (rosters) => {
 	console.log(`🔄 Processing ${rosters.length} rosters...`);
 	const startersAndReserve = [];
 	const rosterMap = {};
+
 	for (const roster of rosters) {
 		if (Array.isArray(roster.starters)) {
 			for (const starter of roster.starters) {
@@ -90,6 +99,7 @@ const processRosters = (rosters) => {
 		}
 		rosterMap[roster.roster_id] = roster;
 	}
+
 	console.log(`✅ Processed ${Object.keys(rosterMap).length} rosters`);
 	return { rosters: rosterMap, startersAndReserve };
 };
