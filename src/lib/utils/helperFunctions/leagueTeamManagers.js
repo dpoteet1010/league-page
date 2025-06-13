@@ -74,7 +74,6 @@ for (const year in legacyLeagueUsers) {
 
     for (const rosterID in seasonRostersMap) {
         const roster = seasonRostersMap[rosterID];
-        console.log(`Year ${seasonYear} — Roster ${roster.roster_id} owned by ${roster.owner_id}:`, seasonUsers[roster.owner_id]?.display_name);
         teamManagersMap[seasonYear][roster.roster_id] = {
             team: getTeamData(seasonUsers, roster.owner_id),
             managers: roster.managers ? roster.managers.map(mid => seasonUsers[mid]) : [],
