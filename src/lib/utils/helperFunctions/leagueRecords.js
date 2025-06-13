@@ -15,6 +15,7 @@ import { browser } from '$app/environment';
  * @param {bool} refresh if set to false, getLeagueRecords returns the records stored in localStorage
  * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
  */
+Do both of these functions look correct now?
 export const getLeagueRecords = async (refresh = false) => {
 	console.log('[getLeagueRecords] Starting record generation...');
 
@@ -265,6 +266,51 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		year,
 	};
 };
+
+/**
+ * Analyzes an individual roster and adds entries for that roster's
+ * individual records as well as updating the league season long points.
+ * @param {Object} rosterData the roster data to be analyzed
+ * @param {int} rosterData.year the year being analyzed
+ * @param {Object} rosterData.roster the roster being analyzed
+ * @param {Records} rosterData.regularSeason the global regularSeason object that will be updated and returned
+ */
+const analyzeRosters = ({year, roster, regularSeason}) => {
+    // team name and logo are tied to the ownerID
+    const rosterID = roster.roster_id;
+
+    const managers = getManagers(roster);
+
+	// season hasn't started, no records to obtain
+	if(roster.settings.wins == 0 && roster.settings.ties == 0 && roster.settings.losses == 0) return;
+
+	// fptsFor and fptsPerGame are used for both rosterRecords and seasonLongPoints
+	const fptsFor = roster.settings.fpts + (roster.settings.fpts_decimal / 100);
+	const fptsPerGame = round(fptsFor / (roster.settings.wins + roster.settings.losses + roster.settings.ties));
+
+	const rosterRecords = {
+		wins:  roster.settings.wins,
+		losses:  roster.settings.losses,
+		ties:  roster.settings.ties,
+		fptsFor,
+		fptsAgainst:  roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100),
+		fptsPerGame,
+		potentialPoints:  roster.settings.ppts + (roster.settings.ppts_decimal / 100),
+		rosterID,
+		year,
+	}
+
+	// update the roster records for this roster ID
+	regularSeason.updateManagerRecord(managers, rosterRecords);
+
+	// add season long points entry
+	regularSeason.addSeasonLongPoints({
+		rosterID,
+		fpts: fptsFor,
+		fptsPerGame,
+		year,
+	});
+}
 
 /**
  * Analyzes an individual roster and adds entries for that roster's
