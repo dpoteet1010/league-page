@@ -15,7 +15,6 @@ import { browser } from '$app/environment';
  * @param {bool} refresh if set to false, getLeagueRecords returns the records stored in localStorage
  * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
  */
-Do both of these functions look correct now?
 export const getLeagueRecords = async (refresh = false) => {
 	console.log('[getLeagueRecords] Starting record generation...');
 
