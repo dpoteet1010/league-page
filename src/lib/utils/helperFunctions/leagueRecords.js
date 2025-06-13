@@ -147,19 +147,19 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
-
-	const regularSeasonData = regularSeason.returnRecords();
-	const playoffData = playoffRecords.returnRecords();
-
-	const recordsData = { regularSeasonData, playoffData };
-
+	
+	const recordsData = {
+	  ...regularSeason.returnRecords(),
+	  ...playoffRecords.returnRecords(),
+	};
+	
 	if (browser) {
-		localStorage.setItem("records", JSON.stringify(recordsData));
-		records.update(() => recordsData);
+	  localStorage.setItem("records", JSON.stringify(recordsData));
+	  records.update(() => recordsData);
 	}
-
+	console.log('[getLeagueRecords] Final record keys:', Object.keys(recordsData));
 	return recordsData;
-};
+
 
 /**
  * processes a regular season by calling Sleeper APIs to get the data fro a season and turn
