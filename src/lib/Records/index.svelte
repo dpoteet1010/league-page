@@ -4,62 +4,68 @@
     import AllTimeRecords from './AllTimeRecords.svelte';
     import PerSeasonRecords from './PerSeasonRecords.svelte';
 
-    let {leagueData, totals, stale, leagueTeamManagers} = $props();;
+    let {leagueData, totals, stale, leagueTeamManagers} = $props();
 
     const refreshTransactions = async () => {
         const newTransactions = await getLeagueTransactions(false, true);
         totals = newTransactions.totals;
+        console.log("🔄 Refreshed transactions:", totals);
     }
 
-    let leagueManagerRecords = $state();
-    let leagueRosterRecords = $state();
-    let leagueWeekHighs = $state();
-    let leagueWeekLows = $state();
-    let allTimeClosestMatchups = $state();
-    let allTimeBiggestBlowouts = $state();
-    let mostSeasonLongPoints = $state();
-    let leastSeasonLongPoints = $state();
-    let seasonWeekRecords = $state();
-    let currentYear = $state();
-    let lastYear = $state();
+    // Data state
+    let leagueManagerRecords = $state(null);
+    let leagueRosterRecords = $state(null);
+    let leagueWeekHighs = $state(null);
+    let leagueWeekLows = $state(null);
+    let allTimeClosestMatchups = $state(null);
+    let allTimeBiggestBlowouts = $state(null);
+    let mostSeasonLongPoints = $state(null);
+    let leastSeasonLongPoints = $state(null);
+    let seasonWeekRecords = $state(null);
+    let currentYear = $state(null);
+    let lastYear = $state(null);
 
     const refreshRecords = async () => {
         const newRecords = await getLeagueRecords(true);
-
-        // update values with new data
+        console.log("🔄 Refreshed records:", newRecords);
         leagueData = newRecords;
     }
 
     let key = $state("regularSeasonData");
+    let display = $state("allTime");
 
     $effect(() => {
-        if(!leagueData || !leagueData[key]) return;
+        console.log("🔁 leagueData or key changed:", leagueData, key);
+
+        if (!leagueData || !leagueData[key]) {
+            console.warn("⚠️ leagueData or keyed data not ready:", { leagueData, key });
+            return;
+        }
 
         const selectedLeagueData = leagueData[key];
 
-        leagueManagerRecords = selectedLeagueData.leagueManagerRecords;
-        leagueRosterRecords = selectedLeagueData.leagueRosterRecords;
-        leagueWeekHighs = selectedLeagueData.leagueWeekHighs;
-        leagueWeekLows = selectedLeagueData.leagueWeekLows;
-        allTimeClosestMatchups = selectedLeagueData.allTimeClosestMatchups;
-        allTimeBiggestBlowouts = selectedLeagueData.allTimeBiggestBlowouts;
-        mostSeasonLongPoints = selectedLeagueData.mostSeasonLongPoints;
-        leastSeasonLongPoints = selectedLeagueData.leastSeasonLongPoints;
-        seasonWeekRecords = selectedLeagueData.seasonWeekRecords;
-        currentYear = selectedLeagueData.currentYear;
-        lastYear = selectedLeagueData.lastYear;
+        leagueManagerRecords = selectedLeagueData?.leagueManagerRecords ?? null;
+        leagueRosterRecords = selectedLeagueData?.leagueRosterRecords ?? null;
+        leagueWeekHighs = selectedLeagueData?.leagueWeekHighs ?? null;
+        leagueWeekLows = selectedLeagueData?.leagueWeekLows ?? null;
+        allTimeClosestMatchups = selectedLeagueData?.allTimeClosestMatchups ?? null;
+        allTimeBiggestBlowouts = selectedLeagueData?.allTimeBiggestBlowouts ?? null;
+        mostSeasonLongPoints = selectedLeagueData?.mostSeasonLongPoints ?? null;
+        leastSeasonLongPoints = selectedLeagueData?.leastSeasonLongPoints ?? null;
+        seasonWeekRecords = selectedLeagueData?.seasonWeekRecords ?? null;
+        currentYear = selectedLeagueData?.currentYear ?? null;
+        lastYear = selectedLeagueData?.lastYear ?? null;
+
+        console.log("✅ UI state updated from selectedLeagueData");
     });
 
-    if(stale) {
+    if (stale) {
         refreshTransactions();
     }
 
-    if(leagueData.stale) {
+    if (leagueData?.stale) {
         refreshRecords();
     }
-
-    let display = $state("allTime");
-
 </script>
 
 <style>
@@ -74,13 +80,10 @@
         text-align: center;
     }
 
-    /* Button Styling */
     .buttonHolder {
         text-align: center;
         margin: 2em 0 0;
     }
-
-    /* Start button resizing */
 
     @media (max-width: 540px) {
         :global(.buttonHolder .selectionButtons) {
@@ -101,39 +104,68 @@
             padding: 0 3px;
         }
     }
-
-    /* End button resizing */
 </style>
 
 <div class="rankingsWrapper">
-
     <div class="buttonHolder">
         <Group variant="outlined">
-            <Button class="selectionButtons" onclick={() => key = "regularSeasonData"} variant="{key == "regularSeasonData" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" on:click={() => key = "regularSeasonData"} variant={key === "regularSeasonData" ? "raised" : "outlined"}>
                 <Label>Regular Season</Label>
             </Button>
-            <Button class="selectionButtons" onclick={() => key = "playoffData"} variant="{key == "playoffData" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" on:click={() => key = "playoffData"} variant={key === "playoffData" ? "raised" : "outlined"}>
                 <Label>Playoffs</Label>
             </Button>
         </Group>
         <br />
         <Group variant="outlined">
-            <Button class="selectionButtons" onclick={() => display = "allTime"} variant="{display == "allTime" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" on:click={() => display = "allTime"} variant={display === "allTime" ? "raised" : "outlined"}>
                 <Label>All-Time Records</Label>
             </Button>
-            <Button class="selectionButtons" onclick={() => display = "season"} variant="{display == "season" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" on:click={() => display = "season"} variant={display === "season" ? "raised" : "outlined"}>
                 <Label>Season Records</Label>
             </Button>
         </Group>
     </div>
 
-    {#if display == "allTime"}
+    {#if display === "allTime"}
         {#if leagueWeekHighs?.length}
-            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
+            <AllTimeRecords
+                transactionTotals={totals}
+                {allTimeClosestMatchups}
+                {allTimeBiggestBlowouts}
+                {leagueManagerRecords}
+                {leagueWeekHighs}
+                {leagueWeekLows}
+                {leagueTeamManagers}
+                {mostSeasonLongPoints}
+                {leastSeasonLongPoints}
+                {key}
+            />
         {:else}
             <p class="empty">No records <i>yet</i>...</p>
         {/if}
     {:else}
-        <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
+        {#if leagueRosterRecords}
+            <PerSeasonRecords
+                transactionTotals={totals}
+                {leagueRosterRecords}
+                {seasonWeekRecords}
+                {leagueTeamManagers}
+                {currentYear}
+                {lastYear}
+                {key}
+            />
+        {:else}
+            <p class="empty">Season records not available yet. Please try refreshing.</p>
+        {/if}
     {/if}
+
+    <!-- 🔍 Debug output to help confirm state -->
+    <pre style="font-size: 0.75em; margin-top: 2em; overflow-x: auto; background: #f0f0f0; padding: 1em;">
+        DEBUG:
+        key = {key}
+        display = {display}
+        leagueData keys = {leagueData ? Object.keys(leagueData).join(", ") : "null"}
+        leagueRosterRecords: {JSON.stringify(leagueRosterRecords, null, 2)}
+    </pre>
 </div>
