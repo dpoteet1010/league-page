@@ -159,7 +159,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	}
 	console.log('[getLeagueRecords] Final record keys:', Object.keys(recordsData));
 	return recordsData;
-
+}
 
 /**
  * processes a regular season by calling Sleeper APIs to get the data fro a season and turn
