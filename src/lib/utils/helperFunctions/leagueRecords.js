@@ -169,14 +169,18 @@ export const getLeagueRecords = async (refresh = false) => {
 	console.log("📊 Final playoff data:", playoffData);
 
 	const recordsData = { regularSeasonData, playoffData };
-
+	
+	console.log("🔎 leagueWeekHighs (regularSeason):", regularSeasonData.leagueWeekHighs);
+	console.log("🔎 leagueWeekHighs (playoffs):", playoffData.leagueWeekHighs);
+	
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		console.log("💽 Records saved to localStorage");
 		records.update(() => recordsData);
 	}
-
+	
 	return recordsData;
+
 };
 
 /**
