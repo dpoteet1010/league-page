@@ -16,23 +16,30 @@ import { browser } from '$app/environment';
  * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
  */
 export const getLeagueRecords = async (refresh = false) => {
-	if (get(records).leagueWeekHighs) return get(records);
+	console.log('[getLeagueRecords] Starting record generation...');
+
+	if (get(records).leagueWeekHighs) {
+		console.log('[getLeagueRecords] Records already in memory. Returning cached.');
+		return get(records);
+	}
 
 	if (!refresh && browser) {
 		let localRecords = await JSON.parse(localStorage.getItem("records"));
 		if (localRecords && localRecords.playoffData) {
+			console.log('[getLeagueRecords] Records loaded from localStorage.');
 			localRecords.stale = true;
 			return localRecords;
 		}
 	}
 
-	const nflState = await getNflState().catch((err) => console.error(err));
+	const nflState = await getNflState().catch((err) => console.error('[getLeagueRecords] Failed to get NFL state:', err));
 	let week = 0;
-	if (nflState.season_type === 'regular') {
+	if (nflState?.season_type === 'regular') {
 		week = nflState.week - 1;
-	} else if (nflState.season_type === 'post') {
+	} else if (nflState?.season_type === 'post') {
 		week = 18;
 	}
+	console.log(`[getLeagueRecords] NFL week set to ${week}.`);
 
 	let curSeason = leagueID;
 	let currentYear = null;
@@ -41,12 +48,23 @@ export const getLeagueRecords = async (refresh = false) => {
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	// 🔁 STEP 1: Sleeper API loop
+	console.log('[getLeagueRecords] Beginning Sleeper API loop...');
+
 	while (curSeason && curSeason !== 0) {
+		console.log(`[getLeagueRecords] Processing season ID: ${curSeason}`);
+
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
 			getLeagueData(curSeason),
-		).catch((err) => console.error(err));
+		).catch((err) => {
+			console.error(`[getLeagueRecords] Error fetching rosters/leagueData for ${curSeason}:`, err);
+			return [];
+		});
+
+		if (!leagueData || !rosterRes) {
+			console.warn(`[getLeagueRecords] Skipping season ${curSeason} due to missing data.`);
+			break;
+		}
 
 		const rosters = rosterRes.rosters;
 
@@ -62,6 +80,8 @@ export const getLeagueRecords = async (refresh = false) => {
 			regularSeason
 		});
 
+		console.log(`[getLeagueRecords] Processed regular season for year: ${year}`);
+
 		const pS = await processPlayoffs({
 			year,
 			curSeason,
@@ -69,7 +89,10 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords,
 			rosters
 		});
-		if (pS) playoffRecords = pS;
+		if (pS) {
+			playoffRecords = pS;
+			console.log(`[getLeagueRecords] Processed playoffs for year: ${year}`);
+		}
 
 		if (year) {
 			if (!currentYear || year > currentYear) currentYear = year;
@@ -79,15 +102,26 @@ export const getLeagueRecords = async (refresh = false) => {
 		curSeason = season;
 	}
 
-	// 🟡 STEP 2: Manually process legacy seasons: 2024 and 2023
+	console.log('[getLeagueRecords] Completed Sleeper loop. Moving to legacy seasons...');
+
+	// 🟡 Add legacy seasons manually
 	const legacySeasons = ['2024', '2023'];
 	for (const legacySeason of legacySeasons) {
 		const seasonID = legacySeason;
+		console.log(`[getLeagueRecords] Manually processing legacy season: ${seasonID}`);
 
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(seasonID),
 			getLeagueData(seasonID),
-		).catch((err) => console.error(err));
+		).catch((err) => {
+			console.error(`[getLeagueRecords] Failed to load legacy data for ${seasonID}:`, err);
+			return [];
+		});
+
+		if (!leagueData || !rosterRes) {
+			console.warn(`[getLeagueRecords] Skipping legacy season ${seasonID} due to missing data.`);
+			continue;
+		}
 
 		const rosters = rosterRes.rosters;
 
@@ -99,6 +133,8 @@ export const getLeagueRecords = async (refresh = false) => {
 			regularSeason
 		});
 
+		console.log(`[getLeagueRecords] Legacy regular season processed for year: ${year}`);
+
 		const pS = await processPlayoffs({
 			year,
 			curSeason: seasonID,
@@ -106,7 +142,10 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords,
 			rosters
 		});
-		if (pS) playoffRecords = pS;
+		if (pS) {
+			playoffRecords = pS;
+			console.log(`[getLeagueRecords] Legacy playoffs processed for year: ${year}`);
+		}
 
 		if (year) {
 			if (!currentYear || year > currentYear) currentYear = year;
@@ -114,7 +153,8 @@ export const getLeagueRecords = async (refresh = false) => {
 		}
 	}
 
-	// Finalize records
+	console.log(`[getLeagueRecords] Finalizing records: currentYear=${currentYear}, lastYear=${lastYear}`);
+
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
@@ -124,11 +164,15 @@ export const getLeagueRecords = async (refresh = false) => {
 	const regularSeasonData = regularSeason.returnRecords();
 	const playoffData = playoffRecords.returnRecords();
 
+	console.log(`[getLeagueRecords] Regular season record years:`, Object.keys(regularSeason.recordsByYear || {}));
+	console.log(`[getLeagueRecords] Playoff record years:`, Object.keys(playoffRecords.recordsByYear || {}));
+
 	const recordsData = { regularSeasonData, playoffData };
 
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		records.update(() => recordsData);
+		console.log('[getLeagueRecords] Records saved to localStorage and Svelte store updated.');
 	}
 
 	return recordsData;
