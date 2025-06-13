@@ -175,93 +175,60 @@ export const getLeagueRecords = async (refresh = false) => {
  */
 import { legacyMatchups } from './legacyMatchups.js';
 
-const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason, forceYear }) => {
-	let year = forceYear || parseInt(leagueData.season);
-	console.log(`[processRegularSeason] Starting for season: ${curSeason}, using year: ${year}`);
+const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason, isLegacy = false, legacyMatchups = {} }) => {
+	let year = parseInt(leagueData.season);
 
+	// Adjust week if season is already over or in playoffs
 	if (leagueData.status === 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
-		console.log(`[processRegularSeason] Adjusted week to: ${week}`);
 	}
 
+	// Analyze each roster
 	for (const rosterID in rosters) {
 		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
 	}
 
-	const isLegacy = ['2023', '2024'].includes(String(curSeason));
 	let matchupsData = [];
-	let startWeek = week;
 
 	if (isLegacy && legacyMatchups[curSeason]) {
 		console.log(`[processRegularSeason] Using legacy matchups for ${curSeason}`);
+
+		// Loop through each week of legacy matchups
 		for (let i = 1; i <= week; i++) {
 			const weekMatchups = legacyMatchups[curSeason][i];
 			if (weekMatchups && weekMatchups.length > 0) {
-				console.log(`[processRegularSeason] Found ${weekMatchups.length} matchups for week ${i}`);
-				weekMatchups.forEach((m, index) => {
-					console.log(`[Matchup] Week ${i} - Matchup ${index + 1}:`, {
-						rosterId: m.roster_id,
-						opponentId: m.matchup_id,
-						points: m.points,
-						opponentPoints: m.points_against
-					});
-				});
 				matchupsData.push(weekMatchups);
-			} else {
-				console.log(`[processRegularSeason] No matchups for week ${i} in ${curSeason}`);
+				console.log(`[processRegularSeason] Found ${weekMatchups.length} matchups for week ${i}`);
 			}
 		}
 	} else {
-		console.log(`[processRegularSeason] Fetching live matchups for ${curSeason} from Sleeper API`);
+		// Fetch live matchups from Sleeper API
 		const matchupsPromises = [];
-		let fetchWeek = week;
+		let startWeek = parseInt(week);
 
-		while (fetchWeek > 0) {
-			matchupsPromises.push(
-				fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${fetchWeek}`, {
-					compress: true
-				})
-			);
-			fetchWeek--;
+		while (week > 0) {
+			matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, { compress: true }));
+			week--;
 		}
 
-		const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => {
-			console.error(`[processRegularSeason] Matchup fetch failed:`, err);
-		});
+		const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => console.error(err));
 
-		const matchupsJsonPromises = matchupsRes.map((res, idx) => {
-			if (!res.ok) console.error(`[processRegularSeason] Week ${week - idx} failed with status: ${res.status}`);
-			return res.json();
-		});
+		const matchupsJsonPromises = [];
+		for (const matchupRes of matchupsRes) {
+			const data = matchupRes.json();
+			matchupsJsonPromises.push(data);
+			if (!matchupRes.ok) console.error(data);
+		}
 
-		matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => {
-			console.error(`[processRegularSeason] Failed to parse matchup JSON:`, err);
-		});
+		matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => console.error(err));
 	}
 
+	// Process all the matchups
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
+	let startWeek = isLegacy ? parseInt(week) : parseInt(leagueData.settings.playoff_week_start - 1);
 
-	for (let weekIdx = 0; weekIdx < matchupsData.length; weekIdx++) {
-		const matchupWeek = matchupsData[weekIdx];
-		const weekNumber = week - weekIdx;
-
-		if (!matchupWeek || matchupWeek.length === 0) {
-			console.log(`[processRegularSeason] Skipping empty matchup week ${weekNumber}`);
-			continue;
-		}
-
-		console.log(`[processRegularSeason] Processing week ${weekNumber} with ${matchupWeek.length} matchups`);
-
-		matchupWeek.forEach((m, index) => {
-			console.log(`[Matchup] Week ${weekNumber} - Matchup ${index + 1}:`, {
-				rosterId: m.roster_id,
-				opponentId: m.matchup_id,
-				points: m.points,
-				opponentPoints: m.points_against
-			});
-		});
-
+	for (const matchupWeek of matchupsData) {
 		const { sPR, mD, sW } = processMatchups({
 			matchupWeek,
 			seasonPointsRecord,
@@ -270,47 +237,32 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 			matchupDifferentials,
 			year
 		});
-
-		console.log(`[processRegularSeason] Week ${weekNumber} results:`);
-		console.log(`  - SeasonPointsRecord entries: ${sPR.length}`);
-		console.log(`  - MatchupDifferentials entries: ${mD.length}`);
-
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
 	}
 
+	// Sort & store records
 	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
 	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
-
-	console.log(`[processRegularSeason] Differential records: ${matchupDifferentials.length}`);
-	console.log(`[processRegularSeason] Season Points records: ${seasonPointsRecord.length}`);
 
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
 	if (seasonPointsHighs.length > 0) {
-		console.log(`[processRegularSeason] Season records generated for year: ${year}`);
-		console.log(`[processRegularSeason] High scorers:`, seasonPointsHighs);
-		console.log(`[processRegularSeason] Low scorers:`, seasonPointsLows);
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
 			closestMatchups,
 			seasonPointsLows,
-			seasonPointsHighs
+			seasonPointsHighs,
 		});
 	} else {
-		console.warn(`[processRegularSeason] No season records found, nulling year for: ${year}`);
 		year = null;
-	}
-
-	if (!isLegacy) {
-		curSeason = leagueData.previous_league_id;
 	}
 
 	return {
 		season: curSeason,
-		year
+		year,
 	};
 };
 
