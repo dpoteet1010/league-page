@@ -120,9 +120,6 @@ export const getLeagueRecords = async (refresh = false) => {
 			regularSeason,
 			forceYear: year
 		});
-		
-		console.log('[DEBUG] Records after processing', regularSeason.recordsByYear);
-		console.log(`[DEBUG] Regular records for year ${year}:`, regularSeason.recordsByYear?.[year]);
 		console.log(`[getLeagueRecords] Legacy regular season processed for year: ${year}`);
 
 		await processPlayoffs({
@@ -162,7 +159,7 @@ export const getLeagueRecords = async (refresh = false) => {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		records.update(() => recordsData);
 	}
-	console.log('[DEBUG] Final regularSeason object:', JSON.stringify(regularSeason, null, 2));
+
 	return recordsData;
 };
 
@@ -277,16 +274,6 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 	if (!isLegacy) {
 		curSeason = leagueData.previous_league_id;
 	}
-	const data = {
-		  seasonPointsRecord,
-		  matchupDifferentials,
-		  seasonPointsHighs,
-		  seasonPointsLows,
-		  biggestBlowouts,
-		  closestMatchups
-		};
-
-	regularSeason.addRecordsForYear(year, data);
 
 	return {
 		season: curSeason,
