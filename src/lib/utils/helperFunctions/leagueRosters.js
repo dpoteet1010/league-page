@@ -6,6 +6,16 @@ import { legacyLeagueRosters } from './legacyLeagueRosters.js';
 let legacyAppended = false; // Ensures static data is added only once
 
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
+	    const storedRoster = get(rostersStore)[queryLeagueID];
+		if(
+	        storedRoster
+	        && typeof storedRoster.rosters === 'object' &&
+	        !Array.isArray(storedRoster.rosters) &&
+	        storedRoster.rosters !== null
+	    	) {
+			return storedRoster;
+		}
+
 	// Append and process legacy rosters once per session
 	if (!legacyAppended) {
 		rostersStore.update(current => {
@@ -31,16 +41,6 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 			return merged;
 		});
 		legacyAppended = true;
-	}
-
-	const storedRoster = get(rostersStore)[queryLeagueID];
-	if (
-		storedRoster &&
-		typeof storedRoster.rosters === 'object' &&
-		!Array.isArray(storedRoster.rosters) &&
-		storedRoster.rosters !== null
-	) {
-		return storedRoster;
 	}
 
 	// Fetch from Sleeper API
