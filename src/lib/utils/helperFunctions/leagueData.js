@@ -6,6 +6,11 @@ import { legacyLeagueData } from './legacyLeagueData.js';
 let legacyAppended = false; // Ensures we only append once per session
 
 export const getLeagueData = async (queryLeagueID = leagueID) => {
+      const currentCache = get(leagueData);
+    if (currentCache[queryLeagueID]) {
+        return currentCache[queryLeagueID];
+    }
+    
     // Append legacy data once if not already done
     if (!legacyAppended) {
         leagueData.update(current => {
@@ -18,11 +23,6 @@ export const getLeagueData = async (queryLeagueID = leagueID) => {
             return merged;
         });
         legacyAppended = true;
-    }
-
-    const currentCache = get(leagueData);
-    if (currentCache[queryLeagueID]) {
-        return currentCache[queryLeagueID];
     }
 
     // Fetch from Sleeper API if not in cache or legacy data
