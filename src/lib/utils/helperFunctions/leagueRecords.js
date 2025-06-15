@@ -169,7 +169,28 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	let matchupDifferentials = [];
 	
 	if (year === 2023 || year === 2024) {	
-	const weeklyMatchups = legacyMatchups[year];
+	const yearMatchups = legacyMatchups[year];
+
+	for (let week = 1; week <= 17; week++) {
+	  const matchupWeek = yearMatchups[week];
+	
+	 const {sPR, mD, sW} = processMatchups({
+	    matchupWeek,
+	    seasonPointsRecord,
+	    record: regularSeason,
+	    startWeek: week,
+	    matchupDifferentials,
+	    year,
+	  });
+	
+	  seasonPointsRecord = sPR;
+	  matchupDifferentials = mD;
+	  startWeek = sW;
+	}
+
+		
+		
+	/* const weeklyMatchups = legacyMatchups[year];
 	
 	// Sort week keys numerically
 	const sortedWeeks = Object.keys(weeklyMatchups).sort((a, b) => parseInt(a) - parseInt(b));
@@ -189,7 +210,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	  seasonPointsRecord = sPR;
 	  matchupDifferentials = mD;
 	  startWeek = sW;
-		}
+		}*/
 	}
 	else {
 		// loop through each week of the season
