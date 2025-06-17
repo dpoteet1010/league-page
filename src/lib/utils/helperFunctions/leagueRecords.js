@@ -155,104 +155,73 @@ export const getLeagueRecords = async (refresh = false) => {
 const processRegularSeason = async ({rosters, leagueData, curSeason, week, regularSeason}) => {
 	let year = parseInt(leagueData.season);
 
-	// on first run, week is provided above from nflState,
-	// after that get the final week of regular season from leagueData
-	if(leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
+	if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
 	}
 
-	for(const rosterID in rosters) {
+	for (const rosterID in rosters) {
 		analyzeRosters({year, roster: rosters[rosterID], regularSeason});
 	}
+
 	let startWeek = parseInt(week);
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
-	
-	/*if (year === 2023 || year === 2024) {	
-	const yearMatchups = legacyMatchups[year];
 
-	for (let week = 1; week <= 1; week++) {
-	  const matchupWeek = yearMatchups[week];
-	
-	 const {sPR, mD, sW} = processMatchups({
-	    matchupWeek,
-	    seasonPointsRecord,
-	    record: regularSeason,
-	    startWeek: week,
-	    matchupDifferentials,
-	    year,
-	  });
-	
-	  seasonPointsRecord = sPR;
-	  matchupDifferentials = mD;
-	  startWeek = sW;
+	// LEGACY DATA PROCESSING TEMPORARILY DISABLED
+	/*
+	if (year === 2023 || year === 2024) {
+		const yearMatchups = legacyMatchups[year];
+		for (let week = 1; week <= 1; week++) {
+			const matchupWeek = yearMatchups[week];
+			const { sPR, mD, sW } = processMatchups({
+				matchupWeek,
+				seasonPointsRecord,
+				record: regularSeason,
+				startWeek: week,
+				matchupDifferentials,
+				year,
+			});
+			seasonPointsRecord = sPR;
+			matchupDifferentials = mD;
+			startWeek = sW;
+		}
+	}
+	*/
+
+	// Continue with Sleeper API-based matchup processing
+	const matchupsPromises = [];
+	while (week > 0) {
+		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}));
+		week--;
 	}
 
-		
-		
-	/* const weeklyMatchups = legacyMatchups[year];
-	
-	// Sort week keys numerically
-	const sortedWeeks = Object.keys(weeklyMatchups).sort((a, b) => parseInt(a) - parseInt(b));
-	
-	for (const week of sortedWeeks) {
-	  const matchupWeek = weeklyMatchups[week];
-	
-	  const { sPR, mD, sW } = processMatchups({
-	    matchupWeek,
-	    seasonPointsRecord,
-	    record: regularSeason,      // assuming this is defined elsewhere
-	    startWeek,  // match actual week #
-	    matchupDifferentials,
-	    year,
-	  });
-	
-	  seasonPointsRecord = sPR;
-	  matchupDifferentials = mD;
-	  startWeek = sW;
-		}*/
-	//}
-	//else {
-		// loop through each week of the season
-		const matchupsPromises = [];
-		while(week > 0) {
-			matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}))
-			week--;
+	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
+
+	const matchupsJsonPromises = [];
+	for (const matchupRes of matchupsRes) {
+		const data = matchupRes.json();
+		matchupsJsonPromises.push(data);
+		if (!matchupRes.ok) {
+			console.error(data);
 		}
-	
-		const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
-	
-		// convert the json matchup responses
-		const matchupsJsonPromises = [];
-		for(const matchupRes of matchupsRes) {
-			const data = matchupRes.json();
-			matchupsJsonPromises.push(data)
-			if (!matchupRes.ok) {
-				console.error(data);
-			}
-		}
-		const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
-	
-		// now that we've used the current season ID for everything we need, set it to the previous season
-		curSeason = leagueData.previous_league_id;
-	
-	// process all the matchups
-	for(const matchupWeek of matchupsData) {
-		const {sPR, mD, sW} =  processMatchups({matchupWeek, seasonPointsRecord, record: regularSeason, startWeek, matchupDifferentials, year})
+	}
+	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
+
+	curSeason = leagueData.previous_league_id;
+
+	for (const matchupWeek of matchupsData) {
+		const { sPR, mD, sW } = processMatchups({matchupWeek, seasonPointsRecord, record: regularSeason, startWeek, matchupDifferentials, year});
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
-	}}
-	// sort matchup differentials
-	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential')
+	}
 
-	// sort season point records
-	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts')
+	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
+	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
 
-	// add matchupDifferentials to tha all time  records
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
-	if(seasonPointsHighs.length > 0) {
+	if (seasonPointsHighs.length > 0) {
 		regularSeason.addSeasonWeekRecord({
 			year,
 			biggestBlowouts,
@@ -267,8 +236,8 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	return {
 		season: curSeason,
 		year,
-	}
-//}
+	};
+};
 
 /**
  * Analyzes an individual roster and adds entries for that roster's
