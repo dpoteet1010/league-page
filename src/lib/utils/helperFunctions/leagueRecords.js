@@ -82,9 +82,9 @@ export const getLeagueRecords = async (refresh = false) => {
 
 		if(!currentYear && year) {
 			currentYear = year;
-		}
+		}*/
 
-		curSeason = season;*/
+		curSeason = season;
 	}
 
 	// ➕ Manually process specific extra seasons (2024, 2023)
