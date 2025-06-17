@@ -169,7 +169,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 
 	if (year === 2023 || year === 2024) {
 		const yearMatchups = legacyMatchups[year];
-		for (let week = 1; week <= 1; week++) {
+		for (let week = 1; week <= 17; week++) {
 			const matchupWeek = yearMatchups[week];
 			const { sPR, mD, sW } = processMatchups({
 				matchupWeek,
@@ -185,7 +185,6 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 		}
 	}
 	else {
-	// Continue with Sleeper API-based matchup processing
 	const matchupsPromises = [];
 	while (week > 0) {
 		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}));
