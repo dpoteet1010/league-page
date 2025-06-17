@@ -88,6 +88,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	}
 
 	// ➕ Manually process specific extra seasons (2024, 2023)
+	setTimeout(() => {
 	const manualSeasons = [2024, 2023];
 
 	for (const manualSeason of manualSeasons) {
@@ -119,6 +120,7 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords = pS; // update the regular season records
 		}
 	}
+	}, 5000);
 	currentYear = 2024; //Temporary until 2025 season starts, then delete this line of code
 	lastYear = 2023; //Always 2023 because that's when the league started	
 	
