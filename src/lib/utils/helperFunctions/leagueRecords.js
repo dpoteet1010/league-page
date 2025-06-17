@@ -11,11 +11,6 @@ import { getBrackets } from './leagueBrackets';
 import { browser } from '$app/environment';
 import { legacyMatchups } from './legacyMatchups.js';
 
-/**
- * getLeagueRecords obtains all the record for a league since it was first created
- * @param {bool} refresh if set to false, getLeagueRecords returns the records stored in localStorage
- * @returns {Object} { allTimeBiggestBlowouts, allTimeClosestMatchups, leastSeasonLongPoints, mostSeasonLongPoints, leagueWeekLows, leagueWeekHighs, seasonWeekRecords, leagueManagerRecords, currentYear, lastYear}
- */
 export const getLeagueRecords = async (refresh = false) => {
 	if (get(records).leagueWeekHighs) {
 		return get(records);
@@ -29,7 +24,7 @@ export const getLeagueRecords = async (refresh = false) => {
 		}
 	}
 
-	const nflState = await getNflState().catch((err) => { console.error(err); });
+	const nflState = await getNflState();
 	let week = 0;
 	if (nflState.season_type === 'regular') {
 		week = nflState.week - 1;
@@ -44,12 +39,11 @@ export const getLeagueRecords = async (refresh = false) => {
 	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	// 🔁 Process all linked leagues via previous_league_id
 	while (curSeason && curSeason != 0) {
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
 			getLeagueData(curSeason)
-		).catch((err) => { console.error(err); });
+		);
 
 		const rosters = rosterRes.rosters;
 
@@ -73,28 +67,25 @@ export const getLeagueRecords = async (refresh = false) => {
 			rosters
 		});
 
-		if(pS) {
-			playoffRecords = pS; // update the regular season records
+		if (pS) {
+			playoffRecords = pS;
 		}
 
-		/* Keep commented until 2025 season starts
-  		lastYear = year;
-
-		if(!currentYear && year) {
+		if (!currentYear && year) {
 			currentYear = year;
-		}*/
+		}
+		lastYear = year;
 
 		curSeason = season;
 	}
 
-	// ➕ Manually process specific extra seasons (2024, 2023)
 	const manualSeasons = [2024, 2023];
 
 	for (const manualSeason of manualSeasons) {
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(manualSeason),
 			getLeagueData(manualSeason)
-		).catch((err) => { console.error(err); });
+		);
 
 		const rosters = rosterRes.rosters;
 
@@ -115,13 +106,14 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords,
 			rosters
 		});
-		if(pS) {
-			playoffRecords = pS; // update the regular season records
+		if (pS) {
+			playoffRecords = pS;
 		}
 	}
-	currentYear = 2024; //Temporary until 2025 season starts, then delete this line of code
-	lastYear = 2023; //Always 2023 because that's when the league started	
-	
+
+	currentYear = 2024;
+	lastYear = 2023;
+
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
@@ -141,18 +133,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	return recordsData;
 };
 
-/**
- * processes a regular season by calling Sleeper APIs to get the data fro a season and turn
- * it into league records (both season records and all-time records)
- * @param {Object} regularSeasonInfo an object with the function arguments needed to process a regular season
- * @param {Object[]} regularSeasonInfo.rosters the rosters of the league that year
- * @param {Object} regularSeasonInfo.leagueData the basic info for the league that season
- * @param {string} regularSeasonInfo.curSeason the league ID of the current season
- * @param {int} regularSeasonInfo.week the week to start analyzing (most recently completed week)
- * @param {Records} regularSeasonInfo.regularSeason the global regularSeason record object
- * @returns {Object} { season: (curSeason), year}
- */
-const processRegularSeason = async ({rosters, leagueData, curSeason, week, regularSeason}) => {
+const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason }) => {
 	let year = parseInt(leagueData.season);
 
 	if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
@@ -160,7 +141,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	}
 
 	for (const rosterID in rosters) {
-		analyzeRosters({year, roster: rosters[rosterID], regularSeason});
+		analyzeRosters({ year, roster: rosters[rosterID], regularSeason });
 	}
 
 	let startWeek = parseInt(week);
@@ -183,34 +164,38 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 			matchupDifferentials = mD;
 			startWeek = sW;
 		}
-	}
-	else {
-	const matchupsPromises = [];
-	while (week > 0) {
-		matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, {compress: true}));
-		week--;
-	}
+	} else {
+		const matchupsPromises = [];
+		while (week > 0) {
+			matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curSeason}/matchups/${week}`, { compress: true }));
+			week--;
+		}
 
-	const matchupsRes = await waitForAll(...matchupsPromises).catch((err) => { console.error(err); });
+		const matchupsRes = await waitForAll(...matchupsPromises);
 
-	const matchupsJsonPromises = [];
-	for (const matchupRes of matchupsRes) {
-		const data = matchupRes.json();
-		matchupsJsonPromises.push(data);
-		if (!matchupRes.ok) {
-			console.error(data);
+		const matchupsJsonPromises = [];
+		for (const matchupRes of matchupsRes) {
+			const data = matchupRes.json();
+			matchupsJsonPromises.push(data);
+		}
+		const matchupsData = await waitForAll(...matchupsJsonPromises);
+
+		curSeason = leagueData.previous_league_id;
+
+		for (const matchupWeek of matchupsData) {
+			const { sPR, mD, sW } = processMatchups({
+				matchupWeek,
+				seasonPointsRecord,
+				record: regularSeason,
+				startWeek,
+				matchupDifferentials,
+				year
+			});
+			seasonPointsRecord = sPR;
+			matchupDifferentials = mD;
+			startWeek = sW;
 		}
 	}
-	const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); });
-
-	curSeason = leagueData.previous_league_id;
-
-	for (const matchupWeek of matchupsData) {
-		const { sPR, mD, sW } = processMatchups({matchupWeek, seasonPointsRecord, record: regularSeason, startWeek, matchupDifferentials, year});
-		seasonPointsRecord = sPR;
-		matchupDifferentials = mD;
-		startWeek = sW;
-	}}
 
 	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
 	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
@@ -235,50 +220,35 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	};
 };
 
-/**
- * Analyzes an individual roster and adds entries for that roster's
- * individual records as well as updating the league season long points.
- * @param {Object} rosterData the roster data to be analyzed
- * @param {int} rosterData.year the year being analyzed
- * @param {Object} rosterData.roster the roster being analyzed
- * @param {Records} rosterData.regularSeason the global regularSeason object that will be updated and returned
- */
-const analyzeRosters = ({year, roster, regularSeason}) => {
-    // team name and logo are tied to the ownerID
-    const rosterID = roster.roster_id;
+const analyzeRosters = ({ year, roster, regularSeason }) => {
+	const rosterID = roster.roster_id;
+	const managers = getManagers(roster);
 
-    const managers = getManagers(roster);
+	if (roster.settings.wins == 0 && roster.settings.ties == 0 && roster.settings.losses == 0) return;
 
-	// season hasn't started, no records to obtain
-	if(roster.settings.wins == 0 && roster.settings.ties == 0 && roster.settings.losses == 0) return;
-
-	// fptsFor and fptsPerGame are used for both rosterRecords and seasonLongPoints
 	const fptsFor = roster.settings.fpts + (roster.settings.fpts_decimal / 100);
 	const fptsPerGame = round(fptsFor / (roster.settings.wins + roster.settings.losses + roster.settings.ties));
 
 	const rosterRecords = {
-		wins:  roster.settings.wins,
-		losses:  roster.settings.losses,
-		ties:  roster.settings.ties,
+		wins: roster.settings.wins,
+		losses: roster.settings.losses,
+		ties: roster.settings.ties,
 		fptsFor,
-		fptsAgainst:  roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100),
+		fptsAgainst: roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100),
 		fptsPerGame,
-		potentialPoints:  roster.settings.ppts + (roster.settings.ppts_decimal / 100),
+		potentialPoints: roster.settings.ppts + (roster.settings.ppts_decimal / 100),
 		rosterID,
 		year,
-	}
+	};
 
-	// update the roster records for this roster ID
 	regularSeason.updateManagerRecord(managers, rosterRecords);
-
-	// add season long points entry
 	regularSeason.addSeasonLongPoints({
 		rosterID,
 		fpts: fptsFor,
 		fptsPerGame,
 		year,
 	});
-}
+};
 
 /**
  * Processes the matchups for a given week of a season. Calculates weekly points,
