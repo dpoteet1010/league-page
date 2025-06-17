@@ -168,7 +168,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
 	
-	if (year === 2023 || year === 2024) {	
+	/*if (year === 2023 || year === 2024) {	
 	const yearMatchups = legacyMatchups[year];
 
 	for (let week = 1; week <= 1; week++) {
@@ -211,8 +211,8 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	  matchupDifferentials = mD;
 	  startWeek = sW;
 		}*/
-	}
-	else {
+	//}
+	//else {
 		// loop through each week of the season
 		const matchupsPromises = [];
 		while(week > 0) {
@@ -268,7 +268,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 		season: curSeason,
 		year,
 	}
-}
+//}
 
 /**
  * Analyzes an individual roster and adds entries for that roster's
