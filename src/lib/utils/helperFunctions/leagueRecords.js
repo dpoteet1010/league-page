@@ -88,7 +88,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	}
 
 	// ➕ Manually process specific extra seasons (2024, 2023)
-	/*const manualSeasons = [2024, 2023];
+	const manualSeasons = [2024, 2023];
 
 	for (const manualSeason of manualSeasons) {
 		const [rosterRes, leagueData] = await waitForAll(
@@ -118,7 +118,7 @@ export const getLeagueRecords = async (refresh = false) => {
 		if(pS) {
 			playoffRecords = pS; // update the regular season records
 		}
-	}*/
+	}
 	currentYear = 2024; //Temporary until 2025 season starts, then delete this line of code
 	lastYear = 2023; //Always 2023 because that's when the league started	
 	
@@ -167,8 +167,6 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 	let seasonPointsRecord = [];
 	let matchupDifferentials = [];
 
-	// LEGACY DATA PROCESSING TEMPORARILY DISABLED
-	/*
 	if (year === 2023 || year === 2024) {
 		const yearMatchups = legacyMatchups[year];
 		for (let week = 1; week <= 1; week++) {
@@ -186,8 +184,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 			startWeek = sW;
 		}
 	}
-	*/
-
+	else {
 	// Continue with Sleeper API-based matchup processing
 	const matchupsPromises = [];
 	while (week > 0) {
@@ -214,7 +211,7 @@ const processRegularSeason = async ({rosters, leagueData, curSeason, week, regul
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 		startWeek = sW;
-	}
+	}}
 
 	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
 	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
