@@ -437,38 +437,53 @@ const processPlayoffs = async ({curSeason, playoffRecords, year, week, rosters})
 	return playoffRecords;
 }
 
-const digestBracket = ({bracket, playoffRecords, playoffRounds, matchupDifferentials, postSeasonData, consolation, seasonPointsRecord, playoffsStart, year}) => {
-	for(let i = 0; i < bracket.length; i++) {
+const digestBracket = ({ bracket, playoffRecords, playoffRounds, matchupDifferentials, postSeasonData, consolation, seasonPointsRecord, playoffsStart, year }) => {
+	for (let i = 0; i < bracket.length; i++) {
 		const startWeek = getStartWeek(i + (playoffRounds - bracket.length), playoffRounds, consolation, playoffsStart);
 		const matchupWeek = [];
 
-		for(let matchups of bracket[i]) {
-			if(consolation) {
-				// consolation matchups are nested within an additional array, we need to flatten them before proceeding
-				matchups.flat();
+		for (let matchups of bracket[i]) {
+			if (consolation) {
+				// flatten and assign properly
+				matchups = matchups.flat();
 			}
-			for(const matchup of matchups) {
-				if(matchup.r) {
-					const newMatchup = {...matchup}
+
+			for (const matchup of matchups) {
+				if (matchup.r) {
+					const newMatchup = { ...matchup };
 					let points = 0;
-					for(const k in newMatchup.points) {
-						points += newMatchup.points[k].reduce((t, nV) => t + nV, 0);
+
+					for (const k in newMatchup.points) {
+						const arr = newMatchup.points[k];
+						if (Array.isArray(arr)) {
+							points += arr.reduce((t, nV) => t + nV, 0);
+						} else {
+							console.warn(`Unexpected points structure for matchup in bracket:`, newMatchup);
+						}
 					}
+
 					newMatchup.points = points;
 					matchupWeek.push(newMatchup);
 				}
 			}
 		}
-		const {sPR, mD, pSD} =  processMatchups({matchupWeek, seasonPointsRecord, record: playoffRecords, startWeek, matchupDifferentials, year})
+
+		const { sPR, mD, pSD } = processMatchups({
+			matchupWeek,
+			seasonPointsRecord,
+			record: playoffRecords,
+			startWeek,
+			matchupDifferentials,
+			year
+		});
 
 		postSeasonData = meshPostSeasonData(postSeasonData, pSD);
-
 		seasonPointsRecord = sPR;
 		matchupDifferentials = mD;
 	}
 
-	return {postSeasonData, seasonPointsRecord, playoffRecords, matchupDifferentials}
-}
+	return { postSeasonData, seasonPointsRecord, playoffRecords, matchupDifferentials };
+};
 
 const meshPostSeasonData = (postSeasonData, pSD) => {
 	for(const key in pSD) {
