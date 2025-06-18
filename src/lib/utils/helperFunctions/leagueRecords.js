@@ -86,19 +86,20 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	for (const season of manualSeasons) {
 		const manualSeason = String(season); // ✅ Convert to string
-
+		curSeason = manualSeason
+		
 		const [rosterRes, leagueData] = await waitForAll(
-			getLeagueRosters(manualSeason),
-			getLeagueData(manualSeason)
+			getLeagueRosters(curSeason),
+			getLeagueData(curSeason)
 		);
 
 		const rosters = rosterRes.rosters;
-		console.log(`[getLeagueRecords] (Legacy) Season ${manualSeason}: Pulled ${Object.keys(rosters || {}).length} rosters`);
+		console.log(`[getLeagueRecords] (Legacy) Season ${curSeason}: Pulled ${Object.keys(rosters || {}).length} rosters`);
 
 		if (!rosters || Object.keys(rosters).length === 0) {
-			console.warn(`[getLeagueRecords] (Legacy) WARNING: No rosters found for ${manualSeason}`, rosterRes);
+			console.warn(`[getLeagueRecords] (Legacy) WARNING: No rosters found for ${curSeason}`, rosterRes);
 		} else {
-			console.log(`[getLeagueRecords] (Legacy) Sample roster for ${manualSeason}:`, rosters[Object.keys(rosters)[0]]);
+			console.log(`[getLeagueRecords] (Legacy) Sample roster for ${curSeason}:`, rosters[Object.keys(rosters)[0]]);
 		}
 
 		const week = 99;
@@ -106,7 +107,7 @@ export const getLeagueRecords = async (refresh = false) => {
 		const { season, year } = await processRegularSeason({
 			leagueData,
 			rosters,
-			manualSeason,
+			curSeason,
 			week,
 			regularSeason
 		});
@@ -114,7 +115,7 @@ export const getLeagueRecords = async (refresh = false) => {
 
 		const pS = await processPlayoffs({
 			year,
-			manualSeason,
+			curSeason,
 			week,
 			playoffRecords,
 			rosters
