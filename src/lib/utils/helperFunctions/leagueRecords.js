@@ -58,6 +58,7 @@ export const getLeagueRecords = async (refresh = false) => {
 			week,
 			regularSeason
 		});
+		console.log(`[getLeagueRecords] Processed Regular Season for year ${year} (season ID: ${curSeason})`);
 
 		const pS = await processPlayoffs({
 			year,
@@ -66,8 +67,8 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords,
 			rosters
 		});
-
 		if (pS) {
+			console.log(`[getLeagueRecords] Processed Playoffs for year ${year}`);
 			playoffRecords = pS;
 		}
 
@@ -88,7 +89,6 @@ export const getLeagueRecords = async (refresh = false) => {
 		);
 
 		const rosters = rosterRes.rosters;
-
 		const week = 99;
 
 		const { season, year } = await processRegularSeason({
@@ -98,6 +98,7 @@ export const getLeagueRecords = async (refresh = false) => {
 			week,
 			regularSeason
 		});
+		console.log(`[getLeagueRecords] (Legacy) Processed Regular Season for year ${year}`);
 
 		const pS = await processPlayoffs({
 			year,
@@ -107,6 +108,7 @@ export const getLeagueRecords = async (refresh = false) => {
 			rosters
 		});
 		if (pS) {
+			console.log(`[getLeagueRecords] (Legacy) Processed Playoffs for year ${year}`);
 			playoffRecords = pS;
 		}
 	}
@@ -152,6 +154,11 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		const yearMatchups = legacyMatchups[year];
 		for (let week = 1; week <= 17; week++) {
 			const matchupWeek = yearMatchups[week];
+
+			if (!matchupWeek || !Array.isArray(matchupWeek)) {
+				console.warn(`[processRegularSeason] Missing or malformed matchups for year ${year}, week ${week}`, matchupWeek);
+			}
+
 			const { sPR, mD, sW } = processMatchups({
 				matchupWeek,
 				seasonPointsRecord,
@@ -172,17 +179,19 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 		}
 
 		const matchupsRes = await waitForAll(...matchupsPromises);
-
 		const matchupsJsonPromises = [];
 		for (const matchupRes of matchupsRes) {
 			const data = matchupRes.json();
 			matchupsJsonPromises.push(data);
 		}
 		const matchupsData = await waitForAll(...matchupsJsonPromises);
-
 		curSeason = leagueData.previous_league_id;
 
 		for (const matchupWeek of matchupsData) {
+			if (!Array.isArray(matchupWeek)) {
+				console.error(`[processRegularSeason] Invalid matchupWeek received from Sleeper API:`, matchupWeek);
+			}
+
 			const { sPR, mD, sW } = processMatchups({
 				matchupWeek,
 				seasonPointsRecord,
@@ -211,6 +220,7 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 			seasonPointsHighs,
 		});
 	} else {
+		console.warn(`[processRegularSeason] No season points highs found for ${year}. Marking year as null.`);
 		year = null;
 	}
 
@@ -262,72 +272,88 @@ const analyzeRosters = ({ year, roster, regularSeason }) => {
  * @param {int} matchupData.year
  * @returns {any}
  */
-const processMatchups = ({matchupWeek, seasonPointsRecord, record, startWeek, matchupDifferentials, year}) => {
+const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, matchupDifferentials, year }) => {
 	let matchups = {};
+	let pSD = {}; // post-season data
 
-	// only used when building post season record
-	let pSD = {};
+	for (const matchup of matchupWeek) {
+		const rosterID = matchup?.roster_id;
+		if (!rosterID) {
+			console.warn(`[processMatchups] Missing roster_id in matchup:`, matchup);
+			continue;
+		}
 
-	for(const matchup of matchupWeek) {
-        // exit if there's no roster ID
-        const rosterID = matchup.roster_id;
-        if(!rosterID) continue;
+		if (!matchup?.points || typeof matchup.points !== 'number') {
+			console.warn(`[processMatchups] Unexpected or missing "points" value for roster ${rosterID} in year ${year}, week ${startWeek}:`, matchup.points);
+			continue;
+		}
 
-        let mID = matchup.matchup_id;
+		let mID = matchup?.matchup_id;
 
-        if(!mID) {
-            if(!pSD[rosterID]) {
-                pSD[rosterID] = {
-                    wins: 0,
-                    losses: 0,
-                    ties: 0,
-                    fptsFor: 0,
-                    fptsAgainst: 0,
-                    potentialPoints: 0,
-                    fptspg: 0,
-                    pOGames: 0,
-                    byes: 0,
-                }
-            }
-            pSD[rosterID].pOGames = 1;
-            const m = matchup.m;
-            if(!m) {
-                pSD[rosterID].byes = 1;
-                continue;
-            }
-            mID = `PS:${m}`
-        }
-        
-        const entry = {
-            rosterID,
-            fpts: matchup.points,
-            week: startWeek,
-            year,
-        }
+		// Handle playoff special cases
+		if (!mID) {
+			if (!pSD[rosterID]) {
+				pSD[rosterID] = {
+					wins: 0,
+					losses: 0,
+					ties: 0,
+					fptsFor: 0,
+					fptsAgainst: 0,
+					potentialPoints: 0,
+					fptspg: 0,
+					pOGames: 0,
+					byes: 0,
+				}
+			}
+			pSD[rosterID].pOGames = 1;
 
-        // add each entry to the matchup object
-        if(!matchups[mID]) {
-            matchups[mID] = [];
-        }
-        matchups[mID].push(entry);
-        record.addLeagueWeekRecord(entry);
-        seasonPointsRecord.push(entry);
+			const m = matchup?.m;
+			if (!m) {
+				pSD[rosterID].byes = 1;
+				console.log(`[processMatchups] Bye week detected for playoff matchup, roster ${rosterID}`);
+				continue;
+			}
+
+			mID = `PS:${m}`;
+		}
+
+		const entry = {
+			rosterID,
+			fpts: matchup.points,
+			week: startWeek,
+			year,
+		};
+
+		if (!matchups[mID]) {
+			matchups[mID] = [];
+		}
+
+		matchups[mID].push(entry);
+		record.addLeagueWeekRecord(entry);
+		seasonPointsRecord.push(entry);
 	}
+
 	startWeek--;
 
-	// create matchup differentials from matchups obj
-	for(const matchupKey in matchups) {
+	// Calculate matchup differentials
+	for (const matchupKey in matchups) {
 		const matchup = matchups[matchupKey];
+
+		if (!Array.isArray(matchup) || matchup.length < 2) {
+			console.warn(`[processMatchups] Incomplete or malformed matchup (${matchupKey}):`, matchup);
+			continue;
+		}
+
 		let home = matchup[0];
 		let away = matchup[1];
 
-        // if there are no teams or only one, continue
-        if(!away || !home) continue;
-        
-		if(home.fpts < away.fpts) {
+		if (home.fpts < away.fpts) {
 			home = matchup[1];
 			away = matchup[0];
 		}
+
+		const diff = home.fpts - away.fpts;
+
 		const matchupDifferential = {
 			year: home.year,
 			week: home.week,
@@ -339,19 +365,26 @@ const processMatchups = ({matchupWeek, seasonPointsRecord, record, startWeek, ma
 				rosterID: away.rosterID,
 				fpts: away.fpts,
 			},
-			differential: home.fpts - away.fpts
-		}
+			differential: diff
+		};
+
 		matchupDifferentials.push(matchupDifferential);
 
-		// handle post-season data
-		if(matchupKey.split(":")[0] == "PS") {
-            pSD[home.rosterID].wins = 1;
-            pSD[home.rosterID].fptsFor = home.fpts;
-            pSD[home.rosterID].fptsAgainst = away.fpts;
-            
-            pSD[away.rosterID].losses = 1;
-            pSD[away.rosterID].fptsFor = away.fpts;
-            pSD[away.rosterID].fptsAgainst = home.fpts;
+		if (matchupKey.startsWith("PS")) {
+			if (!pSD[home.rosterID]) {
+				pSD[home.rosterID] = { ...entry };
+			}
+			if (!pSD[away.rosterID]) {
+				pSD[away.rosterID] = { ...entry };
+			}
+
+			pSD[home.rosterID].wins = 1;
+			pSD[home.rosterID].fptsFor = home.fpts;
+			pSD[home.rosterID].fptsAgainst = away.fpts;
+
+			pSD[away.rosterID].losses = 1;
+			pSD[away.rosterID].fptsFor = away.fpts;
+			pSD[away.rosterID].fptsAgainst = home.fpts;
 		}
 	}
 
@@ -360,8 +393,8 @@ const processMatchups = ({matchupWeek, seasonPointsRecord, record, startWeek, ma
 		mD: matchupDifferentials,
 		sW: startWeek,
 		pSD
-	}
-}
+	};
+};
 
 const processPlayoffs = async ({curSeason, playoffRecords, year, week, rosters}) => {
 	const {
