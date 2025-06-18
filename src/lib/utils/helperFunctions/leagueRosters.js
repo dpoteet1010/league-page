@@ -1,21 +1,4 @@
-import { leagueID } from '$lib/utils/leagueInfo';
-import { get } from 'svelte/store';
-import { rostersStore } from '$lib/stores';
-import { legacyLeagueRosters } from './legacyLeagueRosters.js';
-
-let legacyAppended = false; // Ensures static data is added only once
-
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
-	    const storedRoster = get(rostersStore)[queryLeagueID];
-		if(
-	        storedRoster
-	        && typeof storedRoster.rosters === 'object' &&
-	        !Array.isArray(storedRoster.rosters) &&
-	        storedRoster.rosters !== null
-	    	) {
-			return storedRoster;
-		}
-
 	// Append and process legacy rosters once per session
 	if (!legacyAppended) {
 		rostersStore.update(current => {
@@ -43,7 +26,18 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		legacyAppended = true;
 	}
 
-	// Fetch from Sleeper API
+	// 🔍 Now check the updated store
+	const storedRoster = get(rostersStore)[queryLeagueID];
+	if (
+		storedRoster &&
+		typeof storedRoster.rosters === 'object' &&
+		!Array.isArray(storedRoster.rosters) &&
+		storedRoster.rosters !== null
+	) {
+		return storedRoster;
+	}
+
+	// ⬇️ Fallback to Sleeper API
 	let res;
 	try {
 		res = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/rosters`, {
@@ -70,25 +64,4 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 	} else {
 		throw new Error(data);
 	}
-};
-
-const processRosters = (rosters) => {
-	const startersAndReserve = [];
-	const rosterMap = {};
-
-	for (const roster of rosters) {
-		if (Array.isArray(roster.starters)) {
-			for (const starter of roster.starters) {
-				startersAndReserve.push(starter);
-			}
-		}
-		if (Array.isArray(roster.reserve)) {
-			for (const ir of roster.reserve) {
-				startersAndReserve.push(ir);
-			}
-		}
-		rosterMap[roster.roster_id] = roster;
-	}
-
-	return { rosters: rosterMap, startersAndReserve };
 };
