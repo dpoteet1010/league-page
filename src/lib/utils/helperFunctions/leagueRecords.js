@@ -11,6 +11,8 @@ import { getBrackets } from './leagueBrackets';
 import { browser } from '$app/environment';
 import { legacyMatchups } from './legacyMatchups.js';
 
+// ... [unchanged imports] ...
+
 export const getLeagueRecords = async (refresh = false) => {
 	if (get(records).leagueWeekHighs) {
 		return get(records);
@@ -82,19 +84,23 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	const manualSeasons = [2024, 2023];
 
-	for (const manualSeason of manualSeasons) {
+	for (const season of manualSeasons) {
+		const manualSeason = String(season); // ✅ Convert to string
+
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(manualSeason),
 			getLeagueData(manualSeason)
 		);
 
 		const rosters = rosterRes.rosters;
-			console.log(`[getLeagueRecords] (Legacy) Season ${manualSeason}: Pulled ${rosters?.length || 0} rosters`);
-	if (!rosters || rosters.length === 0) {
-		console.warn(`[getLeagueRecords] (Legacy) WARNING: No rosters found for ${manualSeason}`, rosterRes);
-	} else {
-		console.log(`[getLeagueRecords] (Legacy) Sample roster for ${manualSeason}:`, rosters[0]);
-	}
+		console.log(`[getLeagueRecords] (Legacy) Season ${manualSeason}: Pulled ${Object.keys(rosters || {}).length} rosters`);
+
+		if (!rosters || Object.keys(rosters).length === 0) {
+			console.warn(`[getLeagueRecords] (Legacy) WARNING: No rosters found for ${manualSeason}`, rosterRes);
+		} else {
+			console.log(`[getLeagueRecords] (Legacy) Sample roster for ${manualSeason}:`, rosters[Object.keys(rosters)[0]]);
+		}
+
 		const week = 99;
 
 		const { season, year } = await processRegularSeason({
