@@ -84,9 +84,8 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	const manualSeasons = [2024, 2023];
 
-	for (const season of manualSeasons) {
-		const manualSeason = String(season); // ✅ Convert to string
-		curSeason = manualSeason
+	for (const manualSeason of manualSeasons) {
+		const curSeason = String(manualSeason); // ✅ Convert to string
 		
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
