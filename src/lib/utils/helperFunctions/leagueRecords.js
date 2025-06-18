@@ -89,6 +89,12 @@ export const getLeagueRecords = async (refresh = false) => {
 		);
 
 		const rosters = rosterRes.rosters;
+			console.log(`[getLeagueRecords] (Legacy) Season ${manualSeason}: Pulled ${rosters?.length || 0} rosters`);
+	if (!rosters || rosters.length === 0) {
+		console.warn(`[getLeagueRecords] (Legacy) WARNING: No rosters found for ${manualSeason}`, rosterRes);
+	} else {
+		console.log(`[getLeagueRecords] (Legacy) Sample roster for ${manualSeason}:`, rosters[0]);
+	}
 		const week = 99;
 
 		const { season, year } = await processRegularSeason({
