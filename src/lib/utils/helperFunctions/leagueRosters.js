@@ -8,6 +8,7 @@ let legacyAppended = false;
 
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 	// 🧠 Append and process legacy rosters once per session
+	queryLeagueID = String(queryLeagueID);
 	if (!legacyAppended) {
 		rostersStore.update(current => {
 			const merged = { ...current };
