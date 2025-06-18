@@ -231,33 +231,70 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 };
 
 const analyzeRosters = ({ year, roster, regularSeason }) => {
+	if (!roster) {
+		console.warn(`[analyzeRosters] Skipping null/undefined roster for year ${year}`);
+		return;
+	}
+
 	const rosterID = roster.roster_id;
+	if (rosterID == null) {
+		console.warn(`[analyzeRosters] Missing roster_id in roster for year ${year}:`, roster);
+		return;
+	}
+
+	if (!roster.settings) {
+		console.warn(`[analyzeRosters] Missing settings for roster ${rosterID} in year ${year}:`, roster);
+		return;
+	}
+
+	const { wins, losses, ties, fpts, fpts_decimal, fpts_against, fpts_against_decimal, ppts, ppts_decimal } = roster.settings;
+
+	// Skip rosters with no recorded activity
+	if (wins == 0 && ties == 0 && losses == 0) {
+		console.info(`[analyzeRosters] Skipping inactive roster ${rosterID} in year ${year}`);
+		return;
+	}
+
+	// Handle undefined numeric values gracefully
+	const safe = (val) => (typeof val === 'number' ? val : 0);
+
+	const fptsFor = safe(fpts) + safe(fpts_decimal) / 100;
+	const fptsAgainst = safe(fpts_against) + safe(fpts_against_decimal) / 100;
+	const potentialPoints = safe(ppts) + safe(ppts_decimal) / 100;
+	const gamesPlayed = wins + losses + ties;
+
+	if (gamesPlayed === 0) {
+		console.warn(`[analyzeRosters] No games played by roster ${rosterID} in year ${year}, but nonzero points?`, roster.settings);
+		return;
+	}
+
+	const fptsPerGame = round(fptsFor / gamesPlayed);
+
 	const managers = getManagers(roster);
 
-	if (roster.settings.wins == 0 && roster.settings.ties == 0 && roster.settings.losses == 0) return;
-
-	const fptsFor = roster.settings.fpts + (roster.settings.fpts_decimal / 100);
-	const fptsPerGame = round(fptsFor / (roster.settings.wins + roster.settings.losses + roster.settings.ties));
-
 	const rosterRecords = {
-		wins: roster.settings.wins,
-		losses: roster.settings.losses,
-		ties: roster.settings.ties,
+		wins,
+		losses,
+		ties,
 		fptsFor,
-		fptsAgainst: roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100),
+		fptsAgainst,
 		fptsPerGame,
-		potentialPoints: roster.settings.ppts + (roster.settings.ppts_decimal / 100),
+		potentialPoints,
 		rosterID,
 		year,
 	};
 
-	regularSeason.updateManagerRecord(managers, rosterRecords);
-	regularSeason.addSeasonLongPoints({
-		rosterID,
-		fpts: fptsFor,
-		fptsPerGame,
-		year,
-	});
+	try {
+		regularSeason.updateManagerRecord(managers, rosterRecords);
+		regularSeason.addSeasonLongPoints({
+			rosterID,
+			fpts: fptsFor,
+			fptsPerGame,
+			year,
+		});
+	} catch (err) {
+		console.error(`[analyzeRosters] Error updating records for roster ${rosterID} in year ${year}:`, err);
+	}
 };
 
 /**
