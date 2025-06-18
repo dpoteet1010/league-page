@@ -322,8 +322,20 @@ const analyzeRosters = ({ year, roster, regularSeason }) => {
  * @returns {any}
  */
 const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, matchupDifferentials, year }) => {
+	console.log(`[processMatchups] Starting processing for year ${year}, week ${startWeek}`);
+	if (!Array.isArray(matchupWeek)) {
+		console.warn(`[processMatchups] matchupWeek is not an array for year ${year}, week ${startWeek}:`, matchupWeek);
+		return {
+			sPR: seasonPointsRecord,
+			mD: matchupDifferentials,
+			sW: startWeek,
+			pSD: {}
+		};
+	}
+
 	let matchups = {};
 	let pSD = {}; // post-season data
+	let validEntries = 0;
 
 	for (const matchup of matchupWeek) {
 		const rosterID = matchup?.roster_id;
@@ -352,7 +364,7 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 					fptspg: 0,
 					pOGames: 0,
 					byes: 0,
-				}
+				};
 			}
 			pSD[rosterID].pOGames = 1;
 
@@ -380,7 +392,12 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 		matchups[mID].push(entry);
 		record.addLeagueWeekRecord(entry);
 		seasonPointsRecord.push(entry);
+		validEntries++;
+
+		console.log(`[processMatchups] Added entry for roster ${rosterID} (week ${startWeek}, year ${year}) - points: ${matchup.points}`);
 	}
+
+	console.log(`[processMatchups] Total valid entries added for week ${startWeek}, year ${year}: ${validEntries}`);
 
 	startWeek--;
 
@@ -419,6 +436,8 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 
 		matchupDifferentials.push(matchupDifferential);
 
+		console.log(`[processMatchups] Differential computed - Week ${home.week}, Year ${home.year}, Home: ${home.rosterID} (${home.fpts}), Away: ${away.rosterID} (${away.fpts}), Diff: ${diff}`);
+
 		if (matchupKey.startsWith("PS")) {
 			if (!pSD[home.rosterID]) {
 				pSD[home.rosterID] = { ...entry };
@@ -434,8 +453,13 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 			pSD[away.rosterID].losses = 1;
 			pSD[away.rosterID].fptsFor = away.fpts;
 			pSD[away.rosterID].fptsAgainst = home.fpts;
+
+			console.log(`[processMatchups] Playoff result - Home (Win): ${home.rosterID}, Away (Loss): ${away.rosterID}`);
 		}
 	}
+
+	console.log(`[processMatchups] Finished processing for year ${year}, week ${startWeek + 1}`);
+	console.log(`[processMatchups] Total differentials this week: ${matchupDifferentials.length}`);
 
 	return {
 		sPR: seasonPointsRecord,
