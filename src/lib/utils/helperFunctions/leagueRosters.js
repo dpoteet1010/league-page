@@ -1,5 +1,13 @@
+import { leagueID } from '$lib/utils/leagueInfo';
+import { get } from 'svelte/store';
+import { rostersStore } from '$lib/stores';
+import { legacyLeagueRosters } from './legacyLeagueRosters.js';
+
+// ✅ Must be declared at top-level scope
+let legacyAppended = false;
+
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
-	// Append and process legacy rosters once per session
+	// 🧠 Append and process legacy rosters once per session
 	if (!legacyAppended) {
 		rostersStore.update(current => {
 			const merged = { ...current };
@@ -14,7 +22,7 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 						continue;
 					}
 
-					// Convert legacy rosters object to array
+					// 🛠 Convert legacy rosters object to array
 					const rosterArray = Object.values(legacy.rosters);
 					const processed = processRosters(rosterArray);
 					merged[key] = processed;
@@ -26,7 +34,7 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		legacyAppended = true;
 	}
 
-	// 🔍 Now check the updated store
+	// 🔍 Check the updated store for this league
 	const storedRoster = get(rostersStore)[queryLeagueID];
 	if (
 		storedRoster &&
@@ -37,7 +45,7 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		return storedRoster;
 	}
 
-	// ⬇️ Fallback to Sleeper API
+	// ⬇️ Fallback to live Sleeper API fetch
 	let res;
 	try {
 		res = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/rosters`, {
@@ -64,4 +72,25 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 	} else {
 		throw new Error(data);
 	}
+};
+
+const processRosters = (rosters) => {
+	const startersAndReserve = [];
+	const rosterMap = {};
+
+	for (const roster of rosters) {
+		if (Array.isArray(roster.starters)) {
+			for (const starter of roster.starters) {
+				startersAndReserve.push(starter);
+			}
+		}
+		if (Array.isArray(roster.reserve)) {
+			for (const ir of roster.reserve) {
+				startersAndReserve.push(ir);
+			}
+		}
+		rosterMap[roster.roster_id] = roster;
+	}
+
+	return { rosters: rosterMap, startersAndReserve };
 };
