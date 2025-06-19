@@ -12,33 +12,34 @@ import { browser } from '$app/environment';
 import { legacyMatchups } from './legacyMatchups.js';
 
 export const getLeagueRecords = async (refresh = false) => {
-	// ✅ In-memory store already populated
-	if (!refresh && get(records)?.ready) {
+	if (get(records).leagueWeekHighs) {
 		return get(records);
 	}
 
-	// ✅ localStorage cache check (if on client)
 	if (!refresh && browser) {
-		const localRecords = JSON.parse(localStorage.getItem("records"));
-		if (localRecords?.ready) {
-			records.update(() => localRecords);
+		let localRecords = await JSON.parse(localStorage.getItem("records"));
+		if (localRecords && localRecords.playoffData) {
+			localRecords.stale = true;
 			return localRecords;
 		}
 	}
 
-	// 🏈 Get current NFL season info
 	const nflState = await getNflState();
-	let week = nflState.season_type === 'regular' ? nflState.week - 1 : 18;
+	let week = 0;
+	if (nflState.season_type === 'regular') {
+		week = nflState.week - 1;
+	} else if (nflState.season_type === 'post') {
+		week = 18;
+	}
 
 	let curSeason = leagueID;
 	let currentYear;
 	let lastYear;
 
-	const regularSeason = new Records();
+	let regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	// 🔁 Traverse linked Sleeper seasons
-	while (curSeason && curSeason !== "0") {
+	while (curSeason && curSeason != 0) {
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
 			getLeagueData(curSeason)
@@ -69,17 +70,19 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords = pS;
 		}
 
-		if (!currentYear && year) currentYear = year;
+		if (!currentYear && year) {
+			currentYear = year;
+		}
 		lastYear = year;
 
 		curSeason = season;
 	}
 
-	// 🗂️ Handle legacy data manually
 	const manualSeasons = [2024, 2023];
 
 	for (const manualSeason of manualSeasons) {
 		const curSeason = String(manualSeason);
+		
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
 			getLeagueData(curSeason)
@@ -108,31 +111,28 @@ export const getLeagueRecords = async (refresh = false) => {
 		}
 	}
 
-	// ✅ Set the year range for all-time calculations
-	currentYear = currentYear ?? 2024;
-	lastYear = lastYear ?? 2023;
+	currentYear = 2024;
+	lastYear = 2023;
 
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
-	// 🔢 Finalize calculations
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
 
 	const regularSeasonData = regularSeason.returnRecords();
 	const playoffData = playoffRecords.returnRecords();
-
-	const recordsData = {
-		regularSeasonData,
-		playoffData,
-		ready: true
-	};
-
+	
+	console.log("[DEBUG] regularSeasonData keys:", Object.keys(regularSeasonData));
+	console.log("[DEBUG] leagueWeekHighs sample:", JSON.stringify(regularSeasonData.leagueWeekHighs?.slice(0, 2), null, 2)); // 👈 preview 2 entries
+	
+	const recordsData = { regularSeasonData, playoffData };
+	
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		records.update(() => recordsData);
 	}
-
+	
 	return recordsData;
 };
 
