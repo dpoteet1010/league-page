@@ -122,16 +122,17 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	const regularSeasonData = regularSeason.returnRecords();
 	const playoffData = playoffRecords.returnRecords();
-
+	
+	console.log("[DEBUG] regularSeasonData keys:", Object.keys(regularSeasonData));
+	console.log("[DEBUG] leagueWeekHighs sample:", JSON.stringify(regularSeasonData.leagueWeekHighs?.slice(0, 2), null, 2)); // 👈 preview 2 entries
+	
 	const recordsData = { regularSeasonData, playoffData };
-
-	console.log("[getLeagueRecords] Final recordsData:", recordsData); // ✅ DEBUG LOG HERE
-
+	
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		records.update(() => recordsData);
 	}
-
+	
 	return recordsData;
 };
 
@@ -220,7 +221,7 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 	} else {
 		year = null;
 	}
-
+	console.log(`[DEBUG] Finished processRegularSeason for ${year}. leagueWeekHighs length:`, regularSeason.leagueWeekHighs?.length);
 	return {
 		season: curSeason,
 		year,
@@ -349,7 +350,10 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 		}
 
 		matchups[mID].push(entry);
+
 		record.addLeagueWeekRecord(entry);
+		console.log(`[DEBUG] Added league week record:`, entry);
+
 		seasonPointsRecord.push(entry);
 	}
 
@@ -385,10 +389,11 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 		};
 
 		matchupDifferentials.push(matchupDifferential);
+		console.log(`[DEBUG] Matchup differential recorded:`, matchupDifferential);
 
 		if (matchupKey.startsWith("PS")) {
-			if (!pSD[home.rosterID]) pSD[home.rosterID] = { ...entry };
-			if (!pSD[away.rosterID]) pSD[away.rosterID] = { ...entry };
+			if (!pSD[home.rosterID]) pSD[home.rosterID] = { ...home };
+			if (!pSD[away.rosterID]) pSD[away.rosterID] = { ...away };
 
 			pSD[home.rosterID].wins = 1;
 			pSD[home.rosterID].fptsFor = home.fpts;
@@ -399,6 +404,11 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 			pSD[away.rosterID].fptsAgainst = home.fpts;
 		}
 	}
+
+	console.log(`[DEBUG] Completed processMatchups for year ${year}, week ${startWeek + 1}`);
+	console.log(`[DEBUG] Total matchups processed: ${Object.keys(matchups).length}`);
+	console.log(`[DEBUG] Differential count: ${matchupDifferentials.length}`);
+	console.log(`[DEBUG] League week record count in seasonPointsRecord: ${seasonPointsRecord.length}`);
 
 	return {
 		sPR: seasonPointsRecord,
