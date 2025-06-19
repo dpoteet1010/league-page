@@ -11,19 +11,6 @@ import { getBrackets } from './leagueBrackets';
 import { browser } from '$app/environment';
 import { legacyMatchups } from './legacyMatchups.js';
 
-import { getLeagueData } from './leagueData';
-import { leagueID } from '$lib/utils/leagueInfo';
-import { getNflState } from './nflState';
-import { getLeagueRosters } from "./leagueRosters";
-import { waitForAll } from './multiPromise';
-import { get } from 'svelte/store';
-import { records } from '$lib/stores';
-import { Records } from '$lib/utils/dataClasses';
-import { browser } from '$app/environment';
-import { legacyMatchups } from './legacyMatchups.js';
-import { processRegularSeason } from './processRegularSeason'; // assumes these are in separate files
-import { processPlayoffs } from './processPlayoffs'; // same here
-
 export const getLeagueRecords = async (refresh = false) => {
 	// ✅ In-memory store already populated
 	if (!refresh && get(records)?.ready) {
