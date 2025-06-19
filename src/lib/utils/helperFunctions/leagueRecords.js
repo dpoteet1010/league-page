@@ -350,10 +350,7 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 		}
 
 		matchups[mID].push(entry);
-
 		record.addLeagueWeekRecord(entry);
-		console.log(`[DEBUG] Added league week record:`, entry);
-
 		seasonPointsRecord.push(entry);
 	}
 
@@ -389,8 +386,6 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 		};
 
 		matchupDifferentials.push(matchupDifferential);
-		console.log(`[DEBUG] Matchup differential recorded:`, matchupDifferential);
-
 		if (matchupKey.startsWith("PS")) {
 			if (!pSD[home.rosterID]) pSD[home.rosterID] = { ...home };
 			if (!pSD[away.rosterID]) pSD[away.rosterID] = { ...away };
@@ -404,11 +399,6 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
 			pSD[away.rosterID].fptsAgainst = home.fpts;
 		}
 	}
-
-	console.log(`[DEBUG] Completed processMatchups for year ${year}, week ${startWeek + 1}`);
-	console.log(`[DEBUG] Total matchups processed: ${Object.keys(matchups).length}`);
-	console.log(`[DEBUG] Differential count: ${matchupDifferentials.length}`);
-	console.log(`[DEBUG] League week record count in seasonPointsRecord: ${seasonPointsRecord.length}`);
 
 	return {
 		sPR: seasonPointsRecord,
