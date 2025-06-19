@@ -1,3 +1,16 @@
+import { getLeagueData } from './leagueData';
+import { leagueID } from '$lib/utils/leagueInfo';
+import { getNflState } from './nflState';
+import { getLeagueRosters } from "./leagueRosters";
+import { waitForAll } from './multiPromise';
+import { get } from 'svelte/store';
+import { records } from '$lib/stores';
+import { getManagers, round, sortHighAndLow } from './universalFunctions';
+import { Records } from '$lib/utils/dataClasses';
+import { getBrackets } from './leagueBrackets';
+import { browser } from '$app/environment';
+import { legacyMatchups } from './legacyMatchups.js';
+
 export const getLeagueRecords = async (refresh = false) => {
 	if (get(records).leagueWeekHighs) {
 		return get(records);
