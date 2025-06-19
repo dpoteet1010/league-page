@@ -11,35 +11,47 @@ import { getBrackets } from './leagueBrackets';
 import { browser } from '$app/environment';
 import { legacyMatchups } from './legacyMatchups.js';
 
+import { getLeagueData } from './leagueData';
+import { leagueID } from '$lib/utils/leagueInfo';
+import { getNflState } from './nflState';
+import { getLeagueRosters } from "./leagueRosters";
+import { waitForAll } from './multiPromise';
+import { get } from 'svelte/store';
+import { records } from '$lib/stores';
+import { Records } from '$lib/utils/dataClasses';
+import { browser } from '$app/environment';
+import { legacyMatchups } from './legacyMatchups.js';
+import { processRegularSeason } from './processRegularSeason'; // assumes these are in separate files
+import { processPlayoffs } from './processPlayoffs'; // same here
+
 export const getLeagueRecords = async (refresh = false) => {
-	if (get(records).leagueWeekHighs) {
+	// ✅ In-memory store already populated
+	if (!refresh && get(records)?.ready) {
 		return get(records);
 	}
 
+	// ✅ localStorage cache check (if on client)
 	if (!refresh && browser) {
-		let localRecords = await JSON.parse(localStorage.getItem("records"));
-		if (localRecords && localRecords.playoffData) {
-			localRecords.stale = true;
+		const localRecords = JSON.parse(localStorage.getItem("records"));
+		if (localRecords?.ready) {
+			records.update(() => localRecords);
 			return localRecords;
 		}
 	}
 
+	// 🏈 Get current NFL season info
 	const nflState = await getNflState();
-	let week = 0;
-	if (nflState.season_type === 'regular') {
-		week = nflState.week - 1;
-	} else if (nflState.season_type === 'post') {
-		week = 18;
-	}
+	let week = nflState.season_type === 'regular' ? nflState.week - 1 : 18;
 
 	let curSeason = leagueID;
 	let currentYear;
 	let lastYear;
 
-	let regularSeason = new Records();
+	const regularSeason = new Records();
 	let playoffRecords = new Records();
 
-	while (curSeason && curSeason != 0) {
+	// 🔁 Traverse linked Sleeper seasons
+	while (curSeason && curSeason !== "0") {
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
 			getLeagueData(curSeason)
@@ -70,19 +82,17 @@ export const getLeagueRecords = async (refresh = false) => {
 			playoffRecords = pS;
 		}
 
-		if (!currentYear && year) {
-			currentYear = year;
-		}
+		if (!currentYear && year) currentYear = year;
 		lastYear = year;
 
 		curSeason = season;
 	}
 
+	// 🗂️ Handle legacy data manually
 	const manualSeasons = [2024, 2023];
 
 	for (const manualSeason of manualSeasons) {
 		const curSeason = String(manualSeason);
-		
 		const [rosterRes, leagueData] = await waitForAll(
 			getLeagueRosters(curSeason),
 			getLeagueData(curSeason)
@@ -111,28 +121,31 @@ export const getLeagueRecords = async (refresh = false) => {
 		}
 	}
 
-	currentYear = 2024;
-	lastYear = 2023;
+	// ✅ Set the year range for all-time calculations
+	currentYear = currentYear ?? 2024;
+	lastYear = lastYear ?? 2023;
 
 	playoffRecords.currentYear = regularSeason.currentYear;
 	playoffRecords.lastYear = regularSeason.lastYear;
 
+	// 🔢 Finalize calculations
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
 
 	const regularSeasonData = regularSeason.returnRecords();
 	const playoffData = playoffRecords.returnRecords();
-	
-	console.log("[DEBUG] regularSeasonData keys:", Object.keys(regularSeasonData));
-	console.log("[DEBUG] leagueWeekHighs sample:", JSON.stringify(regularSeasonData.leagueWeekHighs?.slice(0, 2), null, 2)); // 👈 preview 2 entries
-	
-	const recordsData = { regularSeasonData, playoffData };
-	
+
+	const recordsData = {
+		regularSeasonData,
+		playoffData,
+		ready: true
+	};
+
 	if (browser) {
 		localStorage.setItem("records", JSON.stringify(recordsData));
 		records.update(() => recordsData);
 	}
-	
+
 	return recordsData;
 };
 
