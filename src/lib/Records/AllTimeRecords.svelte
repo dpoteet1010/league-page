@@ -13,7 +13,7 @@
         leagueTeamManagers,
         mostSeasonLongPoints,
         leastSeasonLongPoints,
-        key
+        key}];
     let winPercentages = [];
     let lineupIQs = [];
     let fptsHistories = [];
