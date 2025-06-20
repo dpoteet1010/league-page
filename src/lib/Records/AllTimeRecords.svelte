@@ -1,117 +1,114 @@
 <script>
-    import {round} from '$lib/utils/helper'
-  	import RecordsAndRankings from './RecordsAndRankings.svelte';
+	import { round } from '$lib/utils/helper';
+	import RecordsAndRankings from './RecordsAndRankings.svelte';
 
-    export let key, leagueManagerRecords, leagueTeamManagers, leagueWeekHighs, leagueWeekLows, allTimeBiggestBlowouts, allTimeClosestMatchups, mostSeasonLongPoints, leastSeasonLongPoints, transactionTotals;
-     console.log("🧩 AllTimeRecords props:", {
-        transactionTotals,
-        allTimeClosestMatchups,
-        allTimeBiggestBlowouts,
-        leagueManagerRecords,
-        leagueWeekHighs,
-        leagueWeekLows,
-        leagueTeamManagers,
-        mostSeasonLongPoints,
-        leastSeasonLongPoints,
-        key}];
-    let winPercentages = [];
-    let lineupIQs = [];
-    let fptsHistories = [];
-    let tradesData = [];
-    let waiversData = [];
+	export let key;
+	export let leagueManagerRecords;
+	export let leagueTeamManagers;
+	export let leagueWeekHighs;
+	export let leagueWeekLows;
+	export let allTimeBiggestBlowouts;
+	export let allTimeClosestMatchups;
+	export let mostSeasonLongPoints;
+	export let leastSeasonLongPoints;
+	export let transactionTotals;
 
-    let showTies = false;
-    
-    for(const managerID in transactionTotals.allTime) {
-        tradesData.push({
-            managerID,
-            trades: transactionTotals.allTime[managerID].trade,
-        })
-        waiversData.push({
-            managerID,
-            waivers: transactionTotals.allTime[managerID].waiver,
-        })
-    }
+	console.log("🧩 AllTimeRecords props:", {
+		transactionTotals,
+		allTimeClosestMatchups,
+		allTimeBiggestBlowouts,
+		leagueManagerRecords,
+		leagueWeekHighs,
+		leagueWeekLows,
+		leagueTeamManagers,
+		mostSeasonLongPoints,
+		leastSeasonLongPoints,
+		key
+	});
 
+	let winPercentages = [];
+	let lineupIQs = [];
+	let fptsHistories = [];
+	let tradesData = [];
+	let waiversData = [];
 
-    const setRankingsData = (lRR) => {
-        winPercentages = [];
-        lineupIQs = [];
-        fptsHistories = [];
-        tradesData = [];
-        waiversData = [];
-        showTies = false;
+	let showTies = false;
 
-        for(const key in lRR) {
-            const leagueManagerRecord = lRR[key];
-            const denominator = (leagueManagerRecord.wins + leagueManagerRecord.ties + leagueManagerRecord.losses) > 0 ? (leagueManagerRecord.wins + leagueManagerRecord.ties + leagueManagerRecord.losses) : 1;
-            winPercentages.push({
-                managerID: key,
-                percentage: round((leagueManagerRecord.wins + leagueManagerRecord.ties / 2) / denominator * 100),
-                wins: leagueManagerRecord.wins,
-                ties: leagueManagerRecord.ties,
-                losses: leagueManagerRecord.losses,
-            })
+	const setRankingsData = (lRR) => {
+		winPercentages = [];
+		lineupIQs = [];
+		fptsHistories = [];
+		tradesData = [];
+		waiversData = [];
+		showTies = false;
 
-            let lineupIQ = {
-                managerID: key,
-                fpts: round(leagueManagerRecord.fptsFor),
-            }
+		for (const key in lRR) {
+			const record = lRR[key];
+			const totalGames = record.wins + record.ties + record.losses || 1;
 
-            if(leagueManagerRecord.potentialPoints) {
-                lineupIQ.iq = round(leagueManagerRecord.fptsFor / leagueManagerRecord.potentialPoints * 100);
-                lineupIQ.potentialPoints = round(leagueManagerRecord.potentialPoints);
-            }
+			winPercentages.push({
+				managerID: key,
+				percentage: round(((record.wins + record.ties / 2) / totalGames) * 100),
+				wins: record.wins,
+				ties: record.ties,
+				losses: record.losses
+			});
 
-            lineupIQs.push(lineupIQ)
-        
-            fptsHistories.push({
-                managerID: key,
-                fptsFor: round(leagueManagerRecord.fptsFor),
-                fptsAgainst: round(leagueManagerRecord.fptsAgainst),
-                fptsPerGame: round(leagueManagerRecord.fptsFor / denominator),
-            })
-        
-            if(leagueManagerRecord.ties > 0) showTies = true;
-        }
+			const iq = {
+				managerID: key,
+				fpts: round(record.fptsFor)
+			};
 
-        for(const managerID in transactionTotals.allTime) {
-            tradesData.push({
-                managerID,
-                trades: transactionTotals.allTime[managerID].trade,
-            })
-            waiversData.push({
-                managerID,
-                waivers: transactionTotals.allTime[managerID].waiver,
-            })
-        }
+			if (record.potentialPoints) {
+				iq.iq = round((record.fptsFor / record.potentialPoints) * 100);
+				iq.potentialPoints = round(record.potentialPoints);
+			}
 
+			lineupIQs.push(iq);
 
-        winPercentages.sort((a, b) => b.percentage - a.percentage);
-        lineupIQs.sort((a, b) => b.iq - a.iq);
-        fptsHistories.sort((a, b) => b.fptsFor - a.fptsFor);
-        tradesData.sort((a, b) => b.trades - a.trades);
-        waiversData.sort((a, b) => b.waivers - a.waivers);
-    }
+			fptsHistories.push({
+				managerID: key,
+				fptsFor: round(record.fptsFor),
+				fptsAgainst: round(record.fptsAgainst),
+				fptsPerGame: round(record.fptsFor / totalGames)
+			});
 
-    $:setRankingsData(leagueManagerRecords)
+			if (record.ties > 0) showTies = true;
+		}
+
+		if (transactionTotals?.allTime) {
+			for (const managerID in transactionTotals.allTime) {
+				const stats = transactionTotals.allTime[managerID];
+				tradesData.push({ managerID, trades: stats.trade });
+				waiversData.push({ managerID, waivers: stats.waiver });
+			}
+		}
+
+		winPercentages.sort((a, b) => b.percentage - a.percentage);
+		lineupIQs.sort((a, b) => (b.iq ?? 0) - (a.iq ?? 0));
+		fptsHistories.sort((a, b) => b.fptsFor - a.fptsFor);
+		tradesData.sort((a, b) => b.trades - a.trades);
+		waiversData.sort((a, b) => b.waivers - a.waivers);
+	};
+
+	$: setRankingsData(leagueManagerRecords);
 </script>
 
 <RecordsAndRankings
-    blowouts={allTimeBiggestBlowouts}
-    closestMatchups={allTimeClosestMatchups}
-    weekRecords={leagueWeekHighs}
-    weekLows={leagueWeekLows}
-    seasonLongRecords={mostSeasonLongPoints}
-    seasonLongLows={leastSeasonLongPoints}
-    {showTies}
-    {winPercentages}
-    {fptsHistories}
-    {lineupIQs}
-    {tradesData}
-    {waiversData}
-    prefix="All-Time"
-    allTime={true}
-    {leagueTeamManagers}
-    {key}
+	blowouts={allTimeBiggestBlowouts}
+	closestMatchups={allTimeClosestMatchups}
+	weekRecords={leagueWeekHighs}
+	weekLows={leagueWeekLows}
+	seasonLongRecords={mostSeasonLongPoints}
+	seasonLongLows={leastSeasonLongPoints}
+	{showTies}
+	{winPercentages}
+	{fptsHistories}
+	{lineupIQs}
+	{tradesData}
+	{waiversData}
+	prefix="All-Time"
+	allTime={true}
+	{leagueTeamManagers}
+	{key}
 />
