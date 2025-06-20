@@ -126,14 +126,10 @@
             </Button>
         </Group>
     </div>
-<p style="text-align: center;">
-  isArray: {Array.isArray(leagueWeekHighs) ? 'true' : 'false'} |
-  length: {leagueWeekHighs?.length}
-</p>
 
     {#if display == "allTime"}
         {#if leagueWeekHighs?.length}
-            <p style="text-align: center; color: green;">✅ This is where AllTimeRecords would render</p>
+            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
         {:else}
             <p class="empty">No records <i>yet</i>...</p>
         {/if}
