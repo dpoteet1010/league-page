@@ -133,7 +133,7 @@
 
     {#if display == "allTime"}
         {#if leagueWeekHighs?.length}
-            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
+            <p style="text-align: center; color: green;">✅ This is where AllTimeRecords would render</p>
         {:else}
             <p class="empty">No records <i>yet</i>...</p>
         {/if}
