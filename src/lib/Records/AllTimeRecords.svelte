@@ -3,7 +3,17 @@
   	import RecordsAndRankings from './RecordsAndRankings.svelte';
 
     export let key, leagueManagerRecords, leagueTeamManagers, leagueWeekHighs, leagueWeekLows, allTimeBiggestBlowouts, allTimeClosestMatchups, mostSeasonLongPoints, leastSeasonLongPoints, transactionTotals;
-
+     console.log("🧩 AllTimeRecords props:", {
+        transactionTotals,
+        allTimeClosestMatchups,
+        allTimeBiggestBlowouts,
+        leagueManagerRecords,
+        leagueWeekHighs,
+        leagueWeekLows,
+        leagueTeamManagers,
+        mostSeasonLongPoints,
+        leastSeasonLongPoints,
+        key
     let winPercentages = [];
     let lineupIQs = [];
     let fptsHistories = [];
