@@ -11,28 +11,30 @@
         totals = newTransactions.totals;
     };
 
-    let leagueManagerRecords;
-    let leagueRosterRecords;
-    let leagueWeekHighs;
-    let leagueWeekLows;
-    let allTimeClosestMatchups;
-    let allTimeBiggestBlowouts;
-    let mostSeasonLongPoints;
-    let leastSeasonLongPoints;
-    let seasonWeekRecords;
-    let currentYear;
-    let lastYear;
-
-    let key = "regularSeasonData";
-    let display = "allTime";
+    let leagueManagerRecords = $state();
+    let leagueRosterRecords = $state();
+    let leagueWeekHighs = $state();
+    let leagueWeekLows = $state();
+    let allTimeClosestMatchups = $state();
+    let allTimeBiggestBlowouts = $state();
+    let mostSeasonLongPoints = $state();
+    let leastSeasonLongPoints = $state();
+    let seasonWeekRecords = $state();
+    let currentYear = $state();
+    let lastYear = $state();
 
     const refreshRecords = async () => {
         const newRecords = await getLeagueRecords(true);
         leagueData = newRecords;
     };
 
-    // ✅ Native Svelte reactivity (Option 1)
-    $: if (leagueData && leagueData[key]) {
+    let key = $state("regularSeasonData");
+    let display = $state("allTime");
+
+    // ✅ Use $effect for reactivity in Runes mode
+    $effect(() => {
+        if (!leagueData || !leagueData[key]) return;
+
         const selectedLeagueData = leagueData[key];
 
         leagueManagerRecords = selectedLeagueData.leagueManagerRecords;
@@ -46,9 +48,8 @@
         seasonWeekRecords = selectedLeagueData.seasonWeekRecords;
         currentYear = selectedLeagueData.currentYear;
         lastYear = selectedLeagueData.lastYear;
-    }
+    });
 
-    // Refresh if stale
     if (stale) {
         refreshTransactions();
     }
