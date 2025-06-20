@@ -126,7 +126,10 @@
             </Button>
         </Group>
     </div>
-<p style="text-align: center;">leagueWeekHighs length: {leagueWeekHighs?.length ?? 'undefined'}</p>
+<p style="text-align: center;">
+  isArray: {Array.isArray(leagueWeekHighs) ? 'true' : 'false'} |
+  length: {leagueWeekHighs?.length}
+</p>
 
     {#if display == "allTime"}
         {#if leagueWeekHighs?.length}
