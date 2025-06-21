@@ -168,7 +168,8 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const bid = transaction.settings?.waiver_bid;
 	const timestamp = transaction.status_updated;
 	const date = digestDate(timestamp);
-	const season = parseInt(date.split(',')[0].split(' ')[2]);
+	const dateObj = new Date(timestamp);
+	const season = dateObj.getFullYear();
 
 	let digestedTransaction = {
 		id: transaction.transaction_id,
