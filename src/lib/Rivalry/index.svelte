@@ -43,51 +43,73 @@
 	$: displayWeek = rivalry?.matchups[selected]?.week;
 	$: year = rivalry?.matchups[selected]?.year;
 
-	const setTradeHistory = (p1, p2) => {
-		if (!p1 || !p2) {
-			return [];
+const setTradeHistory = (p1, p2) => {
+	if (!p1 || !p2) {
+		console.log("[DEBUG] setTradeHistory: one or both player IDs missing.");
+		return [];
+	}
+
+	console.log(`[DEBUG] setTradeHistory: checking trades for ${p1} vs ${p2}`);
+
+	const trades = transactionsInfo.transactions.filter(transaction => {
+		if (transaction.type !== "trade") {
+			console.log(`[DEBUG] Transaction ${transaction.transaction_id} skipped — not a trade.`);
+			return false;
 		}
 
-		const trades = transactionsInfo.transactions.filter(transaction => {
-			if (transaction.type !== "trade") return false;
+		const rosters = transaction.rosters ?? transaction.roster_ids;
+		if (!rosters || !Array.isArray(rosters)) {
+			console.log(`[DEBUG] Transaction ${transaction.transaction_id} skipped — missing rosters.`);
+			return false;
+		}
 
-			const rosters = transaction.rosters ?? transaction.roster_ids;
-			if (!rosters || !Array.isArray(rosters)) return false;
+		const rosterIDOne = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p1, transaction.season));
+		const rosterIDTwo = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p2, transaction.season));
 
-			const rosterIDOne = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p1, transaction.season));
-			const rosterIDTwo = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p2, transaction.season));
-			if (rosterIDOne == rosterIDTwo) return false;
+		console.log(`[DEBUG] Season ${transaction.season} | Transaction ${transaction.transaction_id} | Manager1=${p1} -> Roster1=${rosterIDOne}, Manager2=${p2} -> Roster2=${rosterIDTwo}`);
+		console.log(`[DEBUG] Transaction ${transaction.transaction_id} rosters: [${rosters.join(', ')}]`);
 
-			return rosters.includes(rosterIDOne) && rosters.includes(rosterIDTwo);
-		});
+		if (rosterIDOne === rosterIDTwo) {
+			console.log(`[DEBUG] Skipping transaction ${transaction.transaction_id} — both managers mapped to same roster ID.`);
+			return false;
+		}
 
-		// Align order
-		const move = (arr, from, to) => {
-			arr.splice(to, 0, arr.splice(from, 1)[0]);
-		};
+		const includesBoth = rosters.includes(rosterIDOne) && rosters.includes(rosterIDTwo);
+		console.log(`[DEBUG] Transaction ${transaction.transaction_id} includes both: ${includesBoth}`);
+		return includesBoth;
+	});
 
-		return trades.map(t => {
-			const rosterIDOne = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p1, t.season));
-			const rosterIDTwo = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p2, t.season));
+	console.log(`[DEBUG] Found ${trades.length} trades between ${p1} and ${p2}`);
 
-			t.rosters = t.rosters ?? t.roster_ids;
-
-			const oneIdx = t.rosters.indexOf(rosterIDOne);
-			if (oneIdx > 0) {
-				move(t.rosters, oneIdx, 0);
-				t.moves?.forEach(m => move(m, oneIdx, 0));
-			}
-
-			const twoIdx = t.rosters.indexOf(rosterIDTwo);
-			const last = t.rosters.length - 1;
-			if (twoIdx < last) {
-				move(t.rosters, twoIdx, last);
-				t.moves?.forEach(m => move(m, twoIdx, last));
-			}
-
-			return t;
-		});
+	// Align order
+	const move = (arr, from, to) => {
+		arr.splice(to, 0, arr.splice(from, 1)[0]);
 	};
+
+	return trades.map(t => {
+		const rosterIDOne = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p1, t.season));
+		const rosterIDTwo = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, p2, t.season));
+
+		t.rosters = t.rosters ?? t.roster_ids;
+
+		const oneIdx = t.rosters.indexOf(rosterIDOne);
+		if (oneIdx > 0) {
+			console.log(`[DEBUG] Reordering transaction ${t.transaction_id}: moving rosterIDOne from ${oneIdx} to 0`);
+			move(t.rosters, oneIdx, 0);
+			t.moves?.forEach(m => move(m, oneIdx, 0));
+		}
+
+		const twoIdx = t.rosters.indexOf(rosterIDTwo);
+		const last = t.rosters.length - 1;
+		if (twoIdx < last) {
+			console.log(`[DEBUG] Reordering transaction ${t.transaction_id}: moving rosterIDTwo from ${twoIdx} to ${last}`);
+			move(t.rosters, twoIdx, last);
+			t.moves?.forEach(m => move(m, twoIdx, last));
+		}
+
+		return t;
+	});
+};
 
 	$: tradeHistory = setTradeHistory(playerOne, playerTwo);
 
