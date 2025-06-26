@@ -1,3 +1,4 @@
+
 import { managers as managersObj } from '$lib/utils/leagueInfo';
 import { goto } from "$app/navigation";
 import { stringDate } from './news';
@@ -281,36 +282,27 @@ export const getDatesActive = (teamManagers, managerID) => {
 }
 
 export const getRosterIDFromManagerID = (teamManagers, managerID) => {
-	if (!managerID) return null;
-	const years = Object.keys(teamManagers.teamManagersMap).sort((a, b) => b - a);
-	for (const year of years) {
-		const yearMap = teamManagers.teamManagersMap[year];
-		for (const rosterID in yearMap) {
-			if (yearMap[rosterID].managers.includes(managerID)) {
-				return { rosterID, year };
-			}
-		}
-	}
-	return null;
-};
+    if(!managerID) return null;
+    const years = Object.keys(teamManagers.teamManagersMap).sort((a, b) => b - a);
+    for(const year of years) {
+        for(const rosterID in  teamManagers.teamManagersMap[year]) {
+            if(teamManagers.teamManagersMap[year][rosterID].managers.indexOf(managerID) > -1) {
+                return {rosterID, year};
+            }
+        }
+    }
+    return null;
+}
 
 export const getRosterIDFromManagerIDAndYear = (teamManagers, managerID, year) => {
-	if (!managerID || !year) return null;
-
-	const seasonKey = String(year);
-	const yearMap = teamManagers?.teamManagersMap?.[seasonKey];
-	if (!yearMap) {
-		console.warn(`⚠️ teamManagersMap missing for year: ${seasonKey}`);
-		return null;
-	}
-
-	for (const rosterID in yearMap) {
-		if (yearMap[rosterID].managers.includes(managerID)) {
-			return rosterID;
-		}
-	}
-	return null;
-};
+    if(!managerID || !year) return null;
+    for(const rosterID in  teamManagers.teamManagersMap[year]) {
+        if(teamManagers.teamManagersMap[year][rosterID].managers.indexOf(managerID) > -1) {
+            return rosterID;
+        }
+    }
+    return null;
+}
 
 export const checkIfManagerReceivedAward = (teamManagers, awardRosterID, year, managerID) => {
     if(!managerID) return false;
