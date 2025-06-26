@@ -11,12 +11,6 @@
 
 	export let leagueTeamManagers, playersInfo, transactionsInfo, recordsInfo, playerOne, playerTwo;
 
-	let debugLogs = [];
-	const log = (...args) => {
-		const message = args.map(a => (typeof a === 'object' ? JSON.stringify(a, null, 2) : a)).join(" ");
-		debugLogs = [...debugLogs, message];
-	};
-
 	onMount(async () => {
 		if (transactionsInfo.stale) {
 			transactionsInfo = await getLeagueTransactions(false, true);
@@ -51,11 +45,8 @@
 
 	const setTradeHistory = (p1, p2) => {
 		if (!p1 || !p2) {
-			log("❌ Player one or two missing for trade history");
 			return [];
 		}
-
-		log("🔍 All transactions:", transactionsInfo.transactions);
 
 		const trades = transactionsInfo.transactions.filter(transaction => {
 			if (transaction.type !== "trade") return false;
@@ -63,22 +54,15 @@
 			const rosterIDOne = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, playerOne, transaction.season));
 			const rosterIDTwo = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, playerTwo, transaction.season));
 
-			log(`📦 Season ${transaction.season} Roster IDs:`, { rosterIDOne, rosterIDTwo });
-			log("➡️ Transaction rosters:", transaction.rosters);
-
 			if (rosterIDOne == rosterIDTwo) return false;
 			return transaction.rosters.includes(rosterIDOne) && transaction.rosters.includes(rosterIDTwo);
 		});
-
-		log("✅ Matched trades:", trades);
 
 		const move = (arr, from, to) => {
 			arr.splice(to, 0, arr.splice(from, 1)[0]);
 		};
 
 		return trades.map(t => {
-			log("🔁 Reorganizing trade:", t);
-
 			const rosterIDOne = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, playerOne, t.season));
 			const rosterIDTwo = parseInt(getRosterIDFromManagerIDAndYear(leagueTeamManagers, playerTwo, t.season));
 
@@ -206,13 +190,4 @@
 			/>
 		</div>
 	{/if}
-{/if}
-
-{#if debugLogs.length > 0}
-	<details open>
-		<summary style="text-align: center; font-weight: bold; cursor: pointer; margin-top: 2em;">🛠 Debug Logs</summary>
-		<div class="debugBox">
-			{debugLogs.join('\n\n')}
-		</div>
-	</details>
 {/if}
