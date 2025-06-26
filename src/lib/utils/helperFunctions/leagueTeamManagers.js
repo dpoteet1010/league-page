@@ -72,7 +72,7 @@ export const getLeagueTeamManagers = async () => {
         for (const roster of rosters) {
             teamManagersMap[year][roster.roster_id] = {
                 team: getTeamData(processedUsers, roster.owner_id),
-                managers: getManagers(roster, processedUsers), // Should be array of manager IDs
+                managers: getManagers(roster, processedUsers), // <-- live data: managers array of IDs
             };
         }
 
@@ -99,12 +99,25 @@ export const getLeagueTeamManagers = async () => {
             }
         }
 
+        // **Process legacy rosters exactly like live rosters:**
         for (const rosterID in seasonRostersMap) {
             const roster = seasonRostersMap[rosterID];
-            // Use Option A: managers is array of manager IDs (not user objects)
+
+            // Important: legacyRoster likely lacks 'managers' array,
+            // so build a fake roster object with necessary fields for getManagers()
+            const fakeRoster = {
+                ...roster,
+                owner_id: roster.owner_id,
+                // Ensure 'co_owners' or other relevant fields exist if needed by getManagers()
+                co_owners: roster.co_owners || null,
+            };
+
+            // Use getManagers with seasonUsers for consistency
+            const managersArray = getManagers(fakeRoster, seasonUsers);
+
             teamManagersMap[seasonYear][roster.roster_id] = {
                 team: getTeamData(seasonUsers, roster.owner_id),
-                managers: roster.managers ? [...roster.managers] : [],
+                managers: managersArray, // array of manager IDs like live data
             };
         }
 
