@@ -6,9 +6,20 @@
 
     let {leagueData, totals, stale, leagueTeamManagers} = $props();;
 
+    // 👇 Add log state
+    let logMessages = $state([]);
+
+    function log(message, data = null) {
+        const output = data ? `${message}: ${JSON.stringify(data, null, 2)}` : message;
+        logMessages = [...logMessages, output];
+        console.log(output);
+    }
+
     const refreshTransactions = async () => {
+        log("Refreshing transactions...");
         const newTransactions = await getLeagueTransactions(false, true);
         totals = newTransactions.totals;
+        log("Transactions refreshed", totals);
     }
 
     let leagueManagerRecords = $state();
@@ -24,17 +35,22 @@
     let lastYear = $state();
 
     const refreshRecords = async () => {
+        log("Refreshing records...");
         const newRecords = await getLeagueRecords(true);
+        log("New records received", newRecords);
 
-        // update values with new data
         leagueData = newRecords;
     }
 
     let key = $state("regularSeasonData");
 
     $effect(() => {
-        if(!leagueData || !leagueData[key]) return;
+        if (!leagueData || !leagueData[key]) {
+            log("leagueData or leagueData[key] not ready", { leagueData, key });
+            return;
+        }
 
+        log(`Loading data for key: ${key}`);
         const selectedLeagueData = leagueData[key];
 
         leagueManagerRecords = selectedLeagueData.leagueManagerRecords;
@@ -48,18 +64,21 @@
         seasonWeekRecords = selectedLeagueData.seasonWeekRecords;
         currentYear = selectedLeagueData.currentYear;
         lastYear = selectedLeagueData.lastYear;
+
+        log("Selected league data loaded", selectedLeagueData);
     });
 
-    if(stale) {
+    if (stale) {
+        log("Stale flag is true - refreshing transactions");
         refreshTransactions();
     }
 
-    if(leagueData.stale) {
+    if (leagueData?.stale) {
+        log("leagueData marked stale - refreshing records");
         refreshRecords();
     }
 
     let display = $state("allTime");
-
 </script>
 
 <style>
@@ -106,7 +125,12 @@
 </style>
 
 <div class="rankingsWrapper">
-
+{#if logMessages.length}
+    <div class="log-output">
+        <h4>Debug Logs</h4>
+        <pre>{logMessages.join('\n')}</pre>
+    </div>
+{/if}
     <div class="buttonHolder">
         <Group variant="outlined">
             <Button class="selectionButtons" onclick={() => key = "regularSeasonData"} variant="{key == "regularSeasonData" ? "raised" : "outlined"}">
