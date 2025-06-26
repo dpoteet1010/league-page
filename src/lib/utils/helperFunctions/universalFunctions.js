@@ -295,14 +295,26 @@ export const getRosterIDFromManagerID = (teamManagers, managerID) => {
 }
 
 export const getRosterIDFromManagerIDAndYear = (teamManagers, managerID, year) => {
-    if(!managerID || !year) return null;
-    for(const rosterID in  teamManagers.teamManagersMap[year]) {
-        if(teamManagers.teamManagersMap[year][rosterID].managers.indexOf(managerID) > -1) {
+    if (!managerID || !year) return null;
+    const yearKey = typeof year === 'string' ? parseInt(year) : year;
+
+    if (!teamManagers.teamManagersMap || !teamManagers.teamManagersMap[yearKey]) {
+        console.warn(`[getRosterIDFromManagerIDAndYear] No data for year ${yearKey}`);
+        return null;
+    }
+
+    console.log(`[getRosterIDFromManagerIDAndYear] Searching for managerID ${managerID} in year ${yearKey}`);
+    for (const rosterID in teamManagers.teamManagersMap[yearKey]) {
+        const managers = teamManagers.teamManagersMap[yearKey][rosterID].managers;
+        console.log(`Roster ${rosterID} managers:`, managers);
+        if (Array.isArray(managers) && managers.indexOf(managerID) > -1) {
+            console.log(`[getRosterIDFromManagerIDAndYear] Found rosterID ${rosterID} for managerID ${managerID} in year ${yearKey}`);
             return rosterID;
         }
     }
+    console.warn(`[getRosterIDFromManagerIDAndYear] No roster found for managerID ${managerID} in year ${yearKey}`);
     return null;
-}
+};
 
 export const checkIfManagerReceivedAward = (teamManagers, awardRosterID, year, managerID) => {
     if(!managerID) return false;
