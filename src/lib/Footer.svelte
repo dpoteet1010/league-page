@@ -111,13 +111,34 @@
 		<ul>
 			{#each tabs as tab}
 				{#if !tab.nest}
-					<li><div class="navLink" onclick={() => goto(tab.dest)}>{tab.label}</div></li>
+					<li>
+						<div class="navLink" 
+							onclick={() => {
+								if (tab.dest.startsWith('http')) {
+									window.open(tab.dest, '_blank', 'noopener');
+								} else {
+									goto(tab.dest);
+								}
+							}}>
+							{tab.label}
+						</div>
+					</li>
 				{:else}
 					{#each tab.children as child}
-                        <!-- Shouldn't show Managers tab unless managers has been populated -->
-				        {#if child.label != "Managers" || managers.length > 0}
-                            <li><div class="navLink" onclick={() => goto(child.dest)}>{child.label}</div></li>
-                        {/if}
+						{#if child.label != "Managers" || managers.length > 0}
+							<li>
+								<div class="navLink" 
+									onclick={() => {
+										if (child.dest.startsWith('http')) {
+											window.open(child.dest, '_blank', 'noopener');
+										} else {
+											goto(child.dest);
+										}
+									}}>
+									{child.label}
+								</div>
+							</li>
+						{/if}
 					{/each}
 				{/if}
 			{/each}
