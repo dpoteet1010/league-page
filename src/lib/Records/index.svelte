@@ -4,12 +4,12 @@
     import AllTimeRecords from './AllTimeRecords.svelte';
     import PerSeasonRecords from './PerSeasonRecords.svelte';
 
-    let { leagueData, totals, stale, leagueTeamManagers } = $props();
+    let {leagueData, totals, stale, leagueTeamManagers} = $props();;
 
     const refreshTransactions = async () => {
         const newTransactions = await getLeagueTransactions(false, true);
         totals = newTransactions.totals;
-    };
+    }
 
     let leagueManagerRecords = $state();
     let leagueRosterRecords = $state();
@@ -23,31 +23,17 @@
     let currentYear = $state();
     let lastYear = $state();
 
-    let key = $state("regularSeasonData");
-    let display = $state("allTime");
-
-    let ready = false;  // flag to control UI rendering
-
-    async function refreshRecords() {
-        ready = false;  // block UI
-
+    const refreshRecords = async () => {
         const newRecords = await getLeagueRecords(true);
-        leagueData = newRecords;
 
-        // Wait for records store update if needed (assuming getLeagueRecords updates it)
-        // Then mark ready true
-        ready = true;
+        // update values with new data
+        leagueData = newRecords;
     }
 
-    $effect(() => {
-        // If leagueData already present on load, mark ready true
-        if (leagueData && !ready) {
-            ready = true;
-        }
-    });
+    let key = $state("regularSeasonData");
 
     $effect(() => {
-        if (!leagueData || !leagueData[key]) return;
+        if(!leagueData || !leagueData[key]) return;
 
         const selectedLeagueData = leagueData[key];
 
@@ -64,80 +50,90 @@
         lastYear = selectedLeagueData.lastYear;
     });
 
-    if (stale) {
+    if(stale) {
         refreshTransactions();
     }
 
-    $effect(() => {
-        if (leagueData?.stale && !ready) {
-            refreshRecords();
-        }
-    });
+    if(leagueData.stale) {
+        refreshRecords();
+    }
+
+    let display = $state("allTime");
+
 </script>
 
 <style>
-    /* your styles unchanged */
+    .rankingsWrapper {
+        margin: 0 auto;
+        width: 100%;
+        max-width: 1200px;
+    }
+
+    .empty {
+        margin: 10em 0 4em;
+        text-align: center;
+    }
+
+    /* Button Styling */
+    .buttonHolder {
+        text-align: center;
+        margin: 2em 0 0;
+    }
+
+    /* Start button resizing */
+
+    @media (max-width: 540px) {
+        :global(.buttonHolder .selectionButtons) {
+            font-size: 0.6em;
+        }
+    }
+
+    @media (max-width: 415px) {
+        :global(.buttonHolder .selectionButtons) {
+            font-size: 0.5em;
+            padding: 0 6px;
+        }
+    }
+
+    @media (max-width: 315px) {
+        :global(.buttonHolder .selectionButtons) {
+            font-size: 0.45em;
+            padding: 0 3px;
+        }
+    }
+
+    /* End button resizing */
 </style>
 
-{#if ready}
 <div class="rankingsWrapper">
+
     <div class="buttonHolder">
         <Group variant="outlined">
-            <Button class="selectionButtons" onclick={() => key = "regularSeasonData"} variant="{key == 'regularSeasonData' ? 'raised' : 'outlined'}">
+            <Button class="selectionButtons" onclick={() => key = "regularSeasonData"} variant="{key == "regularSeasonData" ? "raised" : "outlined"}">
                 <Label>Regular Season</Label>
             </Button>
-            <Button class="selectionButtons" onclick={() => key = "playoffData"} variant="{key == 'playoffData' ? 'raised' : 'outlined'}">
+            <Button class="selectionButtons" onclick={() => key = "playoffData"} variant="{key == "playoffData" ? "raised" : "outlined"}">
                 <Label>Playoffs</Label>
             </Button>
         </Group>
         <br />
         <Group variant="outlined">
-            <Button class="selectionButtons" onclick={() => display = "allTime"} variant="{display == 'allTime' ? 'raised' : 'outlined'}">
+            <Button class="selectionButtons" onclick={() => display = "allTime"} variant="{display == "allTime" ? "raised" : "outlined"}">
                 <Label>All-Time Records</Label>
             </Button>
-            <Button class="selectionButtons" onclick={() => display = "season"} variant="{display == 'season' ? 'raised' : 'outlined'}">
+            <Button class="selectionButtons" onclick={() => display = "season"} variant="{display == "season" ? "raised" : "outlined"}">
                 <Label>Season Records</Label>
             </Button>
         </Group>
     </div>
 
-    {#if leagueWeekHighs}
-        <details style="margin: 2em 0; padding: 1em; background: #111; color: #0f0; border: 1px solid #0f0; border-radius: 8px;">
-            <summary><strong>DEBUG: leagueWeekHighs</strong></summary>
-            <pre>{JSON.stringify(leagueWeekHighs.slice(0, 3), null, 2)}</pre>
-            <p>Length: {leagueWeekHighs.length}</p>
-        </details>
-    {/if}
-
     {#if display == "allTime"}
         {#if leagueWeekHighs?.length}
-            <AllTimeRecords
-                transactionTotals={totals}
-                {allTimeClosestMatchups}
-                {allTimeBiggestBlowouts}
-                {leagueManagerRecords}
-                {leagueWeekHighs}
-                {leagueWeekLows}
-                {leagueTeamManagers}
-                {mostSeasonLongPoints}
-                {leastSeasonLongPoints}
-                {key}
-            />
+            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
         {:else}
             <p class="empty">No records <i>yet</i>...</p>
         {/if}
     {:else}
-        <PerSeasonRecords
-            transactionTotals={totals}
-            {leagueRosterRecords}
-            {seasonWeekRecords}
-            {leagueTeamManagers}
-            {currentYear}
-            {lastYear}
-            {key}
-        />
+        <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
     {/if}
 </div>
-{:else}
-<p>Loading records, please wait...</p>
-{/if}
