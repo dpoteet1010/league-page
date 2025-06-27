@@ -138,26 +138,6 @@ const combThroughTransactions = async (week, currentLeagueID) => {
 };
 
 const digestTransactions = async ({ transactionsData, currentSeason }) => {
-	const processedTransactions = [];
-
-	for (const transaction of transactionsData) {
-		const { digestedTransaction, success } = digestTransaction({ transaction, currentSeason });
-		if (success) {
-			processedTransactions.push(digestedTransaction);
-		}
-	}
-
-	processedTransactions.sort((a, b) => b.timestamp - a.timestamp);
-
-	const totals = {
-		trades: processedTransactions.filter(t => t.type === "trade").length,
-		waivers: processedTransactions.filter(t => t.type === "waiver").length,
-	};
-
-	return { transactions: processedTransactions, totals };
-};
-
-const digestTransactions = async ({ transactionsData, currentSeason }) => {
   const transactions = [];
   const totals = {
     allTime: {},    // manager -> { trade, waiver }
@@ -208,6 +188,115 @@ const digestTransactions = async ({ transactionsData, currentSeason }) => {
   }
 
   return { transactions, totals };
+};
+
+const digestTransaction = ({ transaction, currentSeason }) => {
+	if (transaction.status === 'failed') return { success: false };
+
+	if (!transaction.roster_ids || transaction.roster_ids.length === 0) {
+		return { success: false };
+	}
+
+	const transactionRosters = transaction.roster_ids;
+	const bid = transaction.settings?.waiver_bid;
+	const timestamp = transaction.status_updated;
+	const date = digestDate(timestamp);
+	const dateObj = new Date(timestamp);
+	const season = dateObj.getFullYear();
+
+	let digestedTransaction = {
+		id: transaction.transaction_id,
+		date,
+		timestamp,
+		season,
+		type: transaction.type,
+		rosters: transactionRosters,
+		moves: []
+	};
+
+	if (season !== currentSeason) {
+		digestedTransaction.previousOwners = true;
+	}
+
+	const adds = transaction.adds || {};
+	const drops = transaction.drops || {};
+	const draftPicks = transaction.draft_picks || [];
+
+	if (transaction.type === "trade") {
+		for (let player in adds) {
+			if (!player) continue;
+
+			const toRoster = adds[player];
+			const fromRoster = drops[player];
+
+			let move = new Array(transactionRosters.length).fill(null);
+
+			if (fromRoster !== undefined && transactionRosters.includes(fromRoster)) {
+				move[transactionRosters.indexOf(fromRoster)] = "origin";
+			}
+
+			if (toRoster !== undefined && transactionRosters.includes(toRoster)) {
+				move[transactionRosters.indexOf(toRoster)] = {
+					type: "Added",
+					player
+				};
+			}
+
+			digestedTransaction.moves.push(move);
+		}
+
+		for (let pick of draftPicks) {
+			let move = new Array(transactionRosters.length).fill(null);
+
+			if (pick.previous_owner_id !== undefined && transactionRosters.includes(pick.previous_owner_id)) {
+				move[transactionRosters.indexOf(pick.previous_owner_id)] = "origin";
+			}
+
+			if (pick.owner_id !== undefined && transactionRosters.includes(pick.owner_id)) {
+				move[transactionRosters.indexOf(pick.owner_id)] = {
+					type: "Received Pick",
+					pick
+				};
+			}
+
+			digestedTransaction.moves.push(move);
+		}
+	} else {
+		const handled = [];
+
+		for (let player in adds) {
+			if (!player) continue;
+			handled.push(player);
+			digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, bid));
+		}
+
+		for (let player in drops) {
+			if (handled.includes(player)) continue;
+			if (!player) continue;
+
+			let move = new Array(transactionRosters.length).fill(null);
+			if (transactionRosters.includes(drops[player])) {
+				move[transactionRosters.indexOf(drops[player])] = {
+					type: "Dropped",
+					player
+				};
+				digestedTransaction.moves.push(move);
+			}
+		}
+
+		for (let pick of draftPicks) {
+			let move = new Array(transactionRosters.length).fill(null);
+			if (transactionRosters.includes(pick.owner_id)) {
+				move[transactionRosters.indexOf(pick.owner_id)] = {
+					type: "Draft Pick",
+					pick
+				};
+				digestedTransaction.moves.push(move);
+			}
+		}
+	}
+
+	return { digestedTransaction, season, success: true };
 };
 
 const handleAdds = (rosterIDs, adds, drops, player, bid) => {
