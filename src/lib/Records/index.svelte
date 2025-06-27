@@ -60,10 +60,16 @@
 	}
 
 	$effect(() => {
-		if (leagueWeekHighs) {
+		if (leagueWeekHighs === undefined) {
+			debugLog = "leagueWeekHighs is undefined.";
+		} else if (leagueWeekHighs === null) {
+			debugLog = "leagueWeekHighs is null.";
+		} else if (Array.isArray(leagueWeekHighs) && leagueWeekHighs.length === 0) {
+			debugLog = "leagueWeekHighs is an empty array.";
+		} else if (Array.isArray(leagueWeekHighs)) {
 			debugLog = `leagueWeekHighs length: ${leagueWeekHighs.length}\n\n${JSON.stringify(leagueWeekHighs.slice(0, 3), null, 2)}`;
 		} else {
-			debugLog = "leagueWeekHighs is undefined or null.";
+			debugLog = `leagueWeekHighs is not an array. Type: ${typeof leagueWeekHighs}, Value: ${JSON.stringify(leagueWeekHighs)}`;
 		}
 	});
 </script>
