@@ -1,108 +1,65 @@
 <script>
-	import Button, { Group, Label } from '@smui/button';
-	import { getLeagueRecords, getLeagueTransactions } from '$lib/utils/helper';
-	import AllTimeRecords from './AllTimeRecords.svelte';
-	import PerSeasonRecords from './PerSeasonRecords.svelte';
+    import Button, { Group, Label } from '@smui/button';
+    import { getLeagueRecords, getLeagueTransactions } from '$lib/utils/helper';
+    import AllTimeRecords from './AllTimeRecords.svelte';
+    import PerSeasonRecords from './PerSeasonRecords.svelte';
 
-	let {leagueData, totals, stale, leagueTeamManagers} = $props();
+    let {leagueData, totals, stale, leagueTeamManagers} = $props();;
 
-	const refreshTransactions = async () => {
-		const newTransactions = await getLeagueTransactions(false, true);
-		totals = newTransactions.totals;
-	};
+    const refreshTransactions = async () => {
+        const newTransactions = await getLeagueTransactions(false, true);
+        totals = newTransactions.totals;
+    }
 
-	let leagueManagerRecords = $state();
-	let leagueRosterRecords = $state();
-	let leagueWeekHighs = $state();
-	let leagueWeekLows = $state();
-	let allTimeClosestMatchups = $state();
-	let allTimeBiggestBlowouts = $state();
-	let mostSeasonLongPoints = $state();
-	let leastSeasonLongPoints = $state();
-	let seasonWeekRecords = $state();
-	let currentYear = $state();
-	let lastYear = $state();
+    let leagueManagerRecords = $state();
+    let leagueRosterRecords = $state();
+    let leagueWeekHighs = $state();
+    let leagueWeekLows = $state();
+    let allTimeClosestMatchups = $state();
+    let allTimeBiggestBlowouts = $state();
+    let mostSeasonLongPoints = $state();
+    let leastSeasonLongPoints = $state();
+    let seasonWeekRecords = $state();
+    let currentYear = $state();
+    let lastYear = $state();
 
-	const refreshRecords = async () => {
-		const newRecords = await getLeagueRecords(true);
-		leagueData = newRecords;
-	};
-	$effect(() => {
-	  if (!leagueData) {
-	    refreshRecords();
-	  }
-	});
+    const refreshRecords = async () => {
+        const newRecords = await getLeagueRecords(true);
 
-	let key = $state("regularSeasonData");
-	let display = $state("allTime");
+        // update values with new data
+        leagueData = newRecords;
+    }
 
-	let debugLog = "";
+    let key = $state("regularSeasonData");
 
-	$effect(() => {
-		if (!leagueData || !leagueData[key]) return;
+    $effect(() => {
+        if(!leagueData || !leagueData[key]) return;
 
-		const selectedLeagueData = leagueData[key];
+        const selectedLeagueData = leagueData[key];
 
-		leagueManagerRecords = selectedLeagueData.leagueManagerRecords;
-		leagueRosterRecords = selectedLeagueData.leagueRosterRecords;
-		leagueWeekHighs = selectedLeagueData.leagueWeekHighs;
-		leagueWeekLows = selectedLeagueData.leagueWeekLows;
-		allTimeClosestMatchups = selectedLeagueData.allTimeClosestMatchups;
-		allTimeBiggestBlowouts = selectedLeagueData.allTimeBiggestBlowouts;
-		mostSeasonLongPoints = selectedLeagueData.mostSeasonLongPoints;
-		leastSeasonLongPoints = selectedLeagueData.leastSeasonLongPoints;
-		seasonWeekRecords = selectedLeagueData.seasonWeekRecords;
-		currentYear = selectedLeagueData.currentYear;
-		lastYear = selectedLeagueData.lastYear;
-	});
+        leagueManagerRecords = selectedLeagueData.leagueManagerRecords;
+        leagueRosterRecords = selectedLeagueData.leagueRosterRecords;
+        leagueWeekHighs = selectedLeagueData.leagueWeekHighs;
+        leagueWeekLows = selectedLeagueData.leagueWeekLows;
+        allTimeClosestMatchups = selectedLeagueData.allTimeClosestMatchups;
+        allTimeBiggestBlowouts = selectedLeagueData.allTimeBiggestBlowouts;
+        mostSeasonLongPoints = selectedLeagueData.mostSeasonLongPoints;
+        leastSeasonLongPoints = selectedLeagueData.leastSeasonLongPoints;
+        seasonWeekRecords = selectedLeagueData.seasonWeekRecords;
+        currentYear = selectedLeagueData.currentYear;
+        lastYear = selectedLeagueData.lastYear;
+    });
 
-	if (stale) {
-		refreshTransactions();
-	}
+    if(stale) {
+        refreshTransactions();
+    }
 
-	if (leagueData?.stale) {
-		refreshRecords();
-	}
+    if(leagueData.stale) {
+        refreshRecords();
+    }
 
-	$effect(() => {
-		if (leagueWeekHighs === undefined) {
-			debugLog = "leagueWeekHighs is undefined.";
-		} else if (leagueWeekHighs === null) {
-			debugLog = "leagueWeekHighs is null.";
-		} else if (Array.isArray(leagueWeekHighs) && leagueWeekHighs.length === 0) {
-			debugLog = "leagueWeekHighs is an empty array.";
-		} else if (Array.isArray(leagueWeekHighs)) {
-			debugLog = `leagueWeekHighs length: ${leagueWeekHighs.length}\n\n${JSON.stringify(leagueWeekHighs.slice(0, 3), null, 2)}`;
-		} else {
-			debugLog = `leagueWeekHighs is not an array. Type: ${typeof leagueWeekHighs}, Value: ${JSON.stringify(leagueWeekHighs)}`;
-		}
-	});
-	
-$effect(() => {
-	if (!leagueData) {
-		debugLog = "leagueData is undefined.";
-		return;
-	}
+    let display = $state("allTime");
 
-	if (!leagueData[key]) {
-		debugLog = `leagueData[${key}] is undefined. Keys: ${Object.keys(leagueData).join(", ")}`;
-		return;
-	}
-
-	const selected = leagueData[key];
-
-	if (!selected.leagueWeekHighs) {
-		debugLog = `leagueData[${key}].leagueWeekHighs is missing.\n\nFull data:\n${JSON.stringify(selected, null, 2)}`;
-		return;
-	}
-
-	if (Array.isArray(selected.leagueWeekHighs) && selected.leagueWeekHighs.length === 0) {
-		debugLog = "leagueWeekHighs is an empty array.";
-		return;
-	}
-
-	debugLog = `leagueWeekHighs length: ${selected.leagueWeekHighs.length}\n\n${JSON.stringify(selected.leagueWeekHighs.slice(0, 3), null, 2)}`;
-});
 </script>
 
 <style>
@@ -170,17 +127,13 @@ $effect(() => {
         </Group>
     </div>
 
-{#if display == "allTime"}
-    {#if leagueWeekHighs?.length}
-        <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
+    {#if display == "allTime"}
+        {#if leagueWeekHighs?.length}
+            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
+        {:else}
+            <p class="empty">No records <i>yet</i>...</p>
+        {/if}
     {:else}
-        <div style="white-space: pre-wrap; background: #111; color: #ccc; padding: 1em; margin: 1em 0; font-size: 0.85em; border: 1px solid #333;">
-            <strong>Debug Log:</strong>
-            <br>{debugLog}
-        </div>
-        <p class="empty">No records <i>yet</i>...</p>
+        <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
     {/if}
-{:else}
-    <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
-{/if}
 </div>
