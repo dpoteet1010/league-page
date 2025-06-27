@@ -23,12 +23,18 @@
     let currentYear = $state();
     let lastYear = $state();
 
+    let key = $state("regularSeasonData");
+
+    let ready = false;  // new flag to control rendering
+
     const refreshRecords = async () => {
+        ready = false;  // block rendering while loading
+
         const newRecords = await getLeagueRecords(true);
         leagueData = newRecords;
-    };
 
-    let key = $state("regularSeasonData");
+        ready = true;  // data ready, allow rendering
+    };
 
     $effect(() => {
         if (!leagueData || !leagueData[key]) return;
@@ -48,15 +54,25 @@
         lastYear = selectedLeagueData.lastYear;
     });
 
+    // Automatically refresh transactions if stale
     if (stale) {
         refreshTransactions();
     }
 
-    if (leagueData.stale) {
-        refreshRecords();
-    }
+    // Refresh records if stale and not ready
+    $effect(() => {
+        if (leagueData?.stale && !ready) {
+            refreshRecords();
+        }
+    });
 
-    let display = $state("allTime");
+    // Mark ready when leagueData initially loads (from props or localStorage)
+    $effect(() => {
+        if (leagueData && !ready) {
+            ready = true;
+        }
+    });
+
 </script>
 
 <style>
@@ -97,6 +113,7 @@
     }
 </style>
 
+{#if ready}
 <div class="rankingsWrapper">
     <div class="buttonHolder">
         <Group variant="outlined">
@@ -155,3 +172,6 @@
         />
     {/if}
 </div>
+{:else}
+<p>Loading records, please wait...</p>
+{/if}
