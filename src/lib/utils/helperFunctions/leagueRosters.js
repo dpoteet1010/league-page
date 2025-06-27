@@ -3,27 +3,29 @@ import { get } from 'svelte/store';
 import { rostersStore } from '$lib/stores';
 import { legacyLeagueRosters } from './legacyLeagueRosters.js';
 
-// ✅ Must be declared at top-level scope
+// Append legacy rosters once per session
 let legacyAppended = false;
 
 export const getLeagueRosters = async (queryLeagueID = leagueID) => {
-	// 🧠 Append and process legacy rosters once per session
 	queryLeagueID = String(queryLeagueID);
+
+	// Append legacy data once
 	if (!legacyAppended) {
 		rostersStore.update(current => {
 			const merged = { ...current };
 
 			for (const [key, legacy] of Object.entries(legacyLeagueRosters)) {
+				// Only add legacy data if not present already
 				if (!merged[key]) {
 					if (
 						!legacy.rosters ||
 						typeof legacy.rosters !== 'object' ||
 						Array.isArray(legacy.rosters)
 					) {
-						continue;
+						continue; // skip invalid legacy data
 					}
 
-					// 🛠 Convert legacy rosters object to array
+					// Convert legacy rosters object to array and process
 					const rosterArray = Object.values(legacy.rosters);
 					const processed = processRosters(rosterArray);
 					merged[key] = processed;
@@ -35,7 +37,7 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		legacyAppended = true;
 	}
 
-	// 🔍 Check the updated store for this league
+	// Check if roster data already cached in store (includes legacy data after append)
 	const storedRoster = get(rostersStore)[queryLeagueID];
 	if (
 		storedRoster &&
@@ -46,7 +48,7 @@ export const getLeagueRosters = async (queryLeagueID = leagueID) => {
 		return storedRoster;
 	}
 
-	// ⬇️ Fallback to live Sleeper API fetch
+	// Fetch live data from Sleeper API fallback
 	let res;
 	try {
 		res = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/rosters`, {
