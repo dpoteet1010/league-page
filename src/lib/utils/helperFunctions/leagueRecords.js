@@ -205,12 +205,15 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 			startWeek = sW;
 		}
 	}
+	console.log(`[DEBUG] seasonPointsRecord length: ${seasonPointsRecord.length}`);
 
 	const [biggestBlowouts, closestMatchups] = sortHighAndLow(matchupDifferentials, 'differential');
 	const [seasonPointsHighs, seasonPointsLows] = sortHighAndLow(seasonPointsRecord, 'fpts');
 
 	regularSeason.addAllTimeMatchupDifferentials(matchupDifferentials);
 
+	console.log(`[DEBUG processRegularSeason] year: ${year}, seasonPointsRecord.length: ${seasonPointsRecord.length}`);
+	console.log(`[DEBUG processRegularSeason] seasonPointsHighs.length: ${seasonPointsHighs.length}`);
 	if (seasonPointsHighs.length > 0) {
 		regularSeason.addSeasonWeekRecord({
 			year: Number(year),
