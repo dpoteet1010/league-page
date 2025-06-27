@@ -62,6 +62,14 @@
 
 </script>
 
+let debugLog = "";
+
+$: if (leagueWeekHighs) {
+	debugLog = `leagueWeekHighs length: ${leagueWeekHighs.length}\n\n${JSON.stringify(leagueWeekHighs.slice(0, 3), null, 2)}`;
+} else {
+	debugLog = "leagueWeekHighs is undefined or null.";
+}
+
 <style>
     .rankingsWrapper {
         margin: 0 auto;
@@ -127,13 +135,17 @@
         </Group>
     </div>
 
-    {#if display == "allTime"}
-        {#if leagueWeekHighs?.length}
-            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
-        {:else}
-            <p class="empty">No records <i>yet</i>...</p>
-        {/if}
+{#if display == "allTime"}
+    {#if leagueWeekHighs?.length}
+        <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
     {:else}
-        <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
+        <div style="white-space: pre-wrap; background: #111; color: #ccc; padding: 1em; margin: 1em 0; font-size: 0.85em; border: 1px solid #333;">
+            <strong>Debug Log:</strong>
+            <br>{debugLog}
+        </div>
+        <p class="empty">No records <i>yet</i>...</p>
     {/if}
+{:else}
+    <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
+{/if}
 </div>
