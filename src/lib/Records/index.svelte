@@ -72,6 +72,32 @@
 			debugLog = `leagueWeekHighs is not an array. Type: ${typeof leagueWeekHighs}, Value: ${JSON.stringify(leagueWeekHighs)}`;
 		}
 	});
+	
+$effect(() => {
+	if (!leagueData) {
+		debugLog = "leagueData is undefined.";
+		return;
+	}
+
+	if (!leagueData[key]) {
+		debugLog = `leagueData[${key}] is undefined. Keys: ${Object.keys(leagueData).join(", ")}`;
+		return;
+	}
+
+	const selected = leagueData[key];
+
+	if (!selected.leagueWeekHighs) {
+		debugLog = `leagueData[${key}].leagueWeekHighs is missing.\n\nFull data:\n${JSON.stringify(selected, null, 2)}`;
+		return;
+	}
+
+	if (Array.isArray(selected.leagueWeekHighs) && selected.leagueWeekHighs.length === 0) {
+		debugLog = "leagueWeekHighs is an empty array.";
+		return;
+	}
+
+	debugLog = `leagueWeekHighs length: ${selected.leagueWeekHighs.length}\n\n${JSON.stringify(selected.leagueWeekHighs.slice(0, 3), null, 2)}`;
+});
 </script>
 
 <style>
