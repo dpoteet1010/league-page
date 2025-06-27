@@ -59,14 +59,13 @@
 		refreshRecords();
 	}
 
-	// ✅ Moved inside script tag
-	$: {
+	$effect(() => {
 		if (leagueWeekHighs) {
 			debugLog = `leagueWeekHighs length: ${leagueWeekHighs.length}\n\n${JSON.stringify(leagueWeekHighs.slice(0, 3), null, 2)}`;
 		} else {
 			debugLog = "leagueWeekHighs is undefined or null.";
 		}
-	}
+	});
 </script>
 
 <style>
