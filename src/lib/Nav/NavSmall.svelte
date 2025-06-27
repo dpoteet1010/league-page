@@ -18,7 +18,13 @@
 
 	const selectTab = (tab) => {
 		open = false;
-		goto(tab.dest);
+		if (tab.dest.startsWith('http')) {
+			// External URL
+			window.open(tab.dest, '_blank', 'noopener');
+		} else {
+			// Internal route
+			goto(tab.dest);
+		}
 	}
 </script>
 
