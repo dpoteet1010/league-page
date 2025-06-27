@@ -89,7 +89,7 @@ export const getRivalryMatchups = async (userOneID, userTwoID) => {
 
 		if (!rosterIDOne || !rosterIDTwo || rosterIDOne === rosterIDTwo) continue;
 
-		for (let week = 1; week <= 17; week++) {
+		for (let week = 1; week <= 14; week++) {
 			const matchupWeek = yearMatchups[week];
 			if (!matchupWeek || !Array.isArray(matchupWeek)) continue;
 
