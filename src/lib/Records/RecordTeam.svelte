@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { getAvatarFromTeamManagers, getTeamNameFromTeamManagers, renderManagerNames } from "$lib/utils/helperFunctions/universalFunctions";
 
 	export let leagueTeamManagers, managerID = null, rosterID = null, year, compressed = false, points = null;
@@ -8,22 +9,26 @@
 
 	function log(message, data = null) {
 		const output = data ? `${message}: ${JSON.stringify(data)}` : message;
-		logMessages = [...logMessages, output];
+		logMessages = [...logMessages, output]; // reassign for Svelte reactivity
 		console.log(output);
 	}
 
-	if (managerID) {
-		user = leagueTeamManagers.users[managerID];
-		log("Found user from managerID", user);
-	} else if (rosterID) {
-		const avatar = getAvatarFromTeamManagers(leagueTeamManagers, rosterID, year);
-		const teamName = getTeamNameFromTeamManagers(leagueTeamManagers, rosterID, year);
-		const managerNames = renderManagerNames(leagueTeamManagers, rosterID, year);
+	onMount(() => {
+		if (managerID && leagueTeamManagers?.users?.[managerID]) {
+			user = leagueTeamManagers.users[managerID];
+			log("Found user from managerID", user);
+		} else if (rosterID) {
+			const avatar = getAvatarFromTeamManagers(leagueTeamManagers, rosterID, year);
+			const teamName = getTeamNameFromTeamManagers(leagueTeamManagers, rosterID, year);
+			const managerNames = renderManagerNames(leagueTeamManagers, rosterID, year);
 
-		log("Resolved avatar from rosterID", avatar);
-		log("Resolved teamName from rosterID", teamName);
-		log("Resolved managerNames from rosterID", managerNames);
-	}
+			log("Resolved avatar from rosterID", avatar);
+			log("Resolved teamName from rosterID", teamName);
+			log("Resolved managerNames from rosterID", managerNames);
+		} else {
+			log("No managerID or rosterID provided");
+		}
+	});
 </script>
 
 <style>
@@ -62,7 +67,6 @@
 			height: 25px;
 			margin-right: 8px;
 		}
-
 		.compressed {
 			height: 20px;
 			margin-right: 4px;
@@ -104,7 +108,7 @@
 			{/if}
 		</div>
 
-		{#if !user}
+		{#if !user && rosterID}
 			<div class="managerNames">
 				{renderManagerNames(leagueTeamManagers, rosterID, year)}
 			</div>
