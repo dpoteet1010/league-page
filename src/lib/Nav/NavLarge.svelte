@@ -3,7 +3,7 @@
 	import Tab, { Icon, Label } from '@smui/tab';
 	import List, { Item, Graphic, Text, Separator } from '@smui/list';
 	import TabBar from '@smui/tab-bar';
-    import { page } from '$app/state';
+	import { page } from '$app/state';
 	import { goto, preloadData } from '$app/navigation';
 	import { enableBlog, managers } from '$lib/utils/leagueInfo';
 
@@ -34,9 +34,17 @@
 		display = !display;
 	}
 
+	// Updated subGoto to handle external URLs properly
 	const subGoto = (dest) => {
-		open(false);
-		goto(dest);
+		display = false; // close submenu
+
+		if (dest.startsWith('http')) {
+			// External URL - open in a new tab safely
+			window.open(dest, '_blank', 'noopener');
+		} else {
+			// Internal route - SPA navigation
+			goto(dest);
+		}
 	}
 
 	let tabChildren = $state([]);
@@ -46,7 +54,6 @@
 			tabChildren = tab.children;
 		}
 	}
-
 </script>
 
 <svelte:window bind:innerWidth={innerWidth} />
@@ -83,7 +90,6 @@
 		top: 0;
 		left: 0;
 		width: 100%;
-		height: 100%;
 		height: 100vh;
 		z-index: 4;
 	}
@@ -136,7 +142,12 @@
 		<List>
 			{#each tabChildren as subTab, ix}
 				{#if subTab.label == 'Managers'}
-					<Item class="{managers.length ? '' : 'dontDisplay'}" onSMUIAction={() => subGoto(subTab.dest)} ontouchstart={() => preloadData(subTab.dest)} onmouseover={() => preloadData(subTab.dest)}>
+					<Item
+						class="{managers.length ? '' : 'dontDisplay'}"
+						onSMUIAction={() => subGoto(subTab.dest)}
+						ontouchstart={() => preloadData(subTab.dest)}
+						onmouseover={() => preloadData(subTab.dest)}
+					>
 						<Graphic class="material-icons">{subTab.icon}</Graphic>
 						<Text class="subText">{subTab.label}</Text>
 					</Item>
@@ -144,7 +155,11 @@
 						<Separator />
 					{/if}
 				{:else}
-					<Item onSMUIAction={() => subGoto(subTab.dest)} ontouchstart={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}} onmouseover={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}}>
+					<Item
+						onSMUIAction={() => subGoto(subTab.dest)}
+						ontouchstart={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}}
+						onmouseover={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}}
+					>
 						<Graphic class="material-icons">{subTab.icon}</Graphic>
 						<Text class="subText">{subTab.label}</Text>
 					</Item>
