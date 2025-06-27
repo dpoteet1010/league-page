@@ -119,6 +119,7 @@ export const getLeagueRecords = async (refresh = false) => {
 
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
 	console.log("[DEBUG] leagueWeekHighs after finalize:", regularSeason.leagueWeekHighs?.length);
+	console.log("[DEBUG] finalizing with", { currentYear, lastYear });
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
 
 	const regularSeasonData = regularSeason.returnRecords();
