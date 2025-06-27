@@ -7,13 +7,13 @@ export const enableBlog = false; // requires VITE_CONTENTFUL_ACCESS_TOKEN and VI
 
 /*   STEP 2   */
 export const homepageText = `
-  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
-  <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
-  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
-  <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
-  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
-  <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+  <p>Founded in 2023, the National Liver Failure League (NLFL) is a redraft fantasy football league where intense competition meets outlandish antics and borderline chaos.</p>
+  <p>From the jump, the NLFL has been a battleground for managers who combine shrewd football strategy with an unrelenting penchant for debauchery and out-of-pocket comments that keep everyone on their toes. It’s not just about who drafts the best team — it’s about who can survive the trash talk, off-the-wall antics, and gut-check moments week after week.</p>
+  <p>Each season, managers wage war for the coveted National Liver Failure League Trophy and a cash prize that sweetens the glory. But beware — finishing last isn’t just an embarrassment, it comes with a league-wide voted punishment guaranteed to humiliate even the hardiest competitor.</p>
+  <p>The NLFL isn’t just about football — it’s a community. The banter is savage, the celebrations are loud, and the rivalries run deep. Whether it’s heated trade negotiations, late-night group chats, or the wild stories told around the water cooler, the league’s unique personality is what keeps everyone coming back year after year.</p>
+  <p>At the heart of it all is the passion for competition, camaraderie, and of course, liver health questionable at best. If you’re ready for fantasy football that’s as ruthless as it is ridiculous, welcome to the National Liver Failure League — where the stakes are high, the insults fly freely, and legends are made (or broken).</p>
 `;
+
 
 /*   STEP 3   */
 /*
