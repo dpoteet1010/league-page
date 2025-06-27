@@ -106,5 +106,7 @@ Generate a custom league page for your Sleeper fantasy football league in just a
 - (Optional) If you want to add analytics, go to the [Analytics page in Vercel](https://vercel.com/d?to=%2F%5Bteam%5D%2F%5Bproject%5D%2Fanalytics&title=Open+Web+Analytics) and turn them on! They will start tracking after the next deployment.
 - That's it!
 
+- This project is based in part on code from [League Page](https://github.com/nmelhado/league-page) by Nicholas Melhado, used under the MIT License.
+
 <!-- ## Development
 see [CONTRIBUTING.md](.github/CONTRIBUTING.md) -->
