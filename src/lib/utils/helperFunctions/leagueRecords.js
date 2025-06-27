@@ -118,6 +118,7 @@ export const getLeagueRecords = async (refresh = false) => {
 	playoffRecords.lastYear = regularSeason.lastYear;
 
 	regularSeason.finalizeAllTimeRecords({ currentYear, lastYear });
+	console.log("[DEBUG] leagueWeekHighs after finalize:", regularSeason.leagueWeekHighs?.length);
 	playoffRecords.finalizeAllTimeRecords({ currentYear, lastYear });
 
 	const regularSeasonData = regularSeason.returnRecords();
@@ -137,7 +138,7 @@ export const getLeagueRecords = async (refresh = false) => {
 };
 
 const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason }) => {
-	let year = parseInt(leagueData.season);
+	let year = Number(leagueData.season);
 
 	if (leagueData.status == 'complete' || week > leagueData.settings.playoff_week_start - 1) {
 		week = leagueData.settings.playoff_week_start - 1;
@@ -212,7 +213,7 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 
 	if (seasonPointsHighs.length > 0) {
 		regularSeason.addSeasonWeekRecord({
-			year,
+			year: Number(year),
 			biggestBlowouts,
 			closestMatchups,
 			seasonPointsLows,
