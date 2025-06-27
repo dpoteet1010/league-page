@@ -4,12 +4,12 @@
     import AllTimeRecords from './AllTimeRecords.svelte';
     import PerSeasonRecords from './PerSeasonRecords.svelte';
 
-    let {leagueData, totals, stale, leagueTeamManagers} = $props();;
+    let { leagueData, totals, stale, leagueTeamManagers } = $props();
 
     const refreshTransactions = async () => {
         const newTransactions = await getLeagueTransactions(false, true);
         totals = newTransactions.totals;
-    }
+    };
 
     let leagueManagerRecords = $state();
     let leagueRosterRecords = $state();
@@ -25,15 +25,13 @@
 
     const refreshRecords = async () => {
         const newRecords = await getLeagueRecords(true);
-
-        // update values with new data
         leagueData = newRecords;
-    }
+    };
 
     let key = $state("regularSeasonData");
 
     $effect(() => {
-        if(!leagueData || !leagueData[key]) return;
+        if (!leagueData || !leagueData[key]) return;
 
         const selectedLeagueData = leagueData[key];
 
@@ -50,16 +48,15 @@
         lastYear = selectedLeagueData.lastYear;
     });
 
-    if(stale) {
+    if (stale) {
         refreshTransactions();
     }
 
-    if(leagueData.stale) {
+    if (leagueData.stale) {
         refreshRecords();
     }
 
     let display = $state("allTime");
-
 </script>
 
 <style>
@@ -74,13 +71,10 @@
         text-align: center;
     }
 
-    /* Button Styling */
     .buttonHolder {
         text-align: center;
         margin: 2em 0 0;
     }
-
-    /* Start button resizing */
 
     @media (max-width: 540px) {
         :global(.buttonHolder .selectionButtons) {
@@ -101,39 +95,63 @@
             padding: 0 3px;
         }
     }
-
-    /* End button resizing */
 </style>
 
 <div class="rankingsWrapper">
-
     <div class="buttonHolder">
         <Group variant="outlined">
-            <Button class="selectionButtons" onclick={() => key = "regularSeasonData"} variant="{key == "regularSeasonData" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" onclick={() => key = "regularSeasonData"} variant="{key == 'regularSeasonData' ? 'raised' : 'outlined'}">
                 <Label>Regular Season</Label>
             </Button>
-            <Button class="selectionButtons" onclick={() => key = "playoffData"} variant="{key == "playoffData" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" onclick={() => key = "playoffData"} variant="{key == 'playoffData' ? 'raised' : 'outlined'}">
                 <Label>Playoffs</Label>
             </Button>
         </Group>
         <br />
         <Group variant="outlined">
-            <Button class="selectionButtons" onclick={() => display = "allTime"} variant="{display == "allTime" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" onclick={() => display = "allTime"} variant="{display == 'allTime' ? 'raised' : 'outlined'}">
                 <Label>All-Time Records</Label>
             </Button>
-            <Button class="selectionButtons" onclick={() => display = "season"} variant="{display == "season" ? "raised" : "outlined"}">
+            <Button class="selectionButtons" onclick={() => display = "season"} variant="{display == 'season' ? 'raised' : 'outlined'}">
                 <Label>Season Records</Label>
             </Button>
         </Group>
     </div>
 
+    {#if leagueWeekHighs}
+        <details style="margin: 2em 0; padding: 1em; background: #111; color: #0f0; border: 1px solid #0f0; border-radius: 8px;">
+            <summary><strong>DEBUG: leagueWeekHighs</strong></summary>
+            <pre>{JSON.stringify(leagueWeekHighs.slice(0, 3), null, 2)}</pre>
+            <p>Length: {leagueWeekHighs.length}</p>
+        </details>
+    {/if}
+
     {#if display == "allTime"}
         {#if leagueWeekHighs?.length}
-            <AllTimeRecords transactionTotals={totals} {allTimeClosestMatchups} {allTimeBiggestBlowouts} {leagueManagerRecords} {leagueWeekHighs} {leagueWeekLows} {leagueTeamManagers} {mostSeasonLongPoints} {leastSeasonLongPoints} {key} />
+            <AllTimeRecords
+                transactionTotals={totals}
+                {allTimeClosestMatchups}
+                {allTimeBiggestBlowouts}
+                {leagueManagerRecords}
+                {leagueWeekHighs}
+                {leagueWeekLows}
+                {leagueTeamManagers}
+                {mostSeasonLongPoints}
+                {leastSeasonLongPoints}
+                {key}
+            />
         {:else}
             <p class="empty">No records <i>yet</i>...</p>
         {/if}
     {:else}
-        <PerSeasonRecords transactionTotals={totals} {leagueRosterRecords} {seasonWeekRecords} {leagueTeamManagers} {currentYear} {lastYear} {key} />
+        <PerSeasonRecords
+            transactionTotals={totals}
+            {leagueRosterRecords}
+            {seasonWeekRecords}
+            {leagueTeamManagers}
+            {currentYear}
+            {lastYear}
+            {key}
+        />
     {/if}
 </div>
