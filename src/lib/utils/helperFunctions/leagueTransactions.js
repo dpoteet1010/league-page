@@ -157,113 +157,57 @@ const digestTransactions = async ({ transactionsData, currentSeason }) => {
 	return { transactions: processedTransactions, totals };
 };
 
-const digestTransaction = ({ transaction, currentSeason }) => {
-	if (transaction.status === 'failed') return { success: false };
+const digestTransactions = async ({ transactionsData, currentSeason }) => {
+  const transactions = [];
+  const totals = {
+    allTime: {},    // manager -> { trade, waiver }
+    seasons: {}     // season -> roster -> { trade, waiver, rosterID }
+  };
 
-	if (!transaction.roster_ids || transaction.roster_ids.length === 0) {
-		return { success: false };
-	}
+  const leagueTeamManagers = await getLeagueTeamManagers();
 
-	const transactionRosters = transaction.roster_ids;
-	const bid = transaction.settings?.waiver_bid;
-	const timestamp = transaction.status_updated;
-	const date = digestDate(timestamp);
-	const dateObj = new Date(timestamp);
-	const season = dateObj.getFullYear();
+  // Sort by status_updated descending (like original)
+  const transactionOrder = transactionsData.sort((a, b) => b.status_updated - a.status_updated);
 
-	let digestedTransaction = {
-		id: transaction.transaction_id,
-		date,
-		timestamp,
-		season,
-		type: transaction.type,
-		rosters: transactionRosters,
-		moves: []
-	};
+  for (const transaction of transactionOrder) {
+    const { digestedTransaction, season, success } = digestTransaction({ transaction, currentSeason });
+    if (!success) continue;
 
-	if (season !== currentSeason) {
-		digestedTransaction.previousOwners = true;
-	}
+    transactions.push(digestedTransaction);
 
-	const adds = transaction.adds || {};
-	const drops = transaction.drops || {};
-	const draftPicks = transaction.draft_picks || [];
+    // Defensive check for legacy or edge seasons in teamManagersMap
+    let seasonToUse = season;
+    if (!leagueTeamManagers.teamManagersMap[seasonToUse]) {
+      // Try fallback
+      seasonToUse--;
+      if (!leagueTeamManagers.teamManagersMap[seasonToUse]) {
+        seasonToUse += 2;
+      }
+    }
 
-	if (transaction.type === "trade") {
-		for (let player in adds) {
-			if (!player) continue;
+    for (const roster of digestedTransaction.rosters) {
+      const type = digestedTransaction.type;
 
-			const toRoster = adds[player];
-			const fromRoster = drops[player];
+      if (!leagueTeamManagers.teamManagersMap[seasonToUse]) continue; // no manager data, skip totals
 
-			let move = new Array(transactionRosters.length).fill(null);
+      for (const manager of leagueTeamManagers.teamManagersMap[seasonToUse][roster]?.managers ?? []) {
+        // Initialize allTime for manager
+        if (!totals.allTime[manager]) {
+          totals.allTime[manager] = { trade: 0, waiver: 0 };
+        }
+        totals.allTime[manager][type] = (totals.allTime[manager][type] || 0) + 1;
+      }
 
-			if (fromRoster !== undefined && transactionRosters.includes(fromRoster)) {
-				move[transactionRosters.indexOf(fromRoster)] = "origin";
-			}
+      // Initialize seasons[seasonToUse][roster]
+      if (!totals.seasons[seasonToUse]) totals.seasons[seasonToUse] = {};
+      if (!totals.seasons[seasonToUse][roster]) {
+        totals.seasons[seasonToUse][roster] = { trade: 0, waiver: 0, rosterID: roster };
+      }
+      totals.seasons[seasonToUse][roster][type] = (totals.seasons[seasonToUse][roster][type] || 0) + 1;
+    }
+  }
 
-			if (toRoster !== undefined && transactionRosters.includes(toRoster)) {
-				move[transactionRosters.indexOf(toRoster)] = {
-					type: "Added",
-					player
-				};
-			}
-
-			digestedTransaction.moves.push(move);
-		}
-
-		for (let pick of draftPicks) {
-			let move = new Array(transactionRosters.length).fill(null);
-
-			if (pick.previous_owner_id !== undefined && transactionRosters.includes(pick.previous_owner_id)) {
-				move[transactionRosters.indexOf(pick.previous_owner_id)] = "origin";
-			}
-
-			if (pick.owner_id !== undefined && transactionRosters.includes(pick.owner_id)) {
-				move[transactionRosters.indexOf(pick.owner_id)] = {
-					type: "Received Pick",
-					pick
-				};
-			}
-
-			digestedTransaction.moves.push(move);
-		}
-	} else {
-		const handled = [];
-
-		for (let player in adds) {
-			if (!player) continue;
-			handled.push(player);
-			digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, bid));
-		}
-
-		for (let player in drops) {
-			if (handled.includes(player)) continue;
-			if (!player) continue;
-
-			let move = new Array(transactionRosters.length).fill(null);
-			if (transactionRosters.includes(drops[player])) {
-				move[transactionRosters.indexOf(drops[player])] = {
-					type: "Dropped",
-					player
-				};
-				digestedTransaction.moves.push(move);
-			}
-		}
-
-		for (let pick of draftPicks) {
-			let move = new Array(transactionRosters.length).fill(null);
-			if (transactionRosters.includes(pick.owner_id)) {
-				move[transactionRosters.indexOf(pick.owner_id)] = {
-					type: "Draft Pick",
-					pick
-				};
-				digestedTransaction.moves.push(move);
-			}
-		}
-	}
-
-	return { digestedTransaction, season, success: true };
+  return { transactions, totals };
 };
 
 const handleAdds = (rosterIDs, adds, drops, player, bid) => {
