@@ -155,7 +155,7 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 
 	if (year === 2023 || year === 2024) {
 		const yearMatchups = legacyMatchups[year];
-		for (let week = 1; week <= 17; week++) {
+		for (let week = 1; week <= 14; week++) {
 			const matchupWeek = yearMatchups[week];
 
 			if (!matchupWeek || !Array.isArray(matchupWeek)) {
