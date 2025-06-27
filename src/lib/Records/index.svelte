@@ -27,6 +27,11 @@
 		const newRecords = await getLeagueRecords(true);
 		leagueData = newRecords;
 	};
+	$effect(() => {
+	  if (!leagueData) {
+	    refreshRecords();
+	  }
+	});
 
 	let key = $state("regularSeasonData");
 	let display = $state("allTime");
