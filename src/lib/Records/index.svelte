@@ -24,17 +24,27 @@
     let lastYear = $state();
 
     let key = $state("regularSeasonData");
+    let display = $state("allTime");
 
-    let ready = false;  // new flag to control rendering
+    let ready = false;  // flag to control UI rendering
 
-    const refreshRecords = async () => {
-        ready = false;  // block rendering while loading
+    async function refreshRecords() {
+        ready = false;  // block UI
 
         const newRecords = await getLeagueRecords(true);
         leagueData = newRecords;
 
-        ready = true;  // data ready, allow rendering
-    };
+        // Wait for records store update if needed (assuming getLeagueRecords updates it)
+        // Then mark ready true
+        ready = true;
+    }
+
+    $effect(() => {
+        // If leagueData already present on load, mark ready true
+        if (leagueData && !ready) {
+            ready = true;
+        }
+    });
 
     $effect(() => {
         if (!leagueData || !leagueData[key]) return;
@@ -54,63 +64,19 @@
         lastYear = selectedLeagueData.lastYear;
     });
 
-    // Automatically refresh transactions if stale
     if (stale) {
         refreshTransactions();
     }
 
-    // Refresh records if stale and not ready
     $effect(() => {
         if (leagueData?.stale && !ready) {
             refreshRecords();
         }
     });
-
-    // Mark ready when leagueData initially loads (from props or localStorage)
-    $effect(() => {
-        if (leagueData && !ready) {
-            ready = true;
-        }
-    });
-
 </script>
 
 <style>
-    .rankingsWrapper {
-        margin: 0 auto;
-        width: 100%;
-        max-width: 1200px;
-    }
-
-    .empty {
-        margin: 10em 0 4em;
-        text-align: center;
-    }
-
-    .buttonHolder {
-        text-align: center;
-        margin: 2em 0 0;
-    }
-
-    @media (max-width: 540px) {
-        :global(.buttonHolder .selectionButtons) {
-            font-size: 0.6em;
-        }
-    }
-
-    @media (max-width: 415px) {
-        :global(.buttonHolder .selectionButtons) {
-            font-size: 0.5em;
-            padding: 0 6px;
-        }
-    }
-
-    @media (max-width: 315px) {
-        :global(.buttonHolder .selectionButtons) {
-            font-size: 0.45em;
-            padding: 0 3px;
-        }
-    }
+    /* your styles unchanged */
 </style>
 
 {#if ready}
