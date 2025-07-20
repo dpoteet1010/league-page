@@ -22,7 +22,7 @@
   "theme_color": "#fff",
   "shortcuts": [
     {
-      "name": "Trades and Waivers",
+      "name": "Transactions",
       "short_name": "Transactions",
       "description": "View league trades and waivers",
       "url": "/transactions"
