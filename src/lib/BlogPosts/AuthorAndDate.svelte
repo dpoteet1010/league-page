@@ -5,15 +5,23 @@
 
     let authorData = null;
 
-    if (leagueTeamManagers && leagueTeamManagers.users) {
-        const users = leagueTeamManagers.users;
+    function normalize(str) {
+        return str?.replace(/\s+/g, '').toLowerCase();
+    }
 
-        // First try matching by user_id
+    if (leagueTeamManagers?.users && author) {
+        const users = leagueTeamManagers.users;
+        const normalizedAuthor = normalize(author);
+
+        // Try matching by user_id first
         if (users[author]) {
             authorData = users[author];
         } else {
-            // Fall back to matching by display_name
-            authorData = Object.values(users).find(u => u.display_name === author) || null;
+            // Fallback: match by display_name or user_name (normalized)
+            authorData = Object.values(users).find(u => {
+                return normalize(u.display_name) === normalizedAuthor ||
+                       normalize(u.user_name) === normalizedAuthor;
+            }) || null;
         }
     }
 
@@ -22,14 +30,14 @@
 </script>
 
 <style>
-	.teamAvatar {
-		vertical-align: middle;
-		border-radius: 50%;
-		height: 30px;
-		width: 30px;
-		margin-right: 5px;
-		border: 0.25px solid #777;
-	}
+    .teamAvatar {
+        vertical-align: middle;
+        border-radius: 50%;
+        height: 30px;
+        width: 30px;
+        margin-right: 5px;
+        border: 0.25px solid #777;
+    }
 
     .authorAndDate {
         color: var(--g999);
