@@ -18,33 +18,45 @@
     let leagueTeamManagersDataLoaded, postsDataLoaded;
 
     onMount(async()=> {
-        [leagueTeamManagersDataLoaded, postsDataLoaded] = await waitForAll(leagueTeamManagersData,
-        postsData);
-        const post = postsDataLoaded.posts.filter(p => p.sys.id === postID)[0];
-        id = post.sys.id;
+        [leagueTeamManagersDataLoaded, postsDataLoaded] = await waitForAll(
+            leagueTeamManagersData,
+            postsData
+        );
 
-        if(post != null) {
-            createdAt = post.sys.createdAt;
-            ({title, body, type, author} = post.fields);
-            if(!title) {
-                console.error('Invalid post: No title provided');
-            } else if(!body) {
-                console.error(`Invalid post (${title}): No body provided`)
-            } else if(!type) {
-                console.error(`Invalid post (${title}): No type provided`)
-            } else if(!author) {
-                console.error(`Invalid post (${title}): No author provided`)
-            } else {
-                safePost = true;
-            }
+        const post = postsDataLoaded.posts.find(p => p.sys.id === postID);
+        if (!post) {
+            console.error(`No post found for id ${postID}`);
+            loading = false;
+            return;
         }
+
+        id = post.sys.id;
+        createdAt = post.sys.createdAt;
+
+        ({ title, body, type, author } = post.fields);
+
+        if (!title) {
+            console.error('Invalid post: No title provided');
+        } else if (!body) {
+            console.error(`Invalid post (${title}): No body provided`);
+        } else if (!type) {
+            console.error(`Invalid post (${title}): No type provided`);
+        } else if (!author) {
+            console.warn(`Post (${title}) has no author field — defaulting to "Unknown"`);
+            author = "Unknown";
+        } else {
+            safePost = true;
+        }
+
         loading = false;
 
-        const res = await fetch(`/api/getBlogComments/${id}`, {compress: true});
+        const res = await fetch(`/api/getBlogComments/${id}`, { compress: true });
         const commentsData = await res.json();
 
         total = commentsData.total;
-        comments = [...commentsData.items].sort((a, b) => Date.parse(a.sys.createdAt) - Date.parse(b.sys.createdAt));
+        comments = [...commentsData.items].sort(
+            (a, b) => Date.parse(a.sys.createdAt) - Date.parse(b.sys.createdAt)
+        );
         loadingComments = false;
     });
 
@@ -175,7 +187,6 @@
 
     .commentDivider {
         margin: 1em 0 0;
-
     }
 
     :global(.authorAndDate a) {
@@ -190,14 +201,7 @@
     }
 </style>
 
-<!--
-    Some users if they've misconfigured their blog can crash their page
-    (bug https://github.com/nmelhado/league-page/issues/141)
-    This if check makes blog enablement more flexible
--->
-
 {#if loading}
-    <!-- promise is pending -->
     <div class="loading">
         <p>Loading Blog Post...</p>
         <LinearProgress indeterminate />
@@ -214,13 +218,21 @@
 
         <hr class="divider" />
 
-        <AuthorAndDate {type} leagueTeamManagers={leagueTeamManagersDataLoaded} {author} {createdAt} />
+        <AuthorAndDate
+            {type}
+            leagueTeamManagers={leagueTeamManagersDataLoaded}
+            {author}
+            {createdAt}
+        />
 
-        <!-- display comments -->
         {#if !loadingComments}
             <hr class="divider commentDivider" />
-            <Comments leagueTeamManagers={leagueTeamManagersDataLoaded} {comments} {total} postID={id} />
+            <Comments
+                leagueTeamManagers={leagueTeamManagersDataLoaded}
+                {comments}
+                {total}
+                postID={id}
+            />
         {/if}
-
     </div>
 {/if}
