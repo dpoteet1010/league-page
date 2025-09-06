@@ -1,32 +1,37 @@
 <script>
     import { generateParagraph } from "$lib/utils/helper";
     import { fly } from "svelte/transition";
-	import AuthorAndDate from "./AuthorAndDate.svelte";
+    import AuthorAndDate from "./AuthorAndDate.svelte";
 
     export let leagueTeamManagers, post, createdAt, id = null, direction = 1;
 
     let safePost = false;
     let title, body, type, author;
 
-    if(post != null) {
-        ({title, body, type, author} = post);
-        if(!title) {
-            console.error('Invalid post: No title provided');
-        } else if(!body) {
-            console.error(`Invalid post (${title}): No body provided`)
-        } else if(!type) {
-            console.error(`Invalid post (${title}): No type provided`)
-        } else if(!author) {
-            console.error(`Invalid post (${title}): No author provided`)
+    // Normalize post shape
+    if (post != null) {
+        const normalized = post.fields ? post.fields : post;
+
+        ({ title, body, type, author } = normalized);
+
+        if (!title) {
+            console.error("Invalid post: No title provided", post);
+        } else if (!body) {
+            console.error(`Invalid post (${title}): No body provided`, post);
+        } else if (!type) {
+            console.error(`Invalid post (${title}): No type provided`, post);
+        } else if (!author) {
+            console.error(`Invalid post (${title}): No author provided`, post);
         } else {
             safePost = true;
         }
+    } else {
+        console.error("Post.svelte received null/undefined post");
     }
 
     const duration = 300;
 
     let e;
-
     $: isOverflown = e ? e.scrollHeight > e.clientHeight : false;
 </script>
 
@@ -133,7 +138,7 @@
     :global(.body table) {
         margin: 1em 2em;
         min-width: 80%;
-	    border: 1px solid var(--ddd);
+        border: 1px solid var(--ddd);
         border-collapse: collapse;
     }
 
@@ -143,7 +148,7 @@
 
     :global(.body td) {
         padding: 0.5em 0;
-	    text-align:center;
+        text-align:center;
     }
 
     :global(.body th) {
@@ -191,14 +196,13 @@
     }
 </style>
 
-<!--
-    Some users if they've misconfigured their blog can crash their page
-    (bug https://github.com/nmelhado/league-page/issues/141)
-    This if check makes blog enablement more flexible
--->
 {#if safePost}
     {#key id}
-        <div in:fly={{delay: duration, duration: duration, x: 150 * direction}} out:fly={{delay: 0, duration: duration, x: -150 * direction}} class="post">
+        <div
+            in:fly={{ delay: duration, duration: duration, x: 150 * direction }}
+            out:fly={{ delay: 0, duration: duration, x: -150 * direction }}
+            class="post"
+        >
             <h3>{title}</h3>
 
             <div class="body" bind:this={e} style="padding-bottom: {isOverflown ? '3em' : '0'}">
