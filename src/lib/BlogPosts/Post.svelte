@@ -36,14 +36,23 @@
   // Track overflow for fade effect
   $: isOverflown = e ? e.scrollHeight > e.clientHeight : false;
 
-  // Resolve author name to manager ID for AuthorAndDate
+  // ------------------------------
+  // Resolve author safely
+  // ------------------------------
   $: authorId = null;
   if (leagueTeamManagers?.users && author) {
-    const userEntry = Object.values(leagueTeamManagers.users).find(u => u.display_name === author);
+    const normalizedAuthor = author?.trim().toLowerCase();
+
+    const userEntry = Object.values(leagueTeamManagers.users).find(u => {
+      const display = u.display_name?.trim().toLowerCase();
+      const username = u.user_name?.trim().toLowerCase();
+      return display === normalizedAuthor || username === normalizedAuthor;
+    });
+
     if (userEntry) {
       authorId = userEntry.user_id;
     } else {
-      console.warn(`Author ${author} not found in leagueTeamManagers.users`);
+      console.warn(`Author "${author}" not found in leagueTeamManagers.users`);
     }
   }
 </script>
