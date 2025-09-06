@@ -1,7 +1,24 @@
 <script>
-    import { parseDate, getAuthor, getAvatar } from "$lib/utils/helper";
+    import { parseDate } from "$lib/utils/helper";
 
     export let type, leagueTeamManagers, author, createdAt;
+
+    let authorData = null;
+
+    if (leagueTeamManagers && leagueTeamManagers.users) {
+        const users = leagueTeamManagers.users;
+
+        // First try matching by user_id
+        if (users[author]) {
+            authorData = users[author];
+        } else {
+            // Fall back to matching by display_name
+            authorData = Object.values(users).find(u => u.display_name === author) || null;
+        }
+    }
+
+    const displayName = authorData ? authorData.display_name : author;
+    const avatarUrl = authorData?.avatar || `https://placehold.co/30x30?text=${displayName?.charAt(0) || "?"}`;
 </script>
 
 <style>
@@ -38,8 +55,8 @@
 </style>
 
 <div class="authorAndDate">
-    <img alt="author avatar" class="teamAvatar" src="{getAvatar(leagueTeamManagers, author)}" />
-    <span class="author">{@html getAuthor(leagueTeamManagers, author)} - </span>
+    <img alt="author avatar" class="teamAvatar" src="{avatarUrl}" />
+    <span class="author">{displayName} - </span>
     <span class="date"><i>{parseDate(createdAt)}</i></span>
     <div class="filter">
         <a href="/blog?filter={type}&page=1">{type}</a>
