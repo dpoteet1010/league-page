@@ -10,59 +10,77 @@
     export let postsData, leagueTeamManagersData, queryPage = 1, filterKey = '';
 
     let page = queryPage - 1;
-
     const lang = "en-US";
 
     let loading = true;
     let allPosts = [];
     let posts = [];
     let leagueTeamManagers = {};
-
     let categories;
 
     const filterPosts = (ap, fk) => {
-        if(ap.length && fk != '') {
+        if (ap.length && fk != '') {
             posts = ap.filter(p => p.fields.type == fk);
         } else {
             posts = ap;
         }
-    }
+    };
 
     const changeFilter = (fk) => {
         page = 0;
         filterKey = fk;
-    }
+    };
 
     $: filterPosts(allPosts, filterKey);
 
-    onMount(async ()=> {
-        const [startPostData, leagueTeamManagersResp] = await waitForAll(postsData, leagueTeamManagersData);
-        leagueTeamManagers = leagueTeamManagersResp;
-        allPosts = startPostData.posts;
-        loading = false;
+    onMount(async () => {
+        console.log("[BlogPage] onMount start");
+        try {
+            console.time("[BlogPage] waitForAll");
+            const [startPostData, leagueTeamManagersResp] =
+                await waitForAll(postsData, leagueTeamManagersData);
+            console.timeEnd("[BlogPage] waitForAll");
 
-        const categoryMap = new Set();
-        for(const post of startPostData.posts) {
-            categoryMap.add(post.fields.type);
-        }
-        categories = [...categoryMap];
+            console.log("[BlogPage] startPostData:", startPostData);
+            console.log("[BlogPage] leagueTeamManagersResp:", leagueTeamManagersResp);
 
-        if(!startPostData.fresh) {
-            const blogResponse = await getBlogPosts(null, true);
-            allPosts = blogResponse.posts;
+            leagueTeamManagers = leagueTeamManagersResp;
+            allPosts = startPostData.posts;
+            console.log("[BlogPage] allPosts after waitForAll:", allPosts);
+
+            loading = false;
+            console.log("[BlogPage] loading set to false");
+
             const categoryMap = new Set();
-            for(const post of blogResponse.posts) {
+            for (const post of startPostData.posts) {
                 categoryMap.add(post.fields.type);
             }
             categories = [...categoryMap];
+            console.log("[BlogPage] categories:", categories);
+
+            if (!startPostData.fresh) {
+                console.log("[BlogPage] posts not fresh, refetching...");
+                const blogResponse = await getBlogPosts(null, true);
+                console.log("[BlogPage] blogResponse:", blogResponse);
+
+                allPosts = blogResponse.posts;
+                const categoryMap = new Set();
+                for (const post of blogResponse.posts) {
+                    categoryMap.add(post.fields.type);
+                }
+                categories = [...categoryMap];
+                console.log("[BlogPage] categories after refresh:", categories);
+            }
+        } catch (err) {
+            console.error("[BlogPage] ERROR in onMount:", err);
         }
-    })
+    });
 
     const perPage = 10;
     $: total = posts.length;
 
     let el;
-    $: top = el?.getBoundingClientRect() ? el?.getBoundingClientRect().bottom  : 0
+    $: top = el?.getBoundingClientRect() ? el?.getBoundingClientRect().bottom : 0;
 
     $: displayPosts = posts.slice(page * perPage, (page + 1) * perPage);
 
@@ -70,16 +88,19 @@
 
     const changePage = (dest) => {
         if (browser) {
-            if(dest + 1 > queryPage) {
+            if (dest + 1 > queryPage) {
                 direction = 1;
             } else {
                 direction = -1;
             }
-            goto(`/blog?page=${dest + 1}&filter=${filterKey}`, {noscroll: true,  keepfocus: true});
+            goto(`/blog?page=${dest + 1}&filter=${filterKey}`, {
+                noscroll: true,
+                keepfocus: true
+            });
         }
-    }
+    };
 
-	$: changePage(page);
+    $: changePage(page);
 </script>
 
 <style>
