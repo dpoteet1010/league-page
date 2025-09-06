@@ -1,43 +1,18 @@
 <script>
-    import { parseDate } from "$lib/utils/helper";
+    import { parseDate, getAuthor, getAvatar } from "$lib/utils/helper";
 
     export let type, leagueTeamManagers, author, createdAt;
-
-    let authorData = null;
-
-    function normalize(str) {
-        return str?.replace(/\s+/g, '').toLowerCase();
-    }
-
-    if (leagueTeamManagers?.users && author) {
-        const users = leagueTeamManagers.users;
-        const normalizedAuthor = normalize(author);
-
-        // Try matching by user_id first
-        if (users[author]) {
-            authorData = users[author];
-        } else {
-            // Fallback: match by display_name or user_name (normalized)
-            authorData = Object.values(users).find(u => {
-                return normalize(u.display_name) === normalizedAuthor ||
-                       normalize(u.user_name) === normalizedAuthor;
-            }) || null;
-        }
-    }
-
-    const displayName = authorData ? authorData.display_name : author;
-    const avatarUrl = authorData?.avatar || `https://placehold.co/30x30?text=${displayName?.charAt(0) || "?"}`;
 </script>
 
 <style>
-    .teamAvatar {
-        vertical-align: middle;
-        border-radius: 50%;
-        height: 30px;
-        width: 30px;
-        margin-right: 5px;
-        border: 0.25px solid #777;
-    }
+	.teamAvatar {
+		vertical-align: middle;
+		border-radius: 50%;
+		height: 30px;
+		width: 30px;
+		margin-right: 5px;
+		border: 0.25px solid #777;
+	}
 
     .authorAndDate {
         color: var(--g999);
@@ -63,8 +38,8 @@
 </style>
 
 <div class="authorAndDate">
-    <img alt="author avatar" class="teamAvatar" src="{avatarUrl}" />
-    <span class="author">{displayName} - </span>
+    <img alt="author avatar" class="teamAvatar" src="{getAvatar(leagueTeamManagers, author)}" />
+    <span class="author">{@html getAuthor(leagueTeamManagers, author)} - </span>
     <span class="date"><i>{parseDate(createdAt)}</i></span>
     <div class="filter">
         <a href="/blog?filter={type}&page=1">{type}</a>
