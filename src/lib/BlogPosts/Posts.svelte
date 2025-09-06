@@ -18,6 +18,14 @@
     let leagueTeamManagers = {};
     let categories;
 
+    // 🟢 debug state to show in UI
+    let debugMessages = [];
+
+    const log = (msg, data = null) => {
+        const formatted = data ? `${msg}: ${JSON.stringify(data, null, 2)}` : msg;
+        debugMessages = [...debugMessages, formatted];
+    };
+
     const filterPosts = (ap, fk) => {
         if (ap.length && fk != '') {
             posts = ap.filter(p => p.fields.type == fk);
@@ -34,34 +42,31 @@
     $: filterPosts(allPosts, filterKey);
 
     onMount(async () => {
-        console.log("[BlogPage] onMount start");
+        log("[BlogPage] onMount start");
         try {
-            console.time("[BlogPage] waitForAll");
             const [startPostData, leagueTeamManagersResp] =
                 await waitForAll(postsData, leagueTeamManagersData);
-            console.timeEnd("[BlogPage] waitForAll");
-
-            console.log("[BlogPage] startPostData:", startPostData);
-            console.log("[BlogPage] leagueTeamManagersResp:", leagueTeamManagersResp);
+            log("[BlogPage] startPostData", startPostData);
+            log("[BlogPage] leagueTeamManagersResp", leagueTeamManagersResp);
 
             leagueTeamManagers = leagueTeamManagersResp;
             allPosts = startPostData.posts;
-            console.log("[BlogPage] allPosts after waitForAll:", allPosts);
+            log("[BlogPage] allPosts length", allPosts?.length);
 
             loading = false;
-            console.log("[BlogPage] loading set to false");
+            log("[BlogPage] loading set to false");
 
             const categoryMap = new Set();
             for (const post of startPostData.posts) {
                 categoryMap.add(post.fields.type);
             }
             categories = [...categoryMap];
-            console.log("[BlogPage] categories:", categories);
+            log("[BlogPage] categories", categories);
 
             if (!startPostData.fresh) {
-                console.log("[BlogPage] posts not fresh, refetching...");
+                log("[BlogPage] posts not fresh, refetching...");
                 const blogResponse = await getBlogPosts(null, true);
-                console.log("[BlogPage] blogResponse:", blogResponse);
+                log("[BlogPage] blogResponse", blogResponse);
 
                 allPosts = blogResponse.posts;
                 const categoryMap = new Set();
@@ -69,10 +74,10 @@
                     categoryMap.add(post.fields.type);
                 }
                 categories = [...categoryMap];
-                console.log("[BlogPage] categories after refresh:", categories);
+                log("[BlogPage] categories after refresh", categories);
             }
         } catch (err) {
-            console.error("[BlogPage] ERROR in onMount:", err);
+            log("[BlogPage] ERROR", err.message || err);
         }
     });
 
@@ -104,70 +109,25 @@
 </script>
 
 <style>
-    h2 {
-        font-size: 3em;
-        text-align: center;
-        margin-bottom: 0.2em;
-    }
-	.loading {
-		display: block;
-		position: relative;
-		z-index: 1;
-		width: 85%;
-		max-width: 500px;
-		margin: 80px auto;
-	}
-    .filter {
-        display: inline-flex;
-        color: #fff;
-        border-radius: 2em;
-        font-size: 0.8em;
-        padding: 0.25em 1em;
-    }
-
-    .noUnderline {
-        margin: 0.5em;
-        text-decoration: none;
-    }
-
-    .filterClear {
-        background-color: #920505;
-    }
-
-    .filterClear:hover {
-        background-color: #720404;
-    }
-
-    .filterLink {
-        background-color: #00316b;
-    }
-
-    .filterLink:not(.noHover):hover {
-        background-color: #0082c3;
-    }
-
-    .noHover {
-        cursor: default;
-    }
-
-    .filterButtons {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        margin: 1em 0 3em;
-    }
-
-    .filteringBy {
-        font-size: 1em;
+    pre.debug {
+        background: #111;
+        color: #0f0;
+        font-size: 0.75rem;
+        padding: 1em;
+        border-radius: 0.5em;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
     }
 </style>
 
 <h2 bind:this={el}>{leagueName} Blog</h2>
 
 {#if loading}
-    <div class="loading" >
+    <div class="loading">
         <p>Loading league blog posts...</p>
         <LinearProgress indeterminate />
+        <pre class="debug">{debugMessages.join("\n\n")}</pre>
     </div>
 {:else}
     <div class="filterButtons">
@@ -176,7 +136,12 @@
                 <a class="noUnderline" onclick={() => changeFilter(category)} href="/blog?filter={category}&page=1"><div class="filter filterLink">{category}</div></a>
             {/each}
         {:else}
-            <div class="filteringBy">Showing <div class="filter filterLink noHover">{filterKey}</div> posts <a class="noUnderline" onclick={() => changeFilter('')} href="/blog?filter=&page=1"><div class="filter filterClear">Clear Filter</div></a></div>
+            <div class="filteringBy">
+                Showing <div class="filter filterLink noHover">{filterKey}</div> posts 
+                <a class="noUnderline" onclick={() => changeFilter('')} href="/blog?filter=&page=1">
+                    <div class="filter filterClear">Clear Filter</div>
+                </a>
+            </div>
         {/if}
     </div>
 
@@ -187,5 +152,9 @@
         <Post {leagueTeamManagers} createdAt={post.sys.createdAt} post={post.fields} id={post.sys.id} {direction} />
         {/key}
     {/each}
+
     <Pagination {perPage} {total} bind:page={page} target={top} scroll={true} />
+
+    <!-- show debug logs even after load -->
+    <pre class="debug">{debugMessages.join("\n\n")}</pre>
 {/if}
