@@ -1,6 +1,6 @@
 <script>
     import { onMount } from "svelte";
-	import LinearProgress from '@smui/linear-progress';
+    import LinearProgress from '@smui/linear-progress';
     import Post from "./Post.svelte";
     import { getBlogPosts, getLeagueTeamManagers, waitForAll } from "$lib/utils/helper";
 
@@ -12,32 +12,49 @@
     let loading = true;
     let leagueTeamManagers = {};
 
-    onMount(async() => {
-        const [{posts, fresh}, leagueTeamManagersData] = await waitForAll(getBlogPosts(null), getLeagueTeamManagers());
-		leagueTeamManagers = leagueTeamManagersData;
-        for(const singlePost of posts) {
-            if(singlePost.fields.featured) {
-                createdAt = singlePost.sys.createdAt;
-                post = singlePost.fields;
-                id = singlePost.sys.id;
-                break;
-            }
-        }
+    onMount(async () => {
+        console.log("[BlogWidget] onMount start");
 
-        if(!fresh) {
-		    const {posts} = await getBlogPosts(null, true);
-            for(const singlePost of posts) {
-                if(singlePost.fields.featured) {
+        try {
+            console.time("[BlogWidget] waitForAll");
+            const [{ posts, fresh }, leagueTeamManagersData] =
+                await waitForAll(getBlogPosts(null), getLeagueTeamManagers());
+            console.timeEnd("[BlogWidget] waitForAll");
+            console.log("[BlogWidget] posts from waitForAll:", posts);
+            console.log("[BlogWidget] leagueTeamManagersData:", leagueTeamManagersData);
+
+            leagueTeamManagers = leagueTeamManagersData;
+
+            for (const singlePost of posts) {
+                if (singlePost.fields.featured) {
                     createdAt = singlePost.sys.createdAt;
                     post = singlePost.fields;
                     id = singlePost.sys.id;
                     break;
                 }
             }
+
+            if (!fresh) {
+                console.log("[BlogWidget] posts not fresh, refetching…");
+                const { posts: freshPosts } = await getBlogPosts(null, true);
+                console.log("[BlogWidget] freshPosts:", freshPosts);
+
+                for (const singlePost of freshPosts) {
+                    if (singlePost.fields.featured) {
+                        createdAt = singlePost.sys.createdAt;
+                        post = singlePost.fields;
+                        id = singlePost.sys.id;
+                        break;
+                    }
+                }
+            }
+
+            console.log("[BlogWidget] Done, setting loading=false");
+            loading = false;
+        } catch (err) {
+            console.error("[BlogWidget] ERROR in onMount:", err);
         }
-        
-        loading = false;
-    })
+    });
 </script>
 
 <style>
