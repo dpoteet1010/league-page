@@ -1,12 +1,15 @@
-
 import { enableBlog, getBlogPosts, getLeagueTeamManagers } from '$lib/utils/helper';
 
-export function load({ fetch, params }) {
-    if(!enableBlog) return false;
-    
+export async function load({ fetch, params }) {
+    if (!enableBlog) return false;
+
     const postID = params.slug;
-    const postsData = getBlogPosts(fetch);
-    const leagueTeamManagersData = getLeagueTeamManagers();
+
+    // Resolve both async calls before returning
+    const [postsData, leagueTeamManagersData] = await Promise.all([
+        getBlogPosts(fetch),
+        getLeagueTeamManagers()
+    ]);
 
     return {
         postsData,
