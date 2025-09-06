@@ -3,15 +3,18 @@
     import { fly } from "svelte/transition";
     import AuthorAndDate from "./AuthorAndDate.svelte";
 
-    export let leagueTeamManagers, post, createdAt, id = null, direction = 1;
+    export let leagueTeamManagers = {};
+    export let post = null;
+    export let createdAt = null;
+    export let id = null;
+    export let direction = 1;
 
     let safePost = false;
     let title, body, type, author;
 
-    // Normalize post shape
+    // Normalize post shape and validate
     if (post != null) {
         const normalized = post.fields ? post.fields : post;
-
         ({ title, body, type, author } = normalized);
 
         if (!title) {
@@ -30,12 +33,24 @@
     }
 
     const duration = 300;
-
     let e;
     $: isOverflown = e ? e.scrollHeight > e.clientHeight : false;
 </script>
 
 <style>
+    /* Debug UI */
+    .debug {
+        background-color: #f8f0f0;
+        color: #900;
+        padding: 1em;
+        margin: 1em 0;
+        border: 1px dashed #900;
+        font-family: monospace;
+        white-space: pre-wrap;
+        overflow-x: auto;
+    }
+
+    /* Post card */
     .post {
         background-color: var(--fff);
         border: 1px solid var(--bbb);
@@ -63,107 +78,6 @@
 
     .button:hover {
         background-color: #00316b;
-    }
-
-    :global(.body blockquote) {
-        border-left: 3px solid rgb(231, 235, 238);
-        margin: 1em 2em;
-        padding-left: 0.875em;
-    }
-
-    :global(.body .heading-1) {
-        padding: 0.4em 2em;
-        font-size: 1.9em;
-        text-align: center;
-    }
-
-    :global(.body .heading-2) {
-        padding: 0.4em 2em;
-        font-size: 1.8em;
-        text-align: center;
-    }
-
-    :global(.body .heading-3) {
-        padding: 0.4em 2em;
-        font-size: 1.7em;
-        text-align: center;
-    }
-
-    :global(.body .heading-4) {
-        padding: 0.4em 2em;
-        font-size: 1.6em;
-        text-align: center;
-    }
-
-    :global(.body .heading-5) {
-        padding: 0.4em 2em;
-        font-size: 1.5em;
-        text-align: center;
-    }
-
-    :global(.body .heading-6) {
-        padding: 0.4em 2em;
-        font-size: 1.4em;
-        text-align: center;
-    }
-
-    :global(.body .bodyParagraph) {
-        padding: 1em 2em;
-        margin: 0;
-    }
-
-    :global(.body ul) {
-        padding: 1em 2em 1em 4em;
-    }
-
-    :global(.body ol) {
-        padding: 1em 2em 1em 4em;
-    }
-
-    :global(.body .bodyParagraph a) {
-        color: var(--g111);
-    }
-
-    :global(.body .blogImg) {
-        padding: 1em 2em;
-        display: flex;
-        justify-content: center;
-        max-width: 90%;
-    }
-
-    :global(.body .innerImg) {
-        max-width: 100%;
-    }
-
-    :global(.body table) {
-        margin: 1em 2em;
-        min-width: 80%;
-        border: 1px solid var(--ddd);
-        border-collapse: collapse;
-    }
-
-    :global(.body tr:nth-child(odd)) {
-        background-color: var(--ddd);
-    }
-
-    :global(.body td) {
-        padding: 0.5em 0;
-        text-align:center;
-    }
-
-    :global(.body th) {
-        padding: 0.8em 0;
-        background-color: var(--blueOne);
-        color: #fff;
-    }
-
-    .divider {
-        border:0;
-        margin:0;
-        width:100%;
-        height:1px;
-        background: var(--ddd);
-        margin-bottom: 1em;
     }
 
     .body {
@@ -194,7 +108,47 @@
     .viewFull {
         padding: 0.2em 2em 1em;
     }
+
+    .divider {
+        border:0;
+        margin:0;
+        width:100%;
+        height:1px;
+        background: var(--ddd);
+        margin-bottom: 1em;
+    }
+
+    /* Content formatting */
+    :global(.body blockquote) {
+        border-left: 3px solid rgb(231, 235, 238);
+        margin: 1em 2em;
+        padding-left: 0.875em;
+    }
+    :global(.body .heading-1) { padding: 0.4em 2em; font-size: 1.9em; text-align: center; }
+    :global(.body .heading-2) { padding: 0.4em 2em; font-size: 1.8em; text-align: center; }
+    :global(.body .heading-3) { padding: 0.4em 2em; font-size: 1.7em; text-align: center; }
+    :global(.body .heading-4) { padding: 0.4em 2em; font-size: 1.6em; text-align: center; }
+    :global(.body .heading-5) { padding: 0.4em 2em; font-size: 1.5em; text-align: center; }
+    :global(.body .heading-6) { padding: 0.4em 2em; font-size: 1.4em; text-align: center; }
+    :global(.body .bodyParagraph) { padding: 1em 2em; margin: 0; }
+    :global(.body ul), :global(.body ol) { padding: 1em 2em 1em 4em; }
+    :global(.body .bodyParagraph a) { color: var(--g111); }
+    :global(.body .blogImg) { padding: 1em 2em; display: flex; justify-content: center; max-width: 90%; }
+    :global(.body .innerImg) { max-width: 100%; }
+    :global(.body table) { margin: 1em 2em; min-width: 80%; border: 1px solid var(--ddd); border-collapse: collapse; }
+    :global(.body tr:nth-child(odd)) { background-color: var(--ddd); }
+    :global(.body td) { padding: 0.5em 0; text-align:center; }
+    :global(.body th) { padding: 0.8em 0; background-color: var(--blueOne); color: #fff; }
 </style>
+
+<!-- TEMPORARY DEBUG UI -->
+<div class="debug">
+    <strong>Debug Post Data:</strong>
+    <pre>{JSON.stringify(post, null, 2)}</pre>
+
+    <strong>Debug LeagueTeamManagers:</strong>
+    <pre>{JSON.stringify(leagueTeamManagers, null, 2)}</pre>
+</div>
 
 {#if safePost}
     {#key id}
