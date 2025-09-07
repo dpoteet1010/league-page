@@ -297,44 +297,25 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 };
 
 const handleAdds = (rosters, adds, drops, player, bid) => {
-  let move = new Array(rosters.length).fill(null);
+	let move = new Array(rosters.length).fill(null);
+	if(drops && drops[player]) {
+		move[rosters.indexOf(adds[player])] = {
+			type: "trade",
+			player
+		}
 
-  const addedTo = adds[player];
-  const droppedFrom = drops?.[player];
+		move[rosters.indexOf(drops[player])] = "origin";
+		return move;
+	}
 
-  // Case 1: Player was dropped from a different roster and added to another
-  if (droppedFrom !== undefined && droppedFrom !== addedTo) {
-    move[rosters.indexOf(droppedFrom)] = {
-      type: "Dropped",
-      player
-    };
-    move[rosters.indexOf(addedTo)] = {
-      type: "Added",
-      player,
-      bid
-    };
-    return move;
-  }
+	move[rosters.indexOf(adds[player])] = {
+		type: "Added",
+		player,
+		bid
+	}
 
-  // Case 2: Player was added but not dropped (common in legacy transactions)
-  if (addedTo !== undefined) {
-    move[rosters.indexOf(addedTo)] = {
-      type: "Added",
-      player,
-      bid
-    };
-  }
-
-  // Case 3: Player was dropped but not added (rare but possible)
-  if (addedTo === undefined && droppedFrom !== undefined) {
-    move[rosters.indexOf(droppedFrom)] = {
-      type: "Dropped",
-      player
-    };
-  }
-
-  return move;
-};
+	return move;
+}
 
 const digestDate = (tStamp) => {
 	const a = new Date(tStamp);
