@@ -85,7 +85,7 @@ export const gotoManager = ({leagueTeamManagers, managerID, rosterID, year}) => 
 
 export const getAuthor = (leagueTeamManagers, author) => {
     for(const userID in leagueTeamManagers.users) {
-        if(leagueTeamManagers.users[userID].user_name.toLowerCase() == author.toLowerCase()) {
+		if (leagueTeamManagers.users[userID].user_name.trim().toLowerCase() === author.trim().toLowerCase()) {
             return [`<a href="/manager?manager=${managersObj.findIndex(m => m.managerID == String(userID))}">${leagueTeamManagers.users[userID].display_name}</a>`, ]
         }
     }
