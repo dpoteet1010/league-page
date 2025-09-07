@@ -57,25 +57,22 @@ export const getLeagueTransactions = async (preview, refresh = false) => {
 };
 
 const checkPreview = (preview, passedTransactions) => {
-	if (preview) {
-		const previewToReturn = 3;
-		const trades = [];
-		const waivers = [];
+  if (preview) {
+    const previewToReturn = 3;
 
-		let i = 0;
-		while ((trades.length < previewToReturn || waivers.length < previewToReturn) && i < passedTransactions.length) {
-			if (passedTransactions[i].type == "waiver" && waivers.length < previewToReturn) {
-				waivers.push(passedTransactions[i]);
-			} else if (passedTransactions[i].type == "trade" && trades.length < previewToReturn) {
-				trades.push(passedTransactions[i]);
-			}
-			i++;
-		}
+    const trades = passedTransactions
+      .filter(tx => tx.type === "trade")
+      .slice(0, previewToReturn);
 
-		return { trades, waivers };
-	}
-	return passedTransactions;
+    const waivers = passedTransactions
+      .filter(tx => tx.type === "waiver")
+      .slice(0, previewToReturn);
+
+    return { trades, waivers };
+  }
+  return passedTransactions;
 };
+
 
 const combThroughTransactions = async (week, currentLeagueID) => {
 	week = week > 0 ? week : 1;
