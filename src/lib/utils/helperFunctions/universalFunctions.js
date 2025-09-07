@@ -84,22 +84,42 @@ export const gotoManager = ({leagueTeamManagers, managerID, rosterID, year}) => 
 }
 
 export const getAuthor = (leagueTeamManagers, author) => {
-    for(const userID in leagueTeamManagers.users) {
-		if (leagueTeamManagers.users[userID].user_name.trim().toLowerCase() === author.trim().toLowerCase()) {
-            return [`<a href="/manager?manager=${managersObj.findIndex(m => m.managerID == String(userID))}">${leagueTeamManagers.users[userID].display_name}</a>`, ]
+    if (!leagueTeamManagers?.users || !author) return author;
+
+    const auth = author.trim().toLowerCase();
+
+    for (const userID in leagueTeamManagers.users) {
+        const user = leagueTeamManagers.users[userID];
+        const uname = user.user_name?.trim().toLowerCase();
+        const dname = user.display_name?.trim().toLowerCase();
+
+        if (uname === auth || dname === auth) {
+            return [
+                `<a href="/manager?manager=${userID}">${user.display_name}</a>`
+            ];
         }
     }
+
+    // fallback: just return raw author string
     return author;
-}
+};
 
 export const getAvatar = (leagueTeamManagers, author) => {
-    for(const uID in leagueTeamManagers.users) {
-        if(leagueTeamManagers.users[uID].user_name.toLowerCase() == author.toLowerCase()) {
-            return `https://sleepercdn.com/avatars/thumbs/${leagueTeamManagers.users[uID].avatar}`;
+    if (!leagueTeamManagers?.users || !author) return QUESTION;
+
+    const auth = author.trim().toLowerCase();
+
+    for (const userID in leagueTeamManagers.users) {
+        const user = leagueTeamManagers.users[userID];
+        const uname = user.user_name?.trim().toLowerCase();
+        const dname = user.display_name?.trim().toLowerCase();
+
+        if (uname === auth || dname === auth) {
+            return `https://sleepercdn.com/avatars/thumbs/${user.avatar}`;
         }
     }
     return QUESTION;
-}
+};
 
 export const parseDate = (rawDate) => {
     const ts = Date.parse(rawDate);
