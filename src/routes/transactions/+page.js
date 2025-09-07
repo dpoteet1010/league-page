@@ -5,14 +5,14 @@ export async function load({ url, fetch }) {
     const query = url?.searchParams?.get('query');
     const curPage = url?.searchParams?.get('page');
 
-    // ✅ Await the async functions
-    const transactionsData = await getLeagueTransactions(false);
-    const leagueTeamManagersData = await getLeagueTeamManagers();
-    const playersData = await loadPlayers(fetch);
+    const transactionsData = getLeagueTransactions(false);
+    const leagueTeamManagersData = getLeagueTeamManagers();
+
+    const playersData = loadPlayers(fetch);
 
     const bannedValued = [
         'undefined',
-    ];
+    ]
 
     const props = {
         show: "both",
@@ -21,8 +21,7 @@ export async function load({ url, fetch }) {
         transactionsData,
         leagueTeamManagersData,
         page: 0,
-    };
-
+    }
     if(show && (show == "trade" || show == "waiver" || show == "both")) {
         props.show = show;
     }
@@ -32,6 +31,5 @@ export async function load({ url, fetch }) {
     if(curPage && !isNaN(curPage)) {
         props.page = parseInt(curPage) - 1;
     }
-
     return props;
 }
