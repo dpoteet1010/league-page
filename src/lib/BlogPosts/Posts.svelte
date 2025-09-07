@@ -10,82 +10,59 @@
     export let postsData, leagueTeamManagersData, queryPage = 1, filterKey = '';
 
     let page = queryPage - 1;
+
     const lang = "en-US";
 
     let loading = true;
     let allPosts = [];
     let posts = [];
     let leagueTeamManagers = {};
+
     let categories;
 
-    // 🟢 debug state to show in UI
-    let debugMessages = [];
-
-    const log = (msg, data = null) => {
-        const formatted = data ? `${msg}: ${JSON.stringify(data, null, 2)}` : msg;
-        debugMessages = [...debugMessages, formatted];
-    };
-
     const filterPosts = (ap, fk) => {
-        if (ap.length && fk != '') {
+        if(ap.length && fk != '') {
             posts = ap.filter(p => p.fields.type == fk);
         } else {
             posts = ap;
         }
-    };
+    }
 
     const changeFilter = (fk) => {
         page = 0;
         filterKey = fk;
-    };
+    }
 
     $: filterPosts(allPosts, filterKey);
 
-    onMount(async () => {
-        log("[BlogPage] onMount start");
-        try {
-            const [startPostData, leagueTeamManagersResp] =
-                await waitForAll(postsData, leagueTeamManagersData);
-            log("[BlogPage] startPostData", startPostData);
-            log("[BlogPage] leagueTeamManagersResp", leagueTeamManagersResp);
+    onMount(async ()=> {
+        const [startPostData, leagueTeamManagersResp] = await waitForAll(postsData, leagueTeamManagersData);
+        leagueTeamManagers = leagueTeamManagersResp;
+        allPosts = startPostData.posts;
+        loading = false;
 
-            leagueTeamManagers = leagueTeamManagersResp;
-            allPosts = startPostData.posts;
-            log("[BlogPage] allPosts length", allPosts?.length);
+        const categoryMap = new Set();
+        for(const post of startPostData.posts) {
+            categoryMap.add(post.fields.type);
+        }
+        categories = [...categoryMap];
 
-            loading = false;
-            log("[BlogPage] loading set to false");
-
+        if(!startPostData.fresh) {
+            const blogResponse = await getBlogPosts(null, true);
+            allPosts = blogResponse.posts;
             const categoryMap = new Set();
-            for (const post of startPostData.posts) {
+            for(const post of blogResponse.posts) {
                 categoryMap.add(post.fields.type);
             }
             categories = [...categoryMap];
-            log("[BlogPage] categories", categories);
-
-            if (!startPostData.fresh) {
-                log("[BlogPage] posts not fresh, refetching...");
-                const blogResponse = await getBlogPosts(null, true);
-                log("[BlogPage] blogResponse", blogResponse);
-
-                allPosts = blogResponse.posts;
-                const categoryMap = new Set();
-                for (const post of blogResponse.posts) {
-                    categoryMap.add(post.fields.type);
-                }
-                categories = [...categoryMap];
-                log("[BlogPage] categories after refresh", categories);
-            }
-        } catch (err) {
-            log("[BlogPage] ERROR", err.message || err);
         }
-    });
+    })
 
     const perPage = 10;
     $: total = posts.length;
 
     let el;
-    $: top = el?.getBoundingClientRect() ? el?.getBoundingClientRect().bottom : 0;
+    $: top = el?.getBoundingClientRect() ? el?.getBoundingClientRect().bottom  : 0
 
     $: displayPosts = posts.slice(page * perPage, (page + 1) * perPage);
 
@@ -93,41 +70,83 @@
 
     const changePage = (dest) => {
         if (browser) {
-            if (dest + 1 > queryPage) {
+            if(dest + 1 > queryPage) {
                 direction = 1;
             } else {
                 direction = -1;
             }
-            goto(`/blog?page=${dest + 1}&filter=${filterKey}`, {
-                noscroll: true,
-                keepfocus: true
-            });
+            goto(`/blog?page=${dest + 1}&filter=${filterKey}`, {noscroll: true,  keepfocus: true});
         }
-    };
+    }
 
-    $: changePage(page);
+	$: changePage(page);
 </script>
 
 <style>
-    pre.debug {
-        background: #111;
-        color: #0f0;
-        font-size: 0.75rem;
-        padding: 1em;
-        border-radius: 0.5em;
-        max-height: 300px;
-        overflow-y: auto;
-        white-space: pre-wrap;
+    h2 {
+        font-size: 3em;
+        text-align: center;
+        margin-bottom: 0.2em;
+    }
+	.loading {
+		display: block;
+		position: relative;
+		z-index: 1;
+		width: 85%;
+		max-width: 500px;
+		margin: 80px auto;
+	}
+    .filter {
+        display: inline-flex;
+        color: #fff;
+        border-radius: 2em;
+        font-size: 0.8em;
+        padding: 0.25em 1em;
+    }
+
+    .noUnderline {
+        margin: 0.5em;
+        text-decoration: none;
+    }
+
+    .filterClear {
+        background-color: #920505;
+    }
+
+    .filterClear:hover {
+        background-color: #720404;
+    }
+
+    .filterLink {
+        background-color: #00316b;
+    }
+
+    .filterLink:not(.noHover):hover {
+        background-color: #0082c3;
+    }
+
+    .noHover {
+        cursor: default;
+    }
+
+    .filterButtons {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin: 1em 0 3em;
+    }
+
+    .filteringBy {
+        font-size: 1em;
     }
 </style>
 
 <h2 bind:this={el}>{leagueName} Blog</h2>
 
 {#if loading}
-    <div class="loading">
+    <div class="loading" >
         <p>Loading league blog posts...</p>
         <LinearProgress indeterminate />
-        <pre class="debug">{debugMessages.join("\n\n")}</pre>
     </div>
 {:else}
     <div class="filterButtons">
@@ -136,12 +155,7 @@
                 <a class="noUnderline" onclick={() => changeFilter(category)} href="/blog?filter={category}&page=1"><div class="filter filterLink">{category}</div></a>
             {/each}
         {:else}
-            <div class="filteringBy">
-                Showing <div class="filter filterLink noHover">{filterKey}</div> posts 
-                <a class="noUnderline" onclick={() => changeFilter('')} href="/blog?filter=&page=1">
-                    <div class="filter filterClear">Clear Filter</div>
-                </a>
-            </div>
+            <div class="filteringBy">Showing <div class="filter filterLink noHover">{filterKey}</div> posts <a class="noUnderline" onclick={() => changeFilter('')} href="/blog?filter=&page=1"><div class="filter filterClear">Clear Filter</div></a></div>
         {/if}
     </div>
 
@@ -152,9 +166,5 @@
         <Post {leagueTeamManagers} createdAt={post.sys.createdAt} post={post.fields} id={post.sys.id} {direction} />
         {/key}
     {/each}
-
     <Pagination {perPage} {total} bind:page={page} target={top} scroll={true} />
-
-    <!-- show debug logs even after load -->
-    <pre class="debug">{debugMessages.join("\n\n")}</pre>
 {/if}
