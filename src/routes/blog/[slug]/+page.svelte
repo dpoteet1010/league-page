@@ -2,8 +2,13 @@
     import { FullPost } from "$lib/components";
 
     export let data;
-    const {postsData, postID, leagueTeamManagersData} = data;
+    const { postsData, postID, leagueTeamManagersData } = data;
 </script>
+
+<svelte:head>
+    <!-- Prevent search engines from indexing or following links on single blog posts -->
+    <meta name="robots" content="noindex, nofollow" />
+</svelte:head>
 
 <style>
     #main {
@@ -11,8 +16,8 @@
         z-index: 1;
         display: block;
         margin: 30px auto;
-		width: 95%;
-		max-width: 1000px;
+        width: 95%;
+        max-width: 1000px;
         overflow-y: hidden;
     }
 
