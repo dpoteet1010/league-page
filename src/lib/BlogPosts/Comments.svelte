@@ -13,36 +13,41 @@
     let errorMessage = '';
 
 
-const addComment = async (e) => {
-    const { comment, author } = e.detail;
+const addComment = async(e) => {
+    const {comment, author} = e.detail;
 
-    console.log("League team managers users:", leagueTeamManagers.users); // <--- NEW LOG
-    console.log("Author input from UI:", author);
+    logs = [...logs, `addComment triggered with comment="${comment}", author="${author}"`];
 
-    if (comment.trim() === "") {
-        errorMessage = 'Comment cannot be empty';
+    if(comment.trim() === "") {
+        logs = [...logs, 'Comment cannot be empty'];
         open = true;
         return;
     }
 
     const validAuthor = validateID(author);
-    console.log("Validated author ID:", validAuthor); // log after validation
 
-    if (!validAuthor) {
-        errorMessage = 'Unauthorized user';
+    logs = [...logs, `validateID result: ${validAuthor}`];
+
+    if(!validAuthor) {
+        logs = [...logs, 'Unauthorized user'];
         open = true;
         return;
     }
 
     const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
         method: 'POST',
-        body: JSON.stringify({ comment: comment.trim(), postID })
+        body: JSON.stringify({
+            comment: comment.trim(),
+            postID
+        })
     });
+
+    logs = [...logs, `Fetch response status: ${res.status}`];
 
     const newComment = await res.json();
 
-    if (!res.ok) {
-        errorMessage = newComment;
+    if(!res.ok) {
+        logs = [...logs, `Server returned error: ${JSON.stringify(newComment)}`];
         open = true;
         return;
     }
@@ -50,7 +55,7 @@ const addComment = async (e) => {
     comments = [...comments, newComment];
     total++;
     showWrite = false;
-}
+};
 
     const validateID = (author) => {
         for(const uID in leagueTeamManagers.users) {
