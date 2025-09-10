@@ -135,5 +135,5 @@
             <div class="date"><i>{parseDate(comment.sys.createdAt)}</i></div>
         </div>
     {/each}
-	<CreateComment bind:showWrite={showWrite} on:create-comment={addComment} />
+	<CreateComment bind:showWrite={showWrite} oncreateComment={addComment}/>
 </div>
