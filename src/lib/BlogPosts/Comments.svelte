@@ -14,39 +14,26 @@
     let open = false;
     let errorMessage = '';
 
-    // UI debug logs
-    let uiLogs = [];
-    const log = (msg) => {
-        uiLogs = [...uiLogs, msg];
-    };
-
     const addComment = async(e) => {
         try {
-            log('addComment triggered');
-
             if (!e.detail) {
-                log('❌ No detail found in event!');
                 open = true;
                 errorMessage = 'Internal error: event data missing';
                 return;
             }
 
             const { comment, author } = e.detail;
-            log(`Comment: "${comment}", Author: "${author}"`);
 
             if (comment.trim() === "") {
                 errorMessage = 'Comment cannot be empty';
                 open = true;
-                log(`❌ ${errorMessage}`);
                 return;
             }
 
             const validAuthor = validateID(author);
-            log(`Valid Author ID: ${validAuthor}`);
             if (!validAuthor) {
                 errorMessage = 'Unauthorized user';
                 open = true;
-                log(`❌ ${errorMessage}`);
                 return;
             }
 
@@ -59,57 +46,40 @@
             });
 
             const newComment = await res.json();
-            log(`Fetch response: ${JSON.stringify(newComment)}`);
 
             if (!res.ok) {
                 errorMessage = newComment;
                 open = true;
-                log(`❌ ${errorMessage}`);
                 return;
             }
 
             comments = [...comments, newComment];
             total++;
             showWrite = false;
-            log('✅ Comment added successfully');
 
         } catch(err) {
             open = true;
             errorMessage = 'Unexpected error: ' + err.message;
-            log(`❌ ${errorMessage}`);
         }
     };
 
-const validateID = (author) => {
-    log('validateID called');
+    const validateID = (author) => {
+        if (!leagueTeamManagers?.users || !author) return false;
 
-    if (!leagueTeamManagers?.users || !author) {
-        log('❌ Missing leagueTeamManagers.users or author');
+        const auth = author.trim().toLowerCase();
+
+        for (const uID in leagueTeamManagers.users) {
+            const user = leagueTeamManagers.users[uID];
+            if (!user) continue;
+
+            const uname = user.user_name?.trim().toLowerCase();
+            const dname = user.display_name?.trim().toLowerCase();
+
+            if (uname === auth || dname === auth) return uID;
+        }
+
         return false;
-    }
-
-    const auth = author.trim().toLowerCase();
-
-    for (const uID in leagueTeamManagers.users) {
-        const user = leagueTeamManagers.users[uID];
-
-        if (!user) {
-            log(`❌ Missing user object for ID: ${uID}`);
-            continue;
-        }
-
-        const uname = user.user_name?.trim().toLowerCase();
-        const dname = user.display_name?.trim().toLowerCase();
-
-        if (uname === auth || dname === auth) {
-            log(`✅ Author matched: ${user.display_name} (ID: ${uID})`);
-            return uID; // return the ID of the matched user
-        }
-    }
-
-    log('❌ Author not found in leagueTeamManagers');
-    return false;
-};
+    };
 </script>
 
 <style>
@@ -154,14 +124,6 @@ const validateID = (author) => {
     .author {
         font-weight: 700;
     }
-
-    .debug-log {
-        background: #ffe6e6;
-        color: #900;
-        padding: 0.5em;
-        margin: 1em 0;
-        font-family: monospace;
-    }
 </style>
 
 <!-- Error dialog -->
@@ -178,16 +140,6 @@ const validateID = (author) => {
     </Button>
   </Actions>
 </Dialog>
-
-<!-- Debug log UI -->
-<div class="debug-log">
-    <strong>Debug Logs:</strong>
-    <ul>
-        {#each uiLogs as l}
-            <li>{l}</li>
-        {/each}
-    </ul>
-</div>
 
 <!-- Comments section -->
 <div class="comments">
