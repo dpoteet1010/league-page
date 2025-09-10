@@ -52,21 +52,14 @@
         showWrite = false;
     }
 
-const validateID = (author) => {
-    if (!author) return false;
-    const auth = author.trim().toLowerCase();
-
-    for (const uID in leagueTeamManagers.users) {
-        const user = leagueTeamManagers.users[uID];
-        const uname = user.user_name?.trim().toLowerCase();
-
-        if (uname === auth) {
-            return uID; // return userID so backend can use it
+    const validateID = (author) => {
+        for(const uID in leagueTeamManagers.users) {
+            if(leagueTeamManagers.users[uID].user_name.toLowerCase() == author.toLowerCase()) {
+                return uID;
+            }
         }
+        return false;
     }
-    return false;
-}
-
 
     let showWrite = false;
 </script>
@@ -142,5 +135,5 @@ const validateID = (author) => {
             <div class="date"><i>{parseDate(comment.sys.createdAt)}</i></div>
         </div>
     {/each}
-    <CreateComment bind:showWrite={showWrite} oncreateComment={addComment}/>
+    <CreateComment bind:showWrite={showWrite} on:createComment={addComment}/>
 </div>
