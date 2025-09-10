@@ -86,9 +86,9 @@
             log('❌ leagueTeamManagers.users missing');
             return false;
         }
-        for(const uID in leagueTeamManagers.users) {
-            if(leagueTeamManagers.users[uID].user_name.toLowerCase() === author.toLowerCase()) {
-                return uID;
+        for(const userID in leagueTeamManagers.users) {
+            if(leagueTeamManagers.users[userID].user_name.toLowerCase() === author.toLowerCase()) {
+                return userID;
             }
         }
         return false;
