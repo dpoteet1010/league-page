@@ -5,63 +5,94 @@
     import Dialog, { Title, Content, Actions } from '@smui/dialog';
     import Button, {Label} from "@smui/button";
 
-    const lang = "en-US";
+    export let comments = [];
+    export let total = 0;
+    export let leagueTeamManagers;
+    export let postID;
 
-    export let comments, total, leagueTeamManagers, postID;
-
+    let showWrite = false;
     let open = false;
     let errorMessage = '';
 
+    // UI debug logs
+    let uiLogs = [];
+    const log = (msg) => {
+        uiLogs = [...uiLogs, msg];
+    };
 
     const addComment = async(e) => {
-        const {comment, author} = e.detail;
-        if(comment.trim() == "") {
-            // handle error
-            errorMessage = 'Comment cannot be empty';
+        try {
+            log('addComment triggered');
+
+            if (!e.detail) {
+                log('❌ No detail found in event!');
+                open = true;
+                errorMessage = 'Internal error: event data missing';
+                return;
+            }
+
+            const { comment, author } = e.detail;
+            log(`Comment: "${comment}", Author: "${author}"`);
+
+            if (comment.trim() === "") {
+                errorMessage = 'Comment cannot be empty';
+                open = true;
+                log(`❌ ${errorMessage}`);
+                return;
+            }
+
+            const validAuthor = validateID(author);
+            log(`Valid Author ID: ${validAuthor}`);
+            if (!validAuthor) {
+                errorMessage = 'Unauthorized user';
+                open = true;
+                log(`❌ ${errorMessage}`);
+                return;
+            }
+
+            const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    comment: comment.trim(),
+                    postID
+                })
+            });
+
+            const newComment = await res.json();
+            log(`Fetch response: ${JSON.stringify(newComment)}`);
+
+            if (!res.ok) {
+                errorMessage = newComment;
+                open = true;
+                log(`❌ ${errorMessage}`);
+                return;
+            }
+
+            comments = [...comments, newComment];
+            total++;
+            showWrite = false;
+            log('✅ Comment added successfully');
+
+        } catch(err) {
             open = true;
-            return;
+            errorMessage = 'Unexpected error: ' + err.message;
+            log(`❌ ${errorMessage}`);
         }
-        const validAuthor = validateID(author);
-        if(!validAuthor) {
-            // handle error
-            errorMessage = 'Unauthorized user';
-            open = true;
-            return;
-        }
-
-        const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
-            method: 'POST',
-            body: JSON.stringify({
-                comment: comment.trim(),
-                postID
-            })
-        })
-
-        const newComment = await res.json();
-
-        if(!res.ok) {
-            // handle error
-            errorMessage = newComment;
-            open = true;
-            return;
-        }
-
-        // add comment to others
-        comments = [...comments, newComment];
-        total++;
-        showWrite = false;
-    }
+    };
 
     const validateID = (author) => {
+        log('validateID called');
+        if (!leagueTeamManagers || !leagueTeamManagers.users) {
+            log('❌ leagueTeamManagers.users missing');
+            return false;
+        }
         for(const uID in leagueTeamManagers.users) {
-            if(leagueTeamManagers.users[uID].user_name.toLowerCase() == author.toLowerCase()) {
+            if(leagueTeamManagers.users[uID].user_name.toLowerCase() === author.toLowerCase()) {
                 return uID;
             }
         }
         return false;
     }
-
-    let showWrite = false;
 </script>
 
 <style>
@@ -106,27 +137,47 @@
     .author {
         font-weight: 700;
     }
+
+    .debug-log {
+        background: #ffe6e6;
+        color: #900;
+        padding: 0.5em;
+        margin: 1em 0;
+        font-family: monospace;
+    }
 </style>
 
+<!-- Error dialog -->
 <Dialog
   bind:open
   aria-labelledby="simple-title"
   aria-describedby="simple-content"
 >
-  <!-- Title cannot contain leading whitespace due to mdc-typography-baseline-top() -->
   <Title id="simple-title">Error</Title>
   <Content id="simple-content">{errorMessage}</Content>
   <Actions>
-    <Button>
+    <Button on:click={() => open = false}>
       <Label>Ok</Label>
     </Button>
   </Actions>
 </Dialog>
 
+<!-- Debug log UI -->
+<div class="debug-log">
+    <strong>Debug Logs:</strong>
+    <ul>
+        {#each uiLogs as l}
+            <li>{l}</li>
+        {/each}
+    </ul>
+</div>
+
+<!-- Comments section -->
 <div class="comments">
     <div class="commentHeader">
         <Icon class="material-icons commentIcon">comment</Icon> Comments ({total})
     </div>
+
     {#each comments as comment}
         <div class="comment">
             <img alt="author avatar" class="teamAvatar" src="{getAvatar(leagueTeamManagers, comment.fields.author)}" />
@@ -135,5 +186,7 @@
             <div class="date"><i>{parseDate(comment.sys.createdAt)}</i></div>
         </div>
     {/each}
+
+    <!-- Comment input -->
     <CreateComment bind:showWrite={showWrite} on:createComment={addComment}/>
 </div>
