@@ -13,44 +13,44 @@
     let errorMessage = '';
 
 
-    const addComment = async(e) => {
-        const {comment, author} = e.detail;
-        if(comment.trim() == "") {
-            // handle error
-            errorMessage = 'Comment cannot be empty';
-            open = true;
-            return;
-        }
-        const validAuthor = validateID(author);
-        if(!validAuthor) {
-            // handle error
-            errorMessage = 'Unauthorized user';
-            open = true;
-            return;
-        }
+const addComment = async (e) => {
+    const { comment, author } = e.detail;
 
-        const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
-            method: 'POST',
-            body: JSON.stringify({
-                comment: comment.trim(),
-                postID
-            })
-        })
+    console.log("League team managers users:", leagueTeamManagers.users); // <--- NEW LOG
+    console.log("Author input from UI:", author);
 
-        const newComment = await res.json();
-
-        if(!res.ok) {
-            // handle error
-            errorMessage = newComment;
-            open = true;
-            return;
-        }
-
-        // add comment to others
-        comments = [...comments, newComment];
-        total++;
-        showWrite = false;
+    if (comment.trim() === "") {
+        errorMessage = 'Comment cannot be empty';
+        open = true;
+        return;
     }
+
+    const validAuthor = validateID(author);
+    console.log("Validated author ID:", validAuthor); // log after validation
+
+    if (!validAuthor) {
+        errorMessage = 'Unauthorized user';
+        open = true;
+        return;
+    }
+
+    const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
+        method: 'POST',
+        body: JSON.stringify({ comment: comment.trim(), postID })
+    });
+
+    const newComment = await res.json();
+
+    if (!res.ok) {
+        errorMessage = newComment;
+        open = true;
+        return;
+    }
+
+    comments = [...comments, newComment];
+    total++;
+    showWrite = false;
+}
 
     const validateID = (author) => {
         for(const uID in leagueTeamManagers.users) {
