@@ -5,89 +5,128 @@
     import Dialog, { Title, Content, Actions } from '@smui/dialog';
     import Button, {Label} from "@smui/button";
 
-    export let comments = [];
-    export let total = 0;
-    export let leagueTeamManagers;
-    export let postID;
+    const lang = "en-US";
 
-    let showWrite = false;
+    export let comments, total, leagueTeamManagers, postID;
+
     let open = false;
     let errorMessage = '';
 
-    // Validate that the author exists in leagueTeamManagers
+
+    const addComment = async(e) => {
+        const {comment, author} = e.detail;
+        if(comment.trim() == "") {
+            // handle error
+            errorMessage = 'Comment cannot be empty';
+            open = true;
+            return;
+        }
+        const validAuthor = validateID(author);
+        if(!validAuthor) {
+            // handle error
+            errorMessage = 'Unauthorized user';
+            open = true;
+            return;
+        }
+
+        const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
+            method: 'POST',
+            body: JSON.stringify({
+                comment: comment.trim(),
+                postID
+            })
+        })
+
+        const newComment = await res.json();
+
+        if(!res.ok) {
+            // handle error
+            errorMessage = newComment;
+            open = true;
+            return;
+        }
+
+        // add comment to others
+        comments = [...comments, newComment];
+        total++;
+        showWrite = false;
+    }
+
     const validateID = (author) => {
-        const auth = author.trim().toLowerCase();
-        for (const uID in leagueTeamManagers.users) {
-            const user = leagueTeamManagers.users[uID];
-            if (user.user_name?.trim().toLowerCase() === auth) {
-                return uID; // Return userID for API
+        for(const uID in leagueTeamManagers.users) {
+            if(leagueTeamManagers.users[uID].user_name.toLowerCase() == author.toLowerCase()) {
+                return uID;
             }
         }
         return false;
     }
 
-    // Handles comment submission from child
-    const addComment = async (e) => {
-        console.log("Parent received event:", e.detail);
-        const { comment, author } = e.detail;
-
-        if (!comment || comment.trim() === "") {
-            errorMessage = "Comment cannot be empty";
-            open = true;
-            return;
-        }
-
-        const validAuthor = validateID(author);
-        if (!validAuthor) {
-            errorMessage = "Unauthorized user";
-            open = true;
-            return;
-        }
-
-        console.log("Submitting comment to API:", { comment, validAuthor, postID });
-
-        try {
-            const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ comment: comment.trim(), postID })
-            });
-
-            const newComment = await res.json();
-
-            console.log("API response:", newComment);
-
-            if (!res.ok) {
-                errorMessage = newComment?.message || JSON.stringify(newComment);
-                open = true;
-                return;
-            }
-
-            comments = [...comments, newComment];
-            total++;
-            showWrite = false;
-        } catch (err) {
-            console.error("Error submitting comment:", err);
-            errorMessage = err.message || "Unknown error";
-            open = true;
-        }
-    }
+    let showWrite = false;
 </script>
 
-<Dialog bind:open aria-labelledby="simple-title" aria-describedby="simple-content">
-    <Title id="simple-title">Error</Title>
-    <Content id="simple-content">{errorMessage}</Content>
-    <Actions>
-        <Button on:click={() => open = false}><Label>Ok</Label></Button>
-    </Actions>
+<style>
+    .comment {
+        margin: 0;
+        padding: 1em 2em 0.5em;
+        background: var(--eee);
+        border: 1px solid var(--ccc);
+        border-left: none;
+        border-right: none;
+    }
+    
+    .commentHeader {
+        margin: 0;
+        padding: 1em 2em;
+        background: var(--f8f8f8);
+        font-size: 1.2em;
+        border-bottom: 1px solid var(--ccc);
+        border-left: none;
+        border-right: none;
+    }
+
+    .date {
+        color: var(--g999);
+        padding: 0.5em 0 0;
+    }
+
+    :global(.commentIcon) {
+        font-size: 1em;
+        vertical-align: middle;
+        padding: 0.3em;
+    }
+	
+	.teamAvatar {
+		vertical-align: middle;
+		border-radius: 50%;
+		height: 30px;
+		margin-right: 5px;
+		border: 0.25px solid #777;
+	}
+
+    .author {
+        font-weight: 700;
+    }
+</style>
+
+<Dialog
+  bind:open
+  aria-labelledby="simple-title"
+  aria-describedby="simple-content"
+>
+  <!-- Title cannot contain leading whitespace due to mdc-typography-baseline-top() -->
+  <Title id="simple-title">Error</Title>
+  <Content id="simple-content">{errorMessage}</Content>
+  <Actions>
+    <Button>
+      <Label>Ok</Label>
+    </Button>
+  </Actions>
 </Dialog>
 
 <div class="comments">
     <div class="commentHeader">
-        <Icon class="material-icons commentIcon">comment</Icon>
-        Comments ({total})
+        <Icon class="material-icons commentIcon">comment</Icon> Comments ({total})
     </div>
-
     {#each comments as comment}
         <div class="comment">
             <img alt="author avatar" class="teamAvatar" src="{getAvatar(leagueTeamManagers, comment.fields.author)}" />
@@ -96,7 +135,5 @@
             <div class="date"><i>{parseDate(comment.sys.createdAt)}</i></div>
         </div>
     {/each}
-
-    <!-- Child component with correct event listener -->
-    <CreateComment bind:showWrite={showWrite} on:createComment={addComment} />
+    <CreateComment bind:showWrite={showWrite} on:createComment={addComment}/>
 </div>
