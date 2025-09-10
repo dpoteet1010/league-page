@@ -1,102 +1,71 @@
-import contentful from 'contentful-management';
+import contentful from 'contentful-management'
 import { json, error } from '@sveltejs/kit';
+
 import { getLeagueTeamManagers } from "$lib/utils/helper";
 
 const lang = "en-US";
 
-export async function POST({ request, params }) {
-    const { comment: rawComment, author: rawAuthor, postID } = await request.json();
-
-    // UI logging function for Vercel
-    const logToUI = (msg) => {
-        console.log(`[COMMENT POST] ${msg}`);
-    };
-
-    if (!rawComment || rawComment.trim() === "") {
-        return json({ error: "Comment cannot be empty" }, { status: 400 });
-    }
-
-    if (!rawAuthor || rawAuthor.trim() === "") {
-        return json({ error: "Author cannot be empty" }, { status: 400 });
-    }
-
-    logToUI(`Received comment: "${rawComment}" by author: "${rawAuthor}" for postID: ${postID}`);
-
-    // Fetch league managers
-    const leagueTeamManagers = await getLeagueTeamManagers();
-
-    // Map author input to valid userID
-    const authorID = mapAuthorToID(leagueTeamManagers, rawAuthor);
-    if (!authorID) {
-        return json({ error: `Invalid author: "${rawAuthor}"` }, { status: 400 });
-    }
-
-    logToUI(`Mapped author "${rawAuthor}" to userID: ${authorID}`);
-
-    // Initialize Contentful client
+export async function POST({request, params}) {
     const client = contentful.createClient({
-        accessToken: import.meta.env.VITE_CONTENTFUL_ACCESS_TOKEN
+        // This is the access token for this space. Normally you get the token in the Contentful web app
+        accessToken: import.meta.env.VITE_CONTENTFUL_ACCESS_TOKEN,
     });
-
     const space = await client.getSpace(import.meta.env.VITE_CONTENTFUL_SPACE)
         .catch(e => {
-            logToUI(`Error getting Contentful space: ${e}`);
-            throw error(500, "Problem getting Contentful space");
+            console.error(e);
+            throw error(500, "Problem getting contentful space");
         });
-
     const environment = await space.getEnvironment('master')
         .catch(e => {
-            logToUI(`Error getting Contentful environment: ${e}`);
-            throw error(500, "Problem getting Contentful environment");
+            console.error(e);
+            throw error(500, "Problem getting contentful environment");
         });
+    
+    const authorID = params.id;
+    const {comment, postID} = await request.json();
 
-    // Prepare fields
-    const fields = {
-        blogID: { [lang]: postID },
-        comment: { [lang]: rawComment },
-        author: { [lang]: authorID }
+    const leagueTeamManagers = await getLeagueTeamManagers();
+
+    const author = validateID(leagueTeamManagers, authorID);
+
+    if(!author) {
+        throw error(500, "Invalid author");
+    }
+
+    let fields = {
+        "blogID": {},
+        "comment": {},
+        "author": {}
     };
 
-    logToUI(`Creating entry with fields: ${JSON.stringify(fields, null, 2)}`);
+    fields.blogID[lang] = postID;
+    fields.comment[lang] = comment;
+    fields.author[lang] = author;
 
-    // Create and publish entry
-    const newComment = await environment.createEntry('blogComment', { fields })
+    const newComment = await environment.createEntry('blog_comment', {fields})
         .catch(e => {
-            logToUI(`Error creating entry: ${e}`);
+            console.error(e);
             throw error(500, "Problem adding comment");
         });
 
     await newComment.publish()
-        .catch(e => {
-            logToUI(`Error publishing entry: ${e}`);
+        .catch((e) => {
+            console.error(e);
             throw error(500, "Problem publishing comment");
         });
 
-    logToUI(`Successfully added and published comment with sys.id: ${newComment.sys.id}`);
+    // remove lang constraint
+    newComment.fields.blogID = postID;
+    newComment.fields.comment = comment;
+    newComment.fields.author = author;
 
-    // Return a simplified object for the UI
-    return json({
-        id: newComment.sys.id,
-        fields: {
-            blogID: postID,
-            comment: rawComment,
-            author: rawAuthor
-        }
-    });
+    return json(newComment);
 }
 
-// Map UI author input to numeric userID in leagueTeamManagers
-function mapAuthorToID(leagueTeamManagers, input) {
-    if (!input || !leagueTeamManagers?.users) return false;
-
-    const auth = input.trim().toLowerCase();
-    for (const userID in leagueTeamManagers.users) {
-        const user = leagueTeamManagers.users[userID];
-        const uname = user.user_name?.trim().toLowerCase();
-        const dname = user.display_name?.trim().toLowerCase();
-        if (uname === auth || dname === auth) {
-            return userID;
-        }
+const validateID = (leagueTeamManagers, authorID) => {
+    if(leagueTeamManagers.users[authorID]) {
+        return leagueTeamManagers.users[authorID].user_name.toLowerCase();
     }
+        
     return false;
 }
