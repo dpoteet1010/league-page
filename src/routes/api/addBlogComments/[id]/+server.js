@@ -62,10 +62,14 @@ export async function POST({request, params}) {
     return json(newComment);
 }
 
-const validateID = (leagueTeamManagers, authorID) => {
-    if(leagueTeamManagers.users[authorID]) {
-        return leagueTeamManagers.users[authorID].user_name.toLowerCase();
+const validateID = (leagueTeamManagers, authorName) => {
+    const auth = authorName.trim().toLowerCase();
+
+    for (const uID in leagueTeamManagers.users) {
+        const user = leagueTeamManagers.users[uID];
+        if (user.user_name?.trim().toLowerCase() === auth) {
+            return user.user_name.toLowerCase(); // store username in Contentful
+        }
     }
-        
     return false;
-}
+};
