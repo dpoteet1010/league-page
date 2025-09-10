@@ -42,6 +42,12 @@ export async function POST({request, params}) {
     fields.comment[lang] = comment;
     fields.author[lang] = author;
 
+    console.log("Incoming authorID:", authorID);
+console.log("Validated author:", author);
+console.log("Post ID:", postID);
+console.log("Comment text:", comment);
+console.log("Fields being sent:", JSON.stringify(fields, null, 2));
+
     const newComment = await environment.createEntry('blogComment', {fields})
         .catch(e => {
             console.error(e);
