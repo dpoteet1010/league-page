@@ -52,14 +52,21 @@
         showWrite = false;
     }
 
-    const validateID = (author) => {
-        for(const uID in leagueTeamManagers.users) {
-            if(leagueTeamManagers.users[uID].user_name.toLowerCase() == author.toLowerCase()) {
-                return uID;
-            }
+const validateID = (author) => {
+    if (!author) return false;
+    const auth = author.trim().toLowerCase();
+
+    for (const uID in leagueTeamManagers.users) {
+        const user = leagueTeamManagers.users[uID];
+        const uname = user.user_name?.trim().toLowerCase();
+
+        if (uname === auth) {
+            return uID; // return userID so backend can use it
         }
-        return false;
     }
+    return false;
+}
+
 
     let showWrite = false;
 </script>
