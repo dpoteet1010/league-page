@@ -13,49 +13,44 @@
     let errorMessage = '';
 
 
-const addComment = async(e) => {
-    const {comment, author} = e.detail;
+    const addComment = async(e) => {
+        const {comment, author} = e.detail;
+        if(comment.trim() == "") {
+            // handle error
+            errorMessage = 'Comment cannot be empty';
+            open = true;
+            return;
+        }
+        const validAuthor = validateID(author);
+        if(!validAuthor) {
+            // handle error
+            errorMessage = 'Unauthorized user';
+            open = true;
+            return;
+        }
 
-    logs = [...logs, `addComment triggered with comment="${comment}", author="${author}"`];
-
-    if(comment.trim() === "") {
-        logs = [...logs, 'Comment cannot be empty'];
-        open = true;
-        return;
-    }
-
-    const validAuthor = validateID(author);
-
-    logs = [...logs, `validateID result: ${validAuthor}`];
-
-    if(!validAuthor) {
-        logs = [...logs, 'Unauthorized user'];
-        open = true;
-        return;
-    }
-
-    const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
-        method: 'POST',
-        body: JSON.stringify({
-            comment: comment.trim(),
-            postID
+        const res = await fetch(`/api/addBlogComments/${validAuthor}`, {
+            method: 'POST',
+            body: JSON.stringify({
+                comment: comment.trim(),
+                postID
+            })
         })
-    });
 
-    logs = [...logs, `Fetch response status: ${res.status}`];
+        const newComment = await res.json();
 
-    const newComment = await res.json();
+        if(!res.ok) {
+            // handle error
+            errorMessage = newComment;
+            open = true;
+            return;
+        }
 
-    if(!res.ok) {
-        logs = [...logs, `Server returned error: ${JSON.stringify(newComment)}`];
-        open = true;
-        return;
+        // add comment to others
+        comments = [...comments, newComment];
+        total++;
+        showWrite = false;
     }
-
-    comments = [...comments, newComment];
-    total++;
-    showWrite = false;
-};
 
     const validateID = (author) => {
         for(const uID in leagueTeamManagers.users) {
@@ -140,5 +135,5 @@ const addComment = async(e) => {
             <div class="date"><i>{parseDate(comment.sys.createdAt)}</i></div>
         </div>
     {/each}
-	<CreateComment bind:showWrite={showWrite} oncreateComment={addComment}/>
+    <CreateComment bind:showWrite={showWrite} oncreateComment={addComment}/>
 </div>
