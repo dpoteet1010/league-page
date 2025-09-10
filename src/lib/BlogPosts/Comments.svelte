@@ -80,19 +80,36 @@
         }
     };
 
-    const validateID = (author) => {
-        log('validateID called');
-        if (!leagueTeamManagers || !leagueTeamManagers.users) {
-            log('❌ leagueTeamManagers.users missing');
-            return false;
-        }
-        for(const userID in leagueTeamManagers.users) {
-            if(leagueTeamManagers.users[userID].user_name.toLowerCase() === author.toLowerCase()) {
-                return userID;
-            }
-        }
+const validateID = (author) => {
+    log('validateID called');
+
+    if (!leagueTeamManagers?.users || !author) {
+        log('❌ Missing leagueTeamManagers.users or author');
         return false;
     }
+
+    const auth = author.trim().toLowerCase();
+
+    for (const uID in leagueTeamManagers.users) {
+        const user = leagueTeamManagers.users[uID];
+
+        if (!user) {
+            log(`❌ Missing user object for ID: ${uID}`);
+            continue;
+        }
+
+        const uname = user.user_name?.trim().toLowerCase();
+        const dname = user.display_name?.trim().toLowerCase();
+
+        if (uname === auth || dname === auth) {
+            log(`✅ Author matched: ${user.display_name} (ID: ${uID})`);
+            return uID; // return the ID of the matched user
+        }
+    }
+
+    log('❌ Author not found in leagueTeamManagers');
+    return false;
+};
 </script>
 
 <style>
