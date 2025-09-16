@@ -198,18 +198,26 @@
     <div class="post">
         <h3>{title}</h3>
 
-        <div class="body">
-            {#each body.content as block}
-                {#if block.nodeType === 'embedded-asset-block'}
-                    <Gallery images={[{
-                        url: block.data.target.fields.file.url,
-                        title: block.data.target.fields.title
-                    }]} />
-                {:else}
-                    {@html generateParagraph(block)}
-                {/if}
-            {/each}
-        </div>
+<div class="body">
+  <!-- Render text blocks -->
+  {#each body.content as block}
+    {#if block.nodeType !== 'embedded-asset-block'}
+      {@html generateParagraph(block)}
+    {/if}
+  {/each}
+
+  <!-- Render all images in a single gallery -->
+  {#if body.content.some(b => b.nodeType === 'embedded-asset-block')}
+    <Gallery images={
+      body.content
+        .filter(b => b.nodeType === 'embedded-asset-block')
+        .map(b => ({
+          url: b.data.target.fields.file.url,
+          title: b.data.target.fields.title
+        }))
+    } />
+  {/if}
+</div>
 
         <hr class="divider" />
 
