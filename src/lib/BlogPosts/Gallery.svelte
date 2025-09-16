@@ -1,70 +1,93 @@
 <script>
   export let images = [];
+
   let current = 0;
-  let interval;
 
-  const next = () => current = (current + 1) % images.length;
-  const prev = () => current = (current - 1 + images.length) % images.length;
-
-  // auto-advance every 3s
-  $: {
-    clearInterval(interval);
-    if (images.length > 1) {
-      interval = setInterval(next, 3000);
-    }
+  function prev() {
+    current = (current - 1 + images.length) % images.length;
   }
 
-  // cleanup on destroy
-  import { onDestroy } from "svelte";
-  onDestroy(() => clearInterval(interval));
+  function next() {
+    current = (current + 1) % images.length;
+  }
+
+  function goTo(index) {
+    current = index;
+  }
 </script>
-
-<div class="gallery">
-  {#if images.length > 1}
-    <button class="nav left" on:click={prev}>&lt;</button>
-  {/if}
-
-  <img src={images[current].url} alt={images[current].title} />
-
-  {#if images.length > 1}
-    <button class="nav right" on:click={next}>&gt;</button>
-  {/if}
-</div>
 
 <style>
   .gallery {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 1em 0;
+    width: 100%;
+    max-width: 800px;
+    margin: 1em auto;
+    overflow: hidden;
+    border-radius: 10px;
   }
 
-  img {
-    max-width: 100%;
-    max-height: 500px;
-    border-radius: 0.5em;
-    object-fit: contain;
+  .gallery img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 10px;
   }
 
   .nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(0,0,0,0.5);
+    color: white;
     border: none;
-    font-size: 2em;
+    padding: 0.5em 1em;
     cursor: pointer;
-    color: var(--g333);
-    padding: 0.2em 0.5em;
-    border-radius: 0.3em;
+    font-size: 1.5em;
+    border-radius: 5px;
+    user-select: none;
   }
 
-  .nav.left {
-    left: 0.5em;
+  .prev {
+    left: 10px;
   }
 
-  .nav.right {
-    right: 0.5em;
+  .next {
+    right: 10px;
+  }
+
+  .dots {
+    text-align: center;
+    margin-top: 0.5em;
+  }
+
+  .dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin: 0 4px;
+    background: #ccc;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .dot.active {
+    background: #333;
   }
 </style>
+
+{#if images.length > 0}
+  <div class="gallery">
+    <img src={"https:" + images[current].url} alt={images[current].title} />
+    <button class="nav prev" on:click={prev}>&#10094;</button>
+    <button class="nav next" on:click={next}>&#10095;</button>
+  </div>
+
+  <div class="dots">
+    {#each images as _, index}
+      <span
+        class="dot {index === current ? 'active' : ''}"
+        on:click={() => goTo(index)}
+      ></span>
+    {/each}
+  </div>
+{/if}
