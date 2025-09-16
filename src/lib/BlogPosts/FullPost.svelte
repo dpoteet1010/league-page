@@ -4,11 +4,11 @@
     import { onMount } from "svelte";
     import Comments from "./Comments.svelte";
 	import AuthorAndDate from './AuthorAndDate.svelte';
+    import Gallery from './Gallery.svelte';
 
     export let leagueTeamManagersData, postsData, postID;
 
     let createdAt, id;
-
     let safePost = false;
     let loading = true;
     let title, body, type, author;
@@ -175,7 +175,6 @@
 
     .commentDivider {
         margin: 1em 0 0;
-
     }
 
     :global(.authorAndDate a) {
@@ -190,14 +189,7 @@
     }
 </style>
 
-<!--
-    Some users if they've misconfigured their blog can crash their page
-    (bug https://github.com/nmelhado/league-page/issues/141)
-    This if check makes blog enablement more flexible
--->
-
 {#if loading}
-    <!-- promise is pending -->
     <div class="loading">
         <p>Loading Blog Post...</p>
         <LinearProgress indeterminate />
@@ -207,8 +199,15 @@
         <h3>{title}</h3>
 
         <div class="body">
-            {#each body.content as paragraph}
-                {@html generateParagraph(paragraph)}
+            {#each body.content as block}
+                {#if block.nodeType === 'embedded-asset-block'}
+                    <Gallery images={[{
+                        url: block.data.target.fields.file.url,
+                        title: block.data.target.fields.title
+                    }]} />
+                {:else}
+                    {@html generateParagraph(block)}
+                {/if}
             {/each}
         </div>
 
@@ -216,11 +215,9 @@
 
         <AuthorAndDate {type} leagueTeamManagers={leagueTeamManagersDataLoaded} {author} {createdAt} />
 
-        <!-- display comments -->
         {#if !loadingComments}
             <hr class="divider commentDivider" />
             <Comments leagueTeamManagers={leagueTeamManagersDataLoaded} {comments} {total} postID={id} />
         {/if}
-
     </div>
 {/if}
