@@ -12,7 +12,7 @@ import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 /**
  * Fetches a full league snapshot including live + legacy data, now with matchups
  */
-export const getFullLeagueSnapshot = async ({
+export const buildLeagueSnapshot = async ({
     previewTransactions = false,
     refreshTransactions = false,
     rivalries = []
