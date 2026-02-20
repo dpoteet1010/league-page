@@ -1,12 +1,12 @@
 import { leagueID } from '$lib/utils/leagueInfo';
-import { getLeagueRosters } from './leagueRosters';
-import { getLeagueTeamManagers } from './leagueTeamManagers';
-import { getLeagueStandings } from './leagueStandings';
-import { getLeagueTransactions } from './leagueTransactions';
-import { getAwards } from './awards';
-import { getBrackets } from './brackets';
-import { getRivalryMatchups } from './rivalries';
-import { waitForAll } from './multiPromise';
+import { getLeagueRosters } from '$lib/utils/helperFunctions/leagueRosters';
+import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers';
+import { getLeagueStandings } from '$lib/utils/helperFunctions/leagueStandings';
+import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
+import { getAwards } from '$lib/utils/helperFunctions/awards';
+import { getBrackets } from '$lib/utils/helperFunctions/brackets';
+import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalries';
+import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 
 /**
  * Fetches a full league snapshot including live + legacy data
