@@ -1,23 +1,18 @@
 // lib/analytics/buildLeagueSnapshot.ts
 
-// ---------------------------------
-// Types
-// ---------------------------------
-
-export type LeagueSnapshot = {
-  generatedAt: string
+type SeasonData = {
   league: any
   users: any[]
   rosters: any[]
   matchups: Record<number, any[]>
   transactions: Record<number, any[]>
   draft: any | null
-  legacy: any | null
 }
 
-// ---------------------------------
-// Sleeper Helpers
-// ---------------------------------
+export type LeagueSnapshot = {
+  generatedAt: string
+  seasons: Record<string, SeasonData>
+}
 
 const BASE_URL = "https://api.sleeper.app/v1"
 
@@ -31,100 +26,66 @@ async function sleeperFetch<T>(url: string): Promise<T> {
   return res.json()
 }
 
-async function fetchLeague(leagueId: string) {
-  return sleeperFetch(`${BASE_URL}/league/${leagueId}`)
-}
+async function fetchCurrentSeason(leagueId: string): Promise<SeasonData> {
+  const league = await sleeperFetch(`${BASE_URL}/league/${leagueId}`)
+  const users = await sleeperFetch(`${BASE_URL}/league/${leagueId}/users`)
+  const rosters = await sleeperFetch(`${BASE_URL}/league/${leagueId}/rosters`)
 
-async function fetchUsers(leagueId: string) {
-  return sleeperFetch(`${BASE_URL}/league/${leagueId}/users`)
-}
+  const totalWeeks =
+    league.settings?.playoff_week_start
+      ? league.settings.playoff_week_start - 1
+      : 14
 
-async function fetchRosters(leagueId: string) {
-  return sleeperFetch(`${BASE_URL}/league/${leagueId}/rosters`)
-}
+  const matchups: Record<number, any[]> = {}
+  const transactions: Record<number, any[]> = {}
 
-async function fetchMatchups(leagueId: string, week: number) {
-  return sleeperFetch(`${BASE_URL}/league/${leagueId}/matchups/${week}`)
-}
+  for (let week = 1; week <= totalWeeks; week++) {
+    matchups[week] = await sleeperFetch(
+      `${BASE_URL}/league/${leagueId}/matchups/${week}`
+    )
 
-async function fetchTransactions(leagueId: string, week: number) {
-  return sleeperFetch(`${BASE_URL}/league/${leagueId}/transactions/${week}`)
-}
+    transactions[week] = await sleeperFetch(
+      `${BASE_URL}/league/${leagueId}/transactions/${week}`
+    )
+  }
 
-async function fetchDraft(leagueId: string) {
   const drafts = await sleeperFetch<any[]>(
     `${BASE_URL}/league/${leagueId}/drafts`
   )
 
-  if (!drafts.length) return null
-
-  return sleeperFetch(`${BASE_URL}/draft/${drafts[0].draft_id}`)
-}
-
-// ---------------------------------
-// Utilities
-// ---------------------------------
-
-function getRegularSeasonWeeks(league: any): number {
-  return league.settings?.playoff_week_start
-    ? league.settings.playoff_week_start - 1
-    : 14
-}
-
-async function fetchAllMatchups(
-  leagueId: string,
-  totalWeeks: number
-) {
-  const result: Record<number, any[]> = {}
-
-  for (let week = 1; week <= totalWeeks; week++) {
-    result[week] = await fetchMatchups(leagueId, week)
+  let draft = null
+  if (drafts.length) {
+    draft = await sleeperFetch(
+      `${BASE_URL}/draft/${drafts[0].draft_id}`
+    )
   }
-
-  return result
-}
-
-async function fetchAllTransactions(
-  leagueId: string,
-  totalWeeks: number
-) {
-  const result: Record<number, any[]> = {}
-
-  for (let week = 1; week <= totalWeeks; week++) {
-    result[week] = await fetchTransactions(leagueId, week)
-  }
-
-  return result
-}
-
-// ---------------------------------
-// Main Builder
-// ---------------------------------
-
-export async function buildLeagueSnapshot(
-  leagueId: string,
-  legacyData?: any // injected, not dynamically loaded
-): Promise<LeagueSnapshot> {
-  console.log(`Building snapshot for ${leagueId}`)
-
-  const league = await fetchLeague(leagueId)
-  const users = await fetchUsers(leagueId)
-  const rosters = await fetchRosters(leagueId)
-
-  const totalWeeks = getRegularSeasonWeeks(league)
-
-  const matchups = await fetchAllMatchups(leagueId, totalWeeks)
-  const transactions = await fetchAllTransactions(leagueId, totalWeeks)
-  const draft = await fetchDraft(leagueId)
 
   return {
-    generatedAt: new Date().toISOString(),
     league,
     users,
     rosters,
     matchups,
     transactions,
-    draft,
-    legacy: legacyData ?? null
+    draft
+  }
+}
+
+export async function buildLeagueSnapshot(
+  leagueId: string,
+  legacySeasons?: Record<string, SeasonData>
+): Promise<LeagueSnapshot> {
+
+  const currentSeason = await fetchCurrentSeason(leagueId)
+
+  const currentYear = currentSeason.league.season
+
+  const seasons: Record<string, SeasonData> = {
+    ...(legacySeasons ?? {}),
+    [currentYear]: currentSeason
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    seasons
   }
 }
