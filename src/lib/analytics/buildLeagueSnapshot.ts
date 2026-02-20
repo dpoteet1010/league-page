@@ -1,6 +1,6 @@
 // lib/analytics/buildLeagueSnapshot.ts
 
-import { legacySeasons } from '$lib/utils/helperFunctions/legacyLeagueData.js'
+import { legacyLeagueData } from '$lib/utils/helperFunctions/legacyLeagueData.js'
 
 type SeasonData = {
   league: any
@@ -79,8 +79,8 @@ export async function buildLeagueSnapshot(
 ): Promise<LeagueSnapshot> {
   // Start with legacy data
   const seasons: Record<string, SeasonData> = {}
-  for (const year in legacySeasons) {
-    seasons[year] = legacySeasons[year]
+  for (const year in legacyLeagueData) {
+    seasons[year] = legacyLeagueData[year]
     normalizeSeason(seasons[year])
   }
 
