@@ -1,7 +1,6 @@
 import { leagueID } from '$lib/utils/leagueInfo';
 import { getLeagueRosters } from '$lib/utils/helperFunctions/leagueRosters';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers';
-import { getLeagueStandings } from '$lib/utils/helperFunctions/leagueStandings';
 import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
 import { getAwards } from '$lib/utils/helperFunctions/leagueAwards';
 import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets';
@@ -9,8 +8,8 @@ import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalryMatchups';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 
 /**
- * Build a full league snapshot including live + legacy data.
- * Logs each step and validates returned data.
+ * Builds a full league snapshot including live + legacy data.
+ * Excludes standings for completed seasons.
  * @param {Object} options
  * @param {boolean} options.previewTransactions - Whether to preview only last few transactions
  * @param {boolean} options.refreshTransactions - Force refresh transactions from API
@@ -23,21 +22,19 @@ export const buildLeagueSnapshot = async ({
 } = {}) => {
     console.info('🟢 Starting buildLeagueSnapshot');
 
-    let rostersData = {};
-    let managersData = {};
-    let standingsData = {};
-    let transactionsData = {};
-    let awardsData = [];
-    let bracketsData = {};
-    let rivalriesData = {};
-
     try {
-        // 1. Fetch all core data in parallel
         console.info('[Snapshot] Fetching core league data...');
-        [rostersData, managersData, standingsData, transactionsData, awardsData, bracketsData] = await waitForAll(
+
+        // 1. Fetch core data in parallel
+        const [
+            rostersData,
+            managersData,
+            transactionsData,
+            awardsData,
+            bracketsData
+        ] = await waitForAll(
             getLeagueRosters(),
             getLeagueTeamManagers(),
-            getLeagueStandings(),
             getLeagueTransactions(previewTransactions, refreshTransactions),
             getAwards(),
             getBrackets()
@@ -45,72 +42,49 @@ export const buildLeagueSnapshot = async ({
 
         console.info('[Snapshot] Core data fetched successfully');
 
-        // 2. Validate each major data piece
-        if (!rostersData || !rostersData.rosters) {
-            console.warn('[Snapshot] rostersData is missing or invalid, defaulting to empty object');
-            rostersData = { rosters: {}, startersAndReserve: [] };
-        }
-        if (!managersData || !managersData.users || !managersData.teamManagersMap) {
-            console.warn('[Snapshot] managersData is missing or invalid, defaulting to empty object');
-            managersData = { users: {}, teamManagersMap: {} };
-        }
-        if (!standingsData || !standingsData.standingsInfo) {
-            console.warn('[Snapshot] standingsData is missing or invalid, defaulting to empty object');
-            standingsData = { yearData: null, standingsInfo: {} };
-        }
-        if (!transactionsData || !transactionsData.transactions || !transactionsData.totals) {
-            console.warn('[Snapshot] transactionsData is missing or invalid, defaulting to empty arrays/objects');
-            transactionsData = { transactions: [], totals: {} };
-        }
-        if (!bracketsData) {
-            console.warn('[Snapshot] bracketsData is missing or invalid, defaulting to empty object');
-            bracketsData = {};
-        }
+        // Validate outputs
+        const rosters = rostersData?.rosters || {};
+        const startersAndReserve = rostersData?.startersAndReserve || [];
+        const managers = managersData?.users || {};
+        const teamManagersMap = managersData?.teamManagersMap || {};
+        const transactions = transactionsData?.transactions || [];
+        const transactionTotals = transactionsData?.totals || {};
+        const awards = Array.isArray(awardsData) ? awardsData : [];
+        const brackets = bracketsData || {};
 
-        // 3. Process rivalries if requested
-        console.info('[Snapshot] Processing rivalries...');
-        rivalriesData = {};
-        for (const [userOneID, userTwoID] of rivalries) {
-            try {
-                const rivalry = await getRivalryMatchups(userOneID, userTwoID);
-                if (rivalry) {
-                    rivalriesData[`${userOneID}-${userTwoID}`] = rivalry;
-                } else {
-                    console.warn(`[Snapshot] Rivalry returned no data for ${userOneID}-${userTwoID}`);
+        // 2. Process rivalries
+        const rivalryResults: Record<string, any> = {};
+        if (rivalries.length) {
+            console.info('[Snapshot] Processing rivalries...');
+            for (const [userOneID, userTwoID] of rivalries) {
+                try {
+                    const rivalry = await getRivalryMatchups(userOneID, userTwoID);
+                    rivalryResults[`${userOneID}-${userTwoID}`] = rivalry || {};
+                } catch (err) {
+                    console.error(`[Snapshot] Error processing rivalry ${userOneID}-${userTwoID}:`, err);
+                    rivalryResults[`${userOneID}-${userTwoID}`] = {};
                 }
-            } catch (err) {
-                console.error(`[Snapshot] Error fetching rivalry for ${userOneID}-${userTwoID}:`, err);
             }
+            console.info('[Snapshot] Rivalries processed');
         }
 
-        // 4. Include matchups from rosters if available
-        const matchupsBySeason = {};
-        if (rostersData?.rosters && managersData?.teamManagersMap) {
-            for (const year of Object.keys(managersData.teamManagersMap)) {
-                matchupsBySeason[year] = rostersData?.matchups?.[year] || [];
-            }
-        }
-
-        // 5. Compose final snapshot
+        // 3. Compose final snapshot
         const snapshot = {
             leagueID,
-            season: standingsData?.yearData || null,
-            rosters: rostersData?.rosters ?? {},
-            startersAndReserve: rostersData?.startersAndReserve ?? [],
-            managers: managersData?.users ?? {},
-            teamManagersMap: managersData?.teamManagersMap ?? {},
-            standings: standingsData?.standingsInfo ?? {},
-            transactions: transactionsData?.transactions ?? [],
-            transactionTotals: transactionsData?.totals ?? {},
-            awards: awardsData ?? [],
-            brackets: bracketsData ?? {},
-            rivalries: rivalriesData ?? {},
-            matchups: matchupsBySeason ?? {}
+            season: brackets?.champs?.[0]?.year || null, // fallback to latest bracket year
+            rosters,
+            startersAndReserve,
+            managers,
+            teamManagersMap,
+            transactions,
+            transactionTotals,
+            awards,
+            brackets,
+            rivalries: rivalryResults
         };
 
         console.info('✅ Snapshot built successfully');
         return snapshot;
-
     } catch (err) {
         console.error('❌ Error building snapshot:', err);
         return null;
