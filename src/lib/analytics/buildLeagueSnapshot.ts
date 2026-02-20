@@ -4,16 +4,12 @@ import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamMana
 import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
 import { getAwards } from '$lib/utils/helperFunctions/leagueAwards';
 import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets';
-import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalryMatchups';
+import { getRivalryMatchups } from '$lib/utils/helperFunctions/rilvaryMatchups';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
+import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups'; // new helper to fetch all weekly matchups
 
 /**
- * Builds a full league snapshot including live + legacy data.
- * Excludes standings for completed seasons.
- * @param {Object} options
- * @param {boolean} options.previewTransactions - Whether to preview only last few transactions
- * @param {boolean} options.refreshTransactions - Force refresh transactions from API
- * @param {Array<[string, string]>} options.rivalries - Array of manager ID pairs to calculate rivalry stats
+ * Build a full league snapshot including rosters, managers, transactions, awards, brackets, matchups, and rivalries.
  */
 export const buildLeagueSnapshot = async ({
     previewTransactions = false,
@@ -25,61 +21,56 @@ export const buildLeagueSnapshot = async ({
     try {
         console.info('[Snapshot] Fetching core league data...');
 
-        // 1. Fetch core data in parallel
         const [
             rostersData,
             managersData,
             transactionsData,
             awardsData,
-            bracketsData
+            bracketsData,
+            matchupsData
         ] = await waitForAll(
             getLeagueRosters(),
             getLeagueTeamManagers(),
             getLeagueTransactions(previewTransactions, refreshTransactions),
             getAwards(),
-            getBrackets()
+            getBrackets(),
+            getLeagueMatchups() // new function to fetch all weekly matchups
         );
 
         console.info('[Snapshot] Core data fetched successfully');
 
-        // Validate outputs
-        const rosters = rostersData?.rosters || {};
-        const startersAndReserve = rostersData?.startersAndReserve || [];
-        const managers = managersData?.users || {};
-        const teamManagersMap = managersData?.teamManagersMap || {};
-        const transactions = transactionsData?.transactions || [];
-        const transactionTotals = transactionsData?.totals || {};
-        const awards = Array.isArray(awardsData) ? awardsData : [];
-        const brackets = bracketsData || {};
+        // Validate data
+        if (!rostersData?.rosters) console.warn('[Snapshot] rostersData missing or invalid, defaulting to empty object');
+        if (!managersData?.users) console.warn('[Snapshot] managersData missing or invalid, defaulting to empty object');
+        if (!transactionsData?.transactions) console.warn('[Snapshot] transactionsData missing or invalid, defaulting to empty array');
+        if (!awardsData) console.warn('[Snapshot] awardsData missing, defaulting to empty array');
+        if (!bracketsData) console.warn('[Snapshot] bracketsData missing, defaulting to empty object');
+        if (!matchupsData) console.warn('[Snapshot] matchupsData missing, defaulting to empty array');
 
-        // 2. Process rivalries
+        // Process rivalries
+        console.info('[Snapshot] Processing rivalries...');
         const rivalryResults: Record<string, any> = {};
-        if (rivalries.length) {
-            console.info('[Snapshot] Processing rivalries...');
-            for (const [userOneID, userTwoID] of rivalries) {
-                try {
-                    const rivalry = await getRivalryMatchups(userOneID, userTwoID);
-                    rivalryResults[`${userOneID}-${userTwoID}`] = rivalry || {};
-                } catch (err) {
-                    console.error(`[Snapshot] Error processing rivalry ${userOneID}-${userTwoID}:`, err);
-                    rivalryResults[`${userOneID}-${userTwoID}`] = {};
-                }
+        for (const [userOneID, userTwoID] of rivalries) {
+            try {
+                const rivalry = await getRivalryMatchups(userOneID, userTwoID);
+                rivalryResults[`${userOneID}-${userTwoID}`] = rivalry;
+            } catch (err) {
+                console.error(`[Snapshot] Error processing rivalry ${userOneID}-${userTwoID}:`, err);
             }
-            console.info('[Snapshot] Rivalries processed');
         }
 
-        // 3. Compose final snapshot
+        // Build final snapshot
         const snapshot = {
             leagueID,
-            season: brackets?.champs?.[0]?.year || null, // fallback to latest bracket year
-            rosters,
-            startersAndReserve,
-            managers,
-            teamManagersMap,
-            transactions,
-            transactionTotals,
-            awards,
-            brackets,
+            rosters: rostersData?.rosters || {},
+            startersAndReserve: rostersData?.startersAndReserve || [],
+            managers: managersData?.users || {},
+            teamManagersMap: managersData?.teamManagersMap || {},
+            transactions: transactionsData?.transactions || [],
+            transactionTotals: transactionsData?.totals || {},
+            awards: awardsData || [],
+            brackets: bracketsData || {},
+            matchups: matchupsData || [], // all weekly scoring
             rivalries: rivalryResults
         };
 
