@@ -3,17 +3,14 @@ import { getLeagueRosters } from '$lib/utils/helperFunctions/leagueRosters';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers';
 import { getLeagueStandings } from '$lib/utils/helperFunctions/leagueStandings';
 import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
-import { getAwards } from '$lib/utils/helperFunctions/awards';
-import { getBrackets } from '$lib/utils/helperFunctions/brackets';
-import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalries';
+import { getAwards } from '$lib/utils/helperFunctions/leagueAwards';
+import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets';
+import { getRivalryMatchups } from '$lib/utils/helperFunctions/rilvaryMatchups';
+import { getNflState } from '$lib/utils/helperFunctions/nflState';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 
 /**
- * Fetches a full league snapshot including live + legacy data
- * @param {Object} options
- * @param {boolean} options.previewTransactions - Whether to preview only last few transactions
- * @param {boolean} options.refreshTransactions - Force refresh transactions from API
- * @param {Array<[string, string]>} options.rivalries - Array of manager ID pairs to calculate rivalry stats
+ * Fetches a full league snapshot including live + legacy data, now with matchups
  */
 export const getFullLeagueSnapshot = async ({
     previewTransactions = false,
@@ -22,23 +19,42 @@ export const getFullLeagueSnapshot = async ({
 } = {}) => {
     try {
         // 1. Fetch all core data in parallel
-        const [rostersData, managersData, standingsData, transactionsData, awardsData, bracketsData] = await waitForAll(
+        const [rostersData, managersData, standingsData, transactionsData, awardsData, bracketsData, nflState] = await waitForAll(
             getLeagueRosters(),
             getLeagueTeamManagers(),
             getLeagueStandings(),
             getLeagueTransactions(previewTransactions, refreshTransactions),
             getAwards(),
-            getBrackets()
+            getBrackets(),
+            getNflState()
         );
 
-        // 2. Process rivalries if requested
-        const rivalryResults = {};
+        // 2. Fetch weekly matchups for the current season
+        const currentWeek = nflState?.season_type === 'regular' ? nflState.display_week : 18;
+        const matchupsPromises = [];
+        for (let week = 1; week <= currentWeek; week++) {
+            matchupsPromises.push(
+                fetch(`https://api.sleeper.app/v1/league/${leagueID}/matchups/${week}`, { compress: true })
+            );
+        }
+        const matchupsRes = await waitForAll(...matchupsPromises);
+        const matchupsJsonPromises = matchupsRes.map(res => res.json());
+        const matchupsData = await waitForAll(...matchupsJsonPromises);
+
+        // Map matchups by week for easy lookup
+        const matchupsByWeek: Record<number, any[]> = {};
+        matchupsData.forEach((weekData, index) => {
+            matchupsByWeek[index + 1] = weekData;
+        });
+
+        // 3. Process rivalries if requested
+        const rivalryResults: Record<string, any> = {};
         for (const [userOneID, userTwoID] of rivalries) {
             const rivalry = await getRivalryMatchups(userOneID, userTwoID);
             rivalryResults[`${userOneID}-${userTwoID}`] = rivalry;
         }
 
-        // 3. Compose final snapshot
+        // 4. Compose final snapshot
         const snapshot = {
             leagueID,
             season: standingsData?.yearData || null,
@@ -51,6 +67,7 @@ export const getFullLeagueSnapshot = async ({
             transactionTotals: transactionsData?.totals || {},
             awards: awardsData || [],
             brackets: bracketsData || {},
+            matchups: matchupsByWeek, // <-- NEW: full weekly matchups
             rivalries: rivalryResults
         };
 
