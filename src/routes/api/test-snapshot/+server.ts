@@ -1,17 +1,12 @@
 import { json } from '@sveltejs/kit'
 import { buildLeagueSnapshot } from '$lib/analytics/buildLeagueSnapshot'
-import { legacyLeagueData } from '$lib/data/legacy'
+import { leagueID } from '$lib/constants' // <-- adjust path if needed
+import { legacyLeagueData } from '$lib/data/legacy' // adjust if needed
 
 export async function GET() {
   try {
-    const leagueId = process.env.SLEEPER_LEAGUE_ID
-
-    if (!leagueId) {
-      throw new Error('Missing SLEEPER_LEAGUE_ID')
-    }
-
     const snapshot = await buildLeagueSnapshot(
-      leagueId,
+      leagueID,
       legacyLeagueData
     )
 
