@@ -1,100 +1,62 @@
-// lib/analytics/buildLeagueSnapshot.ts
+import { leagueID } from '$lib/utils/leagueInfo';
+import { getLeagueRosters } from './leagueRosters';
+import { getLeagueTeamManagers } from './leagueTeamManagers';
+import { getLeagueStandings } from './leagueStandings';
+import { getLeagueTransactions } from './leagueTransactions';
+import { getAwards } from './awards';
+import { getBrackets } from './brackets';
+import { getRivalryMatchups } from './rivalries';
+import { waitForAll } from './multiPromise';
 
-type SeasonData = {
-  league: any
-  users: any[]
-  rosters: any[]
-  matchups: Record<number, any[]>
-  transactions: Record<number, any[]>
-  draft: any | null
-}
+/**
+ * Fetches a full league snapshot including live + legacy data
+ * @param {Object} options
+ * @param {boolean} options.previewTransactions - Whether to preview only last few transactions
+ * @param {boolean} options.refreshTransactions - Force refresh transactions from API
+ * @param {Array<[string, string]>} options.rivalries - Array of manager ID pairs to calculate rivalry stats
+ */
+export const getFullLeagueSnapshot = async ({
+    previewTransactions = false,
+    refreshTransactions = false,
+    rivalries = []
+} = {}) => {
+    try {
+        // 1. Fetch all core data in parallel
+        const [rostersData, managersData, standingsData, transactionsData, awardsData, bracketsData] = await waitForAll(
+            getLeagueRosters(),
+            getLeagueTeamManagers(),
+            getLeagueStandings(),
+            getLeagueTransactions(previewTransactions, refreshTransactions),
+            getAwards(),
+            getBrackets()
+        );
 
-export type LeagueSnapshot = {
-  generatedAt: string
-  seasons: Record<string, SeasonData>
-}
+        // 2. Process rivalries if requested
+        const rivalryResults = {};
+        for (const [userOneID, userTwoID] of rivalries) {
+            const rivalry = await getRivalryMatchups(userOneID, userTwoID);
+            rivalryResults[`${userOneID}-${userTwoID}`] = rivalry;
+        }
 
-const BASE_URL = "https://api.sleeper.app/v1"
+        // 3. Compose final snapshot
+        const snapshot = {
+            leagueID,
+            season: standingsData?.yearData || null,
+            rosters: rostersData?.rosters || {},
+            startersAndReserve: rostersData?.startersAndReserve || [],
+            managers: managersData?.users || {},
+            teamManagersMap: managersData?.teamManagersMap || {},
+            standings: standingsData?.standingsInfo || {},
+            transactions: transactionsData?.transactions || [],
+            transactionTotals: transactionsData?.totals || {},
+            awards: awardsData || [],
+            brackets: bracketsData || {},
+            rivalries: rivalryResults
+        };
 
-async function sleeperFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Sleeper API error: ${res.status} at ${url}`)
-  }
-  return res.json()
-}
-
-async function fetchCurrentSeason(leagueId: string): Promise<SeasonData> {
-  console.log(`[Snapshot] Fetching league info for ${leagueId}`)
-  const league = await sleeperFetch(`${BASE_URL}/league/${leagueId}`)
-  const users = await sleeperFetch(`${BASE_URL}/league/${leagueId}/users`)
-  const rosters = await sleeperFetch(`${BASE_URL}/league/${leagueId}/rosters`)
-
-  const totalWeeks = league.settings?.playoff_week_start
-    ? league.settings.playoff_week_start - 1
-    : 14
-
-  const matchups: Record<number, any[]> = {}
-  const transactions: Record<number, any[]> = {}
-
-  for (let week = 1; week <= totalWeeks; week++) {
-    console.log(`[Snapshot] Fetching week ${week} matchups and transactions`)
-    matchups[week] = await sleeperFetch(
-      `${BASE_URL}/league/${leagueId}/matchups/${week}`
-    )
-    transactions[week] = await sleeperFetch(
-      `${BASE_URL}/league/${leagueId}/transactions/${week}`
-    )
-  }
-
-  const drafts = await sleeperFetch<any[]>(`${BASE_URL}/league/${leagueId}/drafts`)
-  let draft = null
-  if (drafts.length) {
-    draft = await sleeperFetch(`${BASE_URL}/draft/${drafts[0].draft_id}`)
-    console.log(`[Snapshot] Draft found: ${drafts[0].draft_id}, picks: ${draft.picks?.length || 0}`)
-  } else {
-    console.log(`[Snapshot] No draft found for league ${leagueId}`)
-  }
-
-  console.log(`[Snapshot] Finished fetching current season data: ${league.name} (${league.season})`)
-  return {
-    league,
-    users,
-    rosters,
-    matchups,
-    transactions,
-    draft
-  }
-}
-
-export async function buildLeagueSnapshot(
-  leagueId: string,
-  legacySeasons?: Record<string, SeasonData>
-): Promise<LeagueSnapshot> {
-
-  console.log(`[Snapshot] Starting league snapshot for ${leagueId}`)
-  const currentSeason = await fetchCurrentSeason(leagueId)
-  const currentYear = currentSeason.league.season
-
-  const seasons: Record<string, SeasonData> = {
-    ...(legacySeasons ?? {}),
-    [currentYear]: currentSeason
-  }
-
-  console.log(`[Snapshot] Seasons in snapshot: ${Object.keys(seasons).join(', ')}`)
-  for (const year of Object.keys(seasons)) {
-    const s = seasons[year]
-    console.log(`[Snapshot] Year: ${year}, League: ${s.league.name}, Status: ${s.league.status}`)
-    console.log(`[Snapshot] Users: ${s.users.length}, Rosters: ${s.rosters.length}`)
-    console.log(`[Snapshot] Total weeks of matchups: ${Object.keys(s.matchups).length}`)
-    console.log(`[Snapshot] Total weeks of transactions: ${Object.keys(s.transactions).length}`)
-    console.log(`[Snapshot] Draft present: ${s.draft ? 'Yes' : 'No'}`)
-    if (s.draft?.picks) console.log(`[Snapshot] Draft picks: ${s.draft.picks.length}`)
-  }
-
-  console.log(`[Snapshot] League snapshot generation complete at ${new Date().toISOString()}`)
-  return {
-    generatedAt: new Date().toISOString(),
-    seasons
-  }
-}
+        return snapshot;
+    } catch (err) {
+        console.error('[getFullLeagueSnapshot] Error fetching full league snapshot:', err);
+        return null;
+    }
+};
