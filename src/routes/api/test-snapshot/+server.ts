@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit'
 import { buildLeagueSnapshot } from '$lib/analytics/buildLeagueSnapshot'
 import { leagueID } from '$lib/utils/leagueInfo.js' // <-- adjust path if needed
-import { legacyLeagueData } from '$lib/data/legacy' // adjust if needed
+import { legacyLeagueData } from '$lib/legacy/legacyLeagueData' // adjust if needed
 
 export async function GET() {
   try {
