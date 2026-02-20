@@ -1,50 +1,46 @@
-// src/routes/api/test-league-snapshot/+server.ts
-import type { RequestHandler } from '@sveltejs/kit'
-import { buildLeagueSnapshot } from '$lib/analytics/buildLeagueSnapshot'
-import { legacyLeagueData } from '$lib/utils/helperFunctions/legacyLeagueData.js'
-
-/**
- * Convert legacyLeagueData to SeasonData shape
- */
-function formatLegacySeasons(legacy: Record<string, any>) {
-    return Object.fromEntries(
-        Object.entries(legacy).map(([year, data]) => [
-            year,
-            {
-                league: data,
-                users: [],        // populate if you have legacy users
-                rosters: [],      // populate if you have legacy rosters
-                matchups: {},     // populate if you have legacy matchups
-                transactions: {}, // populate if you have legacy transactions
-                draft: null       // populate if you have legacy draft data
-            }
-        ])
-    )
-}
+// league-page/src/routes/api/test-snapshot/+server.ts
+import type { RequestHandler } from '@sveltejs/kit';
+import { buildLeagueSnapshot } from '$lib/analytics/buildLeagueSnapshot';
+import { leagueID, legacyLeagueData } from '$lib/utils/helperFunctions/legacyLeagueData';
 
 export const GET: RequestHandler = async () => {
-    try {
-        const formattedLegacySeasons = formatLegacySeasons(legacyLeagueData)
+  const logs: string[] = [];
 
-        const snapshot = await buildLeagueSnapshot(
-            '1211171901003550720', // your league ID
-            formattedLegacySeasons
-        )
+  try {
+    logs.push('🟢 Starting buildLeagueSnapshot');
 
-        console.log('✅ League snapshot generated successfully')
-        console.log('Seasons included:', Object.keys(snapshot.seasons))
-        Object.entries(snapshot.seasons).forEach(([year, season]) => {
-            console.log(`- ${year}: league keys = ${Object.keys(season.league).join(', ')}`)
-        })
+    // Build the snapshot using legacy data for historical seasons
+    const snapshot = await buildLeagueSnapshot(leagueID, legacyLeagueData);
+    logs.push('✅ Snapshot built successfully');
 
-        return new Response(JSON.stringify(snapshot, null, 2), {
-            headers: { 'Content-Type': 'application/json' }
-        })
-    } catch (err) {
-        console.error('❌ Error generating league snapshot:', err)
-        return new Response(
-            JSON.stringify({ error: (err as Error).message }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
-        )
-    }
-}
+    const seasons = Object.keys(snapshot.seasons);
+    logs.push(`📅 Seasons included in snapshot: ${seasons.join(', ')}`);
+
+    // Example: log number of rosters for current season
+    const currentYear = seasons[seasons.length - 1];
+    const currentRosters = snapshot.seasons[currentYear]?.rosters?.length ?? 0;
+    logs.push(`👥 Rosters in current season (${currentYear}): ${currentRosters}`);
+
+    // Example: log number of matchups for week 1
+    const week1Matchups =
+      snapshot.seasons[currentYear]?.matchups?.[1]?.length ?? 0;
+    logs.push(`⚔️ Matchups in week 1 of ${currentYear}: ${week1Matchups}`);
+
+    // Return the snapshot along with the logs
+    return new Response(
+      JSON.stringify({
+        logs,
+        snapshot
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (err: any) {
+    logs.push(`❌ Error building snapshot: ${err.message}`);
+    return new Response(
+      JSON.stringify({ logs, error: err.message }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+};
