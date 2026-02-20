@@ -1,6 +1,6 @@
 // lib/analytics/buildLeagueSnapshot.ts
 
-import { legacySeasons } from '$lib/legacy/legacyLeagueData'
+import { legacySeasons } from '$lib/utils/helperFunctions/legacyLeagueData.js'
 
 type SeasonData = {
   league: any
