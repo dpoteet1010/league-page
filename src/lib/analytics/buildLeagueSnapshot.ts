@@ -4,7 +4,7 @@ import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamMana
 import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
 import { getAwards } from '$lib/utils/helperFunctions/leagueAwards';
 import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets';
-import { getRivalryMatchups } from '$lib/utils/helperFunctions/rilvaryMatchups';
+import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalryMatchups';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups'; // new helper to fetch all weekly matchups
 
