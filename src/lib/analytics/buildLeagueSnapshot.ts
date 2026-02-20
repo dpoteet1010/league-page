@@ -5,56 +5,47 @@ import { getLeagueStandings } from '$lib/utils/helperFunctions/leagueStandings';
 import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
 import { getAwards } from '$lib/utils/helperFunctions/leagueAwards';
 import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets';
-import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalryMatchups';
-import { getNflState } from '$lib/utils/helperFunctions/nflState';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 
 /**
- * Fetches a full league snapshot including live + legacy data, now with matchups
+ * Fetches a full league snapshot including live + legacy data and all matchups
  */
 export const buildLeagueSnapshot = async ({
     previewTransactions = false,
-    refreshTransactions = false,
-    rivalries = []
+    refreshTransactions = false
 } = {}) => {
     try {
-        // 1. Fetch all core data in parallel
-        const [rostersData, managersData, standingsData, transactionsData, awardsData, bracketsData, nflState] = await waitForAll(
+        // 1. Fetch core data in parallel
+        const [rostersData, managersData, standingsData, transactionsData, awardsData, bracketsData] = await waitForAll(
             getLeagueRosters(),
             getLeagueTeamManagers(),
             getLeagueStandings(),
             getLeagueTransactions(previewTransactions, refreshTransactions),
             getAwards(),
-            getBrackets(),
-            getNflState()
+            getBrackets()
         );
 
-        // 2. Fetch weekly matchups for the current season
-        const currentWeek = nflState?.season_type === 'regular' ? nflState.display_week : 18;
-        const matchupsPromises = [];
-        for (let week = 1; week <= currentWeek; week++) {
-            matchupsPromises.push(
-                fetch(`https://api.sleeper.app/v1/league/${leagueID}/matchups/${week}`, { compress: true })
-            );
-        }
-        const matchupsRes = await waitForAll(...matchupsPromises);
-        const matchupsJsonPromises = matchupsRes.map(res => res.json());
-        const matchupsData = await waitForAll(...matchupsJsonPromises);
+        const matchupsBySeason = {};
 
-        // Map matchups by week for easy lookup
-        const matchupsByWeek: Record<number, any[]> = {};
-        matchupsData.forEach((weekData, index) => {
-            matchupsByWeek[index + 1] = weekData;
-        });
+        // 2. Loop through seasons to fetch matchups
+        for (const season of Object.keys(managersData.teamManagersMap).sort()) {
+            const teamMap = managersData.teamManagersMap[season];
+            matchupsBySeason[season] = [];
 
-        // 3. Process rivalries if requested
-        const rivalryResults: Record<string, any> = {};
-        for (const [userOneID, userTwoID] of rivalries) {
-            const rivalry = await getRivalryMatchups(userOneID, userTwoID);
-            rivalryResults[`${userOneID}-${userTwoID}`] = rivalry;
+            // For each roster, fetch weekly matchups
+            const weeks = 17; // adjust if playoffs included separately
+            for (let week = 1; week <= weeks; week++) {
+                const res = await fetch(`https://api.sleeper.app/v1/league/${leagueID}/matchups/${week}?season=${season}`, { compress: true });
+                if (!res.ok) continue;
+                const weekData = await res.json();
+
+                // Filter matchups for rosters in this league
+                const seasonMatchups = weekData.filter(m => m.roster_id in teamMap);
+                matchupsBySeason[season].push({ week, matchups: seasonMatchups });
+            }
         }
 
-        // 4. Compose final snapshot
+        // 3. Compose final snapshot
         const snapshot = {
             leagueID,
             season: standingsData?.yearData || null,
@@ -67,8 +58,7 @@ export const buildLeagueSnapshot = async ({
             transactionTotals: transactionsData?.totals || {},
             awards: awardsData || [],
             brackets: bracketsData || {},
-            matchups: matchupsByWeek, // <-- NEW: full weekly matchups
-            rivalries: rivalryResults
+            matchups: matchupsBySeason
         };
 
         return snapshot;
