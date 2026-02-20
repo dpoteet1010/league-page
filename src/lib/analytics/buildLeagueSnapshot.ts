@@ -5,7 +5,7 @@ import { getLeagueStandings } from '$lib/utils/helperFunctions/leagueStandings';
 import { getLeagueTransactions } from '$lib/utils/helperFunctions/leagueTransactions';
 import { getAwards } from '$lib/utils/helperFunctions/leagueAwards';
 import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets';
-import { getRivalryMatchups } from '$lib/utils/helperFunctions/rilvaryMatchups';
+import { getRivalryMatchups } from '$lib/utils/helperFunctions/rivalryMatchups';
 import { getNflState } from '$lib/utils/helperFunctions/nflState';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise';
 
