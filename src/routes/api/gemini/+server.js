@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { leagueID } from '$lib/utils/leagueInfo';
-import { getNflState } from '$lib/utils/nflState';
+import { getNflState } from '$lib/utils/nflStateServer.js';
 import { getLeagueData } from '$lib/utils/leagueData';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagers';
 import { getLeagueTransactions } from '$lib/utils/getLeagueTransactions';
