@@ -1,33 +1,111 @@
 import { json } from '@sveltejs/kit';
-import { getLeagueData, getWeeklyMatchups } from '$lib/utils/sleeper'; // Your existing logic
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { RECAP_SECRET_KEY, GEMINI_API_KEY } from '$env/static/private';
+import { leagueID } from '$lib/utils/leagueInfo';
+import { getNflState } from '$lib/utils/nflState';
+import { getLeagueData } from '$lib/utils/leagueData';
+import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagers';
+import { getLeagueTransactions } from '$lib/utils/getLeagueTransactions';
+import { getRivalryMatchups } from '$lib/utils/getRivalryMatchups';
+import { loadPlayers } from '$lib/utils/loadPlayers';
+import { 
+    getRosterIDFromManagerIDAndYear, 
+    getTeamNameFromTeamManagers,
+    getDatesActive 
+} from '$lib/utils/helperFunctions/universalFunctions';
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+// Initialize Gemini (Ensure your API key is in your .env)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-export async function POST({ request }) {
-    // 1. Security Check (Prevent random people from triggering your API)
-    const { key } = await request.json();
-    if (key !== RECAP_SECRET_KEY) return json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST({ fetch }) {
+    try {
+        // 1. Parallel Data Ingestion
+        // We bypass local cache (refresh=true) for server-side accuracy
+        const [nflState, teamManagers, transData, playersData] = await Promise.all([
+            getNflState(),
+            getLeagueTeamManagers(),
+            getLeagueTransactions(false, true), 
+            loadPlayers(fetch, true)
+        ]);
 
-    // 2. Run your existing JS functions to get the "Context Bundle"
-    const historicalData = await getPreviousDrafts(); 
-    const weeklyData = await getWeeklyMatchups();
-    
-    // 3. Feed it to Gemini
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `You are a fantasy football analyst. Recap this week's matchups using this data: 
-                    ${JSON.stringify(weeklyData)}. 
-                    Reference this league history: ${JSON.stringify(historicalData)}.
-                    Include trash talk and NFL news. Format as Markdown.`;
+        const currentYear = nflState.season;
+        const targetWeek = nflState.season_type === 'regular' ? nflState.week - 1 : 18;
 
-    const result = await model.generateContent(prompt);
-    const recapHtml = result.response.text();
+        // 2. Build the "League Bible" (The Context Object)
+        // We use your utility functions to map IDs to Names and History
+        const leagueBible = {
+            metadata: {
+                week: targetWeek,
+                year: currentYear,
+                totalManagers: Object.keys(teamManagers.users).length
+            },
+            standings: {}, 
+            storylines: {
+                trades: [],
+                rivalries: []
+            }
+        };
 
-    // 4. "Publish" it
-    // Since you don't have a DB, you can use Contentful's Management API 
-    // to automatically create a new entry/post in your CMS.
-    await publishToContentful(recapHtml);
+        // 3. Process Transactions (The "Art of the Deal")
+        // Mapping Sleeper IDs to actual Player Names using loadPlayers data
+        leagueBible.storylines.trades = transData.transactions
+            .filter(tx => tx.type === 'trade' && tx.season === currentYear)
+            .slice(0, 5)
+            .map(trade => ({
+                date: trade.date,
+                moves: trade.moves.map(move => {
+                    // Logic to find which manager got which player
+                    // Cross-referencing playersData.players[id]
+                    return move; 
+                })
+            }));
 
-    return json({ success: true });
+        // 4. Identify a "Rivalry of the Week"
+        // We'll pick two top managers and see their historical beef
+        const managerIds = Object.keys(teamManagers.users);
+        if (managerIds.length >= 2) {
+            const m1 = managerIds[0];
+            const m2 = managerIds[1];
+            const rivalry = await getRivalryMatchups(m1, m2);
+            
+            leagueBible.storylines.rivalries.push({
+                names: [teamManagers.users[m1].display_name, teamManagers.users[m2].display_name],
+                history: {
+                    wins: rivalry.wins,
+                    points: rivalry.points,
+                    totalMatchups: rivalry.matchups.length
+                }
+            });
+        }
+
+        // 5. Construct the AI Prompt
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        const prompt = `
+            You are a witty, slightly sarcastic Fantasy Football Commissioner. 
+            Review the following league data and write a "State of the Union" recap.
+
+            DATA HIGHLIGHTS:
+            - Transaction Stats: ${JSON.stringify(transData.totals.allTime)}
+            - Recent Big Trades: ${JSON.stringify(leagueBible.storylines.trades)}
+            - Featured Rivalry: ${JSON.stringify(leagueBible.storylines.rivalries)}
+
+            INSTRUCTIONS:
+            1. Call out "Transaction Addicts" (high waiver/trade counts).
+            2. Reference historical team names if they've changed (Use the context from getNestedTeamNames).
+            3. Roast the loser of the Featured Rivalry based on their all-time record.
+            4. Keep it engaging, professional yet humorous.
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+
+        return json({ 
+            recap: response.text(),
+            rawStats: leagueBible 
+        });
+
+    } catch (error) {
+        console.error("League Recap Error:", error);
+        return json({ error: "Failed to generate league recap" }, { status: 500 });
+    }
 }
