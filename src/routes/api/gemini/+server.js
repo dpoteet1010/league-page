@@ -11,7 +11,7 @@ import {
     getRosterIDFromManagerIDAndYear, 
     getTeamNameFromTeamManagers,
     getDatesActive 
-} from '$lib/utils/helperFunctions/universalFunctions';
+} from '$lib/utils/helperFunctions/universalFunctions.js';
 
 // Initialize Gemini (Ensure your API key is in your .env)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
