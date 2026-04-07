@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { leagueID } from '$lib/utils/leagueInfo';
+import { leagueID } from '$lib/utils/leagueInfo.js';
 import { getNflState } from '$lib/utils/nflStateServer.js';
-import { getLeagueData } from '$lib/utils/leagueData';
-import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagers';
-import { getLeagueTransactions } from '$lib/utils/getLeagueTransactions';
-import { getRivalryMatchups } from '$lib/utils/getRivalryMatchups';
-import { loadPlayers } from '$lib/utils/loadPlayers';
+import { getLeagueData } from '$lib/utils/leagueData.js';
+import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagers.js';
+import { getLeagueTransactions } from '$lib/utils/getLeagueTransactions.js';
+import { getRivalryMatchups } from '$lib/utils/getRivalryMatchups.js';
+import { loadPlayers } from '$lib/utils/loadPlayers.js';
 import { 
     getRosterIDFromManagerIDAndYear, 
     getTeamNameFromTeamManagers,
