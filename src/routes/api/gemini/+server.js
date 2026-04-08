@@ -5,7 +5,7 @@ import { getNflState } from '$lib/utils/nflStateServer.js';
 import { getLeagueData } from '$lib/utils/leagueDataServer.js';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
 
-// 1. Tell Vercel to allow more time (Up to 60s on newer Pro plans, max 10-30s on Hobby)
+// Vercel Timeout Config
 export const config = {
     maxDuration: 30 
 };
@@ -15,33 +15,42 @@ export async function POST({ request }) {
         const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         const body = await request.json();
 
-        // 2. Fetch data in parallel (Essential for speed!)
+        // 1. Parallel Data Fetching
         const [managers, nflState, leagueData] = await Promise.all([
             getLeagueTeamManagers(),
             getNflState(),
             getLeagueData()
         ]);
 
+        // 2. Use the "Permanent Alias"
+        // 'gemini-flash-latest' always points to the newest stable Flash model
+        // In April 2026, this is Gemini 3.1 Flash.
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Using "flash-lite" specifically for the fastest possible response
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-        const systemContext = `You are the commissioner for ${leagueData.name}. 
-        Current Week: ${nflState.week}. 
-        League Data: ${JSON.stringify(managers)}. 
-        Be extremely concise and witty.`;
+        const systemContext = `You are the witty AI Commissioner for the ${leagueData.name} fantasy football league. 
+        Current Season: ${nflState.season}, Week: ${nflState.week}. 
+        League Managers: ${JSON.stringify(managers)}. 
+        Answer the user's question using this data. Be concise and slightly sarcastic.`;
 
-        // 3. Simple generateContent is faster than startChat for one-off questions
+        // 3. Generate Content
         const result = await model.generateContent([
             { text: systemContext },
-            { text: `User Question: ${body.prompt || "Give me a recap"}` }
+            { text: `Manager Question: ${body.prompt || "Give me a league update."}` }
         ]);
 
         const response = await result.response;
         return json({ text: response.text() });
 
     } catch (error) {
-        console.error("TIMEOUT OR API ERROR:", error.message);
-        return json({ text: `THE COMMISH IS STUCK: ${error.message}` }, { status: 500 });
+        console.error("COMMISH ERROR:", error.message);
+        
+        // Return a helpful error message to the UI
+        let friendlyMessage = "The Commissioner is currently at a league meeting (API Error).";
+        if (error.message.includes("404")) {
+            friendlyMessage = "Model mismatch. Updating to 2026 stable version...";
+        }
+
+        return json({ text: `${friendlyMessage} Detail: ${error.message}` }, { status: 500 });
     }
 }
