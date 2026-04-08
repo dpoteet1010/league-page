@@ -1,23 +1,32 @@
-import { json } from '@sveltejs/kit';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getNflState } from '$lib/utils/nflStateServer.js';
-import { getLeagueData } from '$lib/utils/leagueDataServer.js';
-import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
-import { getTransactions } from '$lib/utils/transactionsServer.js';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-export async function POST() {
+export async function POST({ request }) {
     try {
-        // These will now work because they don't use Svelte Stores!
-        const nflState = await getNflState();
-        const leagueData = await getLeagueData();
-        const managers = await getLeagueTeamManagers();
+        const { prompt } = await request.json(); // Get the user's question
         
-        // ... rest of your Gemini logic
-        return json({ success: true, week: nflState.week });
+        // 1. Gather all the context (Managers, History, Transactions)
+        const managers = await getLeagueTeamManagers();
+        const nflState = await getNflState();
+        
+        // 2. Start a Chat Session
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const chat = model.startChat({
+            history: [
+                {
+                    role: "user",
+                    parts: [{ text: `You are an expert on this fantasy football league. Here is the manager data: ${JSON.stringify(managers)}. Answer questions concisely.` }],
+                },
+                {
+                    role: "model",
+                    parts: [{ text: "Understood. I have the league history. What would you like to know?" }],
+                },
+            ],
+        });
+
+        // 3. Send the user's specific question
+        const result = await chat.sendMessage(prompt || "Give me a weekly recap.");
+        const response = await result.response;
+
+        return json({ text: response.text() });
     } catch (error) {
-        console.error(error);
         return json({ error: error.message }, { status: 500 });
     }
 }
