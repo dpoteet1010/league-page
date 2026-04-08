@@ -5,55 +5,43 @@ import { getNflState } from '$lib/utils/nflStateServer.js';
 import { getLeagueData } from '$lib/utils/leagueDataServer.js';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
 
+// 1. Tell Vercel to allow more time (Up to 60s on newer Pro plans, max 10-30s on Hobby)
+export const config = {
+    maxDuration: 30 
+};
+
 export async function POST({ request }) {
     try {
         const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            return json({ text: "SYSTEM ERROR: API Key missing from Vercel." }, { status: 500 });
-        }
-
         const body = await request.json();
-        const userPrompt = body.prompt;
 
-        // 1. GATHER DATA
+        // 2. Fetch data in parallel (Essential for speed!)
         const [managers, nflState, leagueData] = await Promise.all([
             getLeagueTeamManagers(),
             getNflState(),
             getLeagueData()
         ]);
 
-        // 2. INITIALIZE AI WITH 2026 STABLE ALIAS
-        // "gemini-flash-latest" is a special alias that Google keeps updated
-        // to the latest working Flash model (currently Gemini 3.1 Flash).
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        // Using "flash-lite" specifically for the fastest possible response
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" });
 
-        // 3. START CHAT
-        const chat = model.startChat({
-            history: [
-                {
-                    role: "user",
-                    parts: [{ 
-                        text: `You are the AI Commissioner for ${leagueData.name}. 
-                               Current Week: ${nflState.week}. 
-                               Roster Data: ${JSON.stringify(managers)}` 
-                    }],
-                },
-                {
-                    role: "model",
-                    parts: [{ text: "Commissioner online. Data synced. How can I help?" }],
-                },
-            ],
-        });
+        const systemContext = `You are the commissioner for ${leagueData.name}. 
+        Current Week: ${nflState.week}. 
+        League Data: ${JSON.stringify(managers)}. 
+        Be extremely concise and witty.`;
 
-        const result = await chat.sendMessage(userPrompt || "Hello");
+        // 3. Simple generateContent is faster than startChat for one-off questions
+        const result = await model.generateContent([
+            { text: systemContext },
+            { text: `User Question: ${body.prompt || "Give me a recap"}` }
+        ]);
+
         const response = await result.response;
-        
         return json({ text: response.text() });
 
     } catch (error) {
-        // This will print the EXACT reason for the 500 error in your browser
-        console.error("DEBUG:", error.message);
-        return json({ text: `COMMISSIONER ERROR: ${error.message}` }, { status: 500 });
+        console.error("TIMEOUT OR API ERROR:", error.message);
+        return json({ text: `THE COMMISH IS STUCK: ${error.message}` }, { status: 500 });
     }
 }
