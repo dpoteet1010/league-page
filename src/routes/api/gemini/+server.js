@@ -13,44 +13,65 @@ export const config = {
 export async function POST({ request }) {
     try {
         const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        const body = await request.json();
+        const { prompt } = await request.json();
 
-        // 1. Parallel Data Fetching
-        const [managers, nflState, leagueData] = await Promise.all([
+        // 1. Fetch Current Data
+        const [managers, nflState, currentLeague] = await Promise.all([
             getLeagueTeamManagers(),
             getNflState(),
             getLeagueData()
         ]);
 
-        // 2. Use the "Permanent Alias"
-        // 'gemini-flash-latest' always points to the newest stable Flash model
-        // In April 2026, this is Gemini 3.1 Flash.
+        // 2. THE HISTORY FIX: Check for previous seasons
+        let historyContext = "No previous season data found.";
+        
+        if (currentLeague.previous_league_id && currentLeague.previous_league_id !== "0") {
+            try {
+                // Fetch the previous year's basic info
+                const prevResponse = await fetch(`https://api.sleeper.app/v1/league/${currentLeague.previous_league_id}`);
+                const prevLeague = await prevResponse.json();
+                
+                // Fetch the previous year's rosters/standings
+                const prevRostersRes = await fetch(`https://api.sleeper.app/v1/league/${currentLeague.previous_league_id}/rosters`);
+                const prevRosters = await prevRostersRes.json();
+
+                historyContext = `
+                    PREVIOUS SEASON (${prevLeague.season}) SUMMARY:
+                    - League Name: ${prevLeague.name}
+                    - Final Rosters/Stats: ${JSON.stringify(prevRosters.map(r => ({
+                        owner_id: r.owner_id,
+                        wins: r.settings.wins,
+                        losses: r.settings.losses,
+                        fpts: r.settings.fpts
+                    })))}
+                `;
+            } catch (e) {
+                console.error("History fetch failed:", e);
+            }
+        }
+
+        // 3. AI ORCHESTRATION
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-        const systemContext = `You are the witty AI Commissioner for the ${leagueData.name} fantasy football league. 
-        Current Season: ${nflState.season}, Week: ${nflState.week}. 
-        League Managers: ${JSON.stringify(managers)}. 
-        Answer the user's question using this data. Be concise and slightly sarcastic.`;
+        const systemInstruction = `
+            You are the All-Knowing League Historian. 
+            CURRENT SEASON: ${JSON.stringify(currentLeague)}
+            HISTORICAL DATA: ${historyContext}
+            MANAGER NAMES: ${JSON.stringify(managers.users)}
 
-        // 3. Generate Content
+            When asked about history, look at the PREVIOUS SEASON data provided. 
+            Match owner_ids to display_names to tell the story of who won or lost last year.
+        `;
+
         const result = await model.generateContent([
-            { text: systemContext },
-            { text: `Manager Question: ${body.prompt || "Give me a league update."}` }
+            { text: systemInstruction },
+            { text: `User Question: ${prompt}` }
         ]);
 
-        const response = await result.response;
-        return json({ text: response.text() });
+        return json({ text: result.response.text() });
 
     } catch (error) {
-        console.error("COMMISH ERROR:", error.message);
-        
-        // Return a helpful error message to the UI
-        let friendlyMessage = "The Commissioner is currently at a league meeting (API Error).";
-        if (error.message.includes("404")) {
-            friendlyMessage = "Model mismatch. Updating to 2026 stable version...";
-        }
-
-        return json({ text: `${friendlyMessage} Detail: ${error.message}` }, { status: 500 });
+        return json({ text: `DEBUG ERROR: ${error.message}` }, { status: 500 });
     }
 }
