@@ -15,20 +15,23 @@ export async function POST({ request }) {
         const { prompt } = await request.json();
 
         // 1. Fetch Current Infrastructure Data
-        const [managers, nflState, currentLeague] = await Promise.all([
+        const [managersData, nflState, currentLeague] = await Promise.all([
             getLeagueTeamManagers(),
             getNflState(),
             getLeagueData()
         ]);
 
+        // FIX: The template returns 'users' as an object. We turn it into a list for the AI.
+        const userList = Object.values(managersData.users).map(u => u.display_name);
+
         // 2. BUILD THE HISTORY CONTEXT
         let historyContext = "";
 
         // --- Era 1: Legacy Years (Manual) ---
-        // Replace these placeholders with your actual historical stats
+        // Since your server files don't handle 2023/2024, we hardcode the key takeaways here
         historyContext += `
-        SEASON 2023 (Legacy): Winner: [Insert 23 Winner], Runner-up: [Name], Points Leader: [Name].
-        SEASON 2024 (Legacy): Winner: [Insert 24 Winner], Runner-up: [Name], Points Leader: [Name].
+        SEASON 2023 (Legacy): Inaugural season. Winner: [Insert 23 Winner], Runner-up: [Name].
+        SEASON 2024 (Legacy): Second season. Winner: [Insert 24 Winner], Runner-up: [Name].
         `;
 
         // --- Era 2: Sleeper Years (Dynamic) ---
@@ -36,7 +39,6 @@ export async function POST({ request }) {
         
         if (prevYearID && prevYearID !== "0") {
             try {
-                // Fetch the previous year's rosters and users to map names
                 const [prevRostersRes, prevUsersRes] = await Promise.all([
                     fetch(`https://api.sleeper.app/v1/league/${prevYearID}/rosters`),
                     fetch(`https://api.sleeper.app/v1/league/${prevYearID}/users`)
@@ -51,17 +53,16 @@ export async function POST({ request }) {
                         name: user?.display_name || "Unknown Manager",
                         wins: roster.settings.wins,
                         losses: roster.settings.losses,
-                        fpts: roster.settings.fpts + (roster.settings.fpts_decimal / 100),
-                        rank: roster.settings.rank || "N/A"
+                        fpts: (roster.settings.fpts || 0) + ((roster.settings.fpts_decimal || 0) / 100),
                     };
                 });
 
                 historyContext += `
                 SEASON 2025 (Sleeper): 
-                Full Standings: ${JSON.stringify(rosterSummary)}
+                Standings: ${JSON.stringify(rosterSummary)}
                 `;
             } catch (err) {
-                console.error("Failed to crawl 2025 Sleeper history:", err);
+                console.error("Sleeper history fetch failed:", err);
             }
         }
 
@@ -71,31 +72,29 @@ export async function POST({ request }) {
 
         const systemInstruction = `
             You are the expert Commissioner and Historian for the ${currentLeague.name}.
-            Current Status: Week ${nflState.week}, ${nflState.season} Season.
             
             LEAGUE HISTORY ARCHIVE:
             ${historyContext}
 
             CURRENT MANAGERS:
-            ${JSON.stringify(managers.users.map(u => u.display_name))}
+            ${JSON.stringify(userList)}
 
             INSTRUCTIONS:
-            - Use the HISTORY ARCHIVE to answer questions about past winners or scores.
-            - If asked about 2023 or 2024, use the 'Legacy' data.
-            - If asked about 2025, use the 'Sleeper' standings provided.
-            - Match 'Unknown Managers' in history to current managers by name if possible.
-            - Be concise, witty, and authoritative.
+            - If asked about 2023/2024, use the Legacy data.
+            - If asked about 2025, use the Sleeper standings provided.
+            - Match 'Unknown Managers' in history to current managers by name.
+            - Be authoritative, concise, and witty.
         `;
 
         const result = await model.generateContent([
             { text: systemInstruction },
-            { text: `User Question: ${prompt}` }
+            { text: prompt }
         ]);
 
         return json({ text: result.response.text() });
 
     } catch (error) {
         console.error("SERVER ERROR:", error);
-        return json({ text: `The Commish is having a breakdown: ${error.message}` }, { status: 500 });
+        return json({ text: `The Commish is stuck: ${error.message}` }, { status: 500 });
     }
 }
