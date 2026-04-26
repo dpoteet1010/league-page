@@ -5,6 +5,9 @@ import { getNflState } from '$lib/utils/nflStateServer.js';
 import { getLeagueData } from '$lib/utils/leagueDataServer.js';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
 import { legacyLeagueData } from '$lib/utils/helperFunctions/legacyLeagueData.js';
+import { legacyLeagueUsers } from '$lib/utils/helperFunctions/legacyLeagueUsers.js';
+import { legacyLeagueRosters } from '$lib/utils/helperFunctions/legacyLeagueRosters.js';
+
 export const config = {
     maxDuration: 30 
 };
