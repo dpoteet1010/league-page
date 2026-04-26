@@ -14,98 +14,77 @@ export async function POST({ request }) {
         const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         const { prompt } = await request.json();
 
-        const [managers, nflState, currentLeague] = await Promise.all([
-            getLeagueTeamManagers(),
-            getNflState(),
-            getLeagueData()
-        ]);
+        // 1. Fetch managers and current data
+        const managers = await getLeagueTeamManagers();
+        const currentLeague = await getLeagueData();
 
+        // 2. BUILD THE ARCHIVE MANUALLY (The "No-Fail" Way)
         let historyArchive = [];
-        let loopID = currentLeague.previous_league_id;
 
-        // THE LOOP
-        while (loopID && loopID !== "0") {
-            let seasonData = null;
+        // Add 2024 and 2023 immediately from your local file
+        if (legacyLeagueData["2024"]) {
+            historyArchive.push({ 
+                year: "2024", 
+                winner_roster_id: legacyLeagueData["2024"].metadata?.latest_league_winner_roster_id,
+                source: "Legacy" 
+            });
+        }
+        if (legacyLeagueData["2023"]) {
+            historyArchive.push({ 
+                year: "2023", 
+                winner_roster_id: legacyLeagueData["2023"].metadata?.latest_league_winner_roster_id,
+                source: "Legacy" 
+            });
+        }
 
-            // 1. Check if we are in the LEGACY chain (2024 or 2023)
-            if (legacyLeagueData[loopID]) {
-                const legacy = legacyLeagueData[loopID];
-                seasonData = {
-                    year: legacy.season,
-                    name: legacy.name,
-                    winner_id: legacy.metadata?.latest_league_winner_roster_id,
-                    isLegacy: true,
-                    // We can expand this with more legacy stats later
-                };
-                // Move back: 2024's previous_league_id will point to 2023
-                loopID = legacy.previous_league_id; 
+        // Add 2025 by fetching it directly
+        // Replace '1125215535314714624' with your actual 2025 Sleeper League ID
+        const sleeper2025Id = currentLeague.previous_league_id || "1125215535314714624"; 
+        
+        try {
+            const [lRes, rRes] = await Promise.all([
+                fetch(`https://api.sleeper.app/v1/league/${sleeper2025Id}`),
+                fetch(`https://api.sleeper.app/v1/league/${sleeper2025Id}/rosters`)
+            ]);
+            
+            const lData = await lRes.json();
+            const rData = await rRes.json();
 
-            } else {
-                // 2. We are in the SLEEPER chain
-                try {
-                    const [lRes, rRes] = await Promise.all([
-                        fetch(`https://api.sleeper.app/v1/league/${loopID}`),
-                        fetch(`https://api.sleeper.app/v1/league/${loopID}/rosters`)
-                    ]);
-                    const lData = await lRes.json();
-                    const rData = await rRes.json();
-
-                    seasonData = {
-                        year: lData.season,
-                        name: lData.name,
-                        winner_id: lData.metadata?.latest_league_winner_roster_id,
-                        standings: rData.map(r => ({
-                            roster_id: r.roster_id,
-                            owner_id: r.owner_id,
-                            wins: r.settings.wins,
-                            fpts: (r.settings.fpts || 0) + ((r.settings.fpts_decimal || 0) / 100)
-                        })),
-                        isLegacy: false
-                    };
-
-                    // THE BRIDGE: 
-                    // If Sleeper says there's no more history, force it to the 2024 Legacy ID
-                    if (!lData.previous_league_id || lData.previous_league_id === "0") {
-                        loopID = "2024"; // Manually bridge to your legacy file
-                    } else {
-                        loopID = lData.previous_league_id;
-                    }
-                } catch (e) {
-                    console.error("Fetch failed for ID:", loopID);
-                    loopID = null;
-                }
-            }
-
-            if (seasonData) historyArchive.push(seasonData);
-            if (historyArchive.length > 10) break; // Safety
+            historyArchive.push({
+                year: "2025",
+                winner_roster_id: lData.metadata?.latest_league_winner_roster_id,
+                standings: rData.map(r => ({
+                    roster_id: r.roster_id,
+                    owner_id: r.owner_id,
+                    fpts: (r.settings.fpts || 0) + ((r.settings.fpts_decimal || 0) / 100)
+                })),
+                source: "Sleeper"
+            });
+        } catch (e) {
+            console.error("2025 Fetch Failed");
         }
 
         // 3. AI ORCHESTRATION
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
         const systemInstruction = `
             You are the Commissioner for the National Liver Failure League.
             
-            HISTORY ARCHIVE:
-            ${JSON.stringify(historyArchive)}
+            HISTORY DATA: ${JSON.stringify(historyArchive)}
+            MANAGERS: ${JSON.stringify(managers.users)}
 
-            MANAGERS:
-            ${JSON.stringify(managers.users)}
-
-            Your goal is to answer questions about ANY season (2023-2026). 
-            If the data is in the archive, use it. Match winner_ids to manager names.
-            Be concise and witty.
+            DIRECTIONS:
+            - To find a winner, match 'winner_roster_id' to the correct manager in the MANAGERS list.
+            - If you see 2025 data, use the standings to discuss scores.
+            - Be witty and slightly hungover.
         `;
 
-        const result = await model.generateContent([
-            { text: systemInstruction },
-            { text: prompt }
-        ]);
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const result = await model.generateContent([{ text: systemInstruction }, { text: prompt }]);
 
         return json({ text: result.response.text() });
 
     } catch (error) {
-        return json({ text: `SYSTEM ERROR: ${error.message}` }, { status: 500 });
+        return json({ text: `System Crash: ${error.message}` }, { status: 500 });
     }
+}
 }
