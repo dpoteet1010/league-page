@@ -4,8 +4,7 @@ import { env } from '$env/dynamic/private';
 import { getNflState } from '$lib/utils/nflStateServer.js';
 import { getLeagueData } from '$lib/utils/leagueDataServer.js';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
-import { legacyLeagueData } from '$lib/utils/legacyLeagueData.js';
-
+import { legacyLeagueData } from '$lib/utils/helperFunctions/legacyLeagueData.js';
 export const config = {
     maxDuration: 30 
 };
