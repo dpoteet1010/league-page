@@ -86,3 +86,4 @@ export async function POST({ request }) {
     } catch (error) {
         return json({ text: `System Crash: ${error.message}` }, { status: 500 });
     }
+}
