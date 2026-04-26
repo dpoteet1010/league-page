@@ -9,61 +9,68 @@ export const config = {
     maxDuration: 30 
 };
 
+// ... (existing imports)
+
 export async function POST({ request }) {
     try {
         const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         const { prompt } = await request.json();
 
-        // 1. Fetch Current Infrastructure Data
         const [managersData, nflState, currentLeague] = await Promise.all([
             getLeagueTeamManagers(),
             getNflState(),
             getLeagueData()
         ]);
 
-        // FIX: The template returns 'users' as an object. We turn it into a list for the AI.
         const userList = Object.values(managersData.users).map(u => u.display_name);
 
         // 2. BUILD THE HISTORY CONTEXT
         let historyContext = "";
-
-        // --- Era 1: Legacy Years (Manual) ---
-        // Since your server files don't handle 2023/2024, we hardcode the key takeaways here
-        historyContext += `
-        SEASON 2023 (Legacy): Inaugural season. Winner: [Insert 23 Winner], Runner-up: [Name].
-        SEASON 2024 (Legacy): Second season. Winner: [Insert 24 Winner], Runner-up: [Name].
-        `;
-
-        // --- Era 2: Sleeper Years (Dynamic) ---
-        const prevYearID = currentLeague.previous_league_id;
         
+        // DEBUG: Track the chain
+        const prevYearID = currentLeague.previous_league_id;
+        console.log(`Debug: Current League ID is ${currentLeague.league_id}, Previous is ${prevYearID}`);
+
         if (prevYearID && prevYearID !== "0") {
             try {
-                const [prevRostersRes, prevUsersRes] = await Promise.all([
+                const [prevLeagueRes, prevRostersRes, prevUsersRes] = await Promise.all([
+                    fetch(`https://api.sleeper.app/v1/league/${prevYearID}`),
                     fetch(`https://api.sleeper.app/v1/league/${prevYearID}/rosters`),
                     fetch(`https://api.sleeper.app/v1/league/${prevYearID}/users`)
                 ]);
                 
+                const prevLeague = await prevLeagueRes.json();
                 const prevRosters = await prevRostersRes.json();
                 const prevUsers = await prevUsersRes.json();
 
+                // Get the winner ID from metadata
+                const winnerRosterId = prevLeague.metadata?.latest_league_winner_roster_id;
+
                 const rosterSummary = prevRosters.map(roster => {
                     const user = prevUsers.find(u => u.user_id === roster.owner_id);
+                    const name = user?.display_name || "Unknown Manager";
+                    const isWinner = roster.roster_id.toString() === winnerRosterId?.toString();
+                    
                     return {
-                        name: user?.display_name || "Unknown Manager",
+                        name: name,
+                        roster_id: roster.roster_id,
                         wins: roster.settings.wins,
-                        losses: roster.settings.losses,
-                        fpts: (roster.settings.fpts || 0) + ((roster.settings.fpts_decimal || 0) / 100),
+                        points: (roster.settings.fpts || 0) + ((roster.settings.fpts_decimal || 0) / 100),
+                        isWinner: isWinner
                     };
                 });
 
                 historyContext += `
-                SEASON 2025 (Sleeper): 
-                Standings: ${JSON.stringify(rosterSummary)}
+                [DATABASE ENTRY: 2025 SEASON]
+                League Name: ${prevLeague.name}
+                Official Winner Roster ID: ${winnerRosterId || "Not recorded"}
+                Final Standings: ${JSON.stringify(rosterSummary)}
                 `;
             } catch (err) {
-                console.error("Sleeper history fetch failed:", err);
+                historyContext += `\n[ERROR FETCHING 2025 DATA: ${err.message}]\n`;
             }
+        } else {
+            historyContext += `\n[DEBUG: No previous_league_id found in the current Sleeper data]\n`;
         }
 
         // 3. INITIALIZE AI
@@ -71,19 +78,14 @@ export async function POST({ request }) {
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const systemInstruction = `
-            You are the expert Commissioner and Historian for the ${currentLeague.name}.
+            You are the expert Commissioner for the ${currentLeague.name}.
             
-            LEAGUE HISTORY ARCHIVE:
+            ARCHIVED DATA:
             ${historyContext}
 
-            CURRENT MANAGERS:
-            ${JSON.stringify(userList)}
-
-            INSTRUCTIONS:
-            - If asked about 2023/2024, use the Legacy data.
-            - If asked about 2025, use the Sleeper standings provided.
-            - Match 'Unknown Managers' in history to current managers by name.
-            - Be authoritative, concise, and witty.
+            If the user asks about 2025, look at the "DATABASE ENTRY: 2025" above. 
+            Identify the winner by looking for "isWinner: true". 
+            If no historical data is listed or an ERROR is shown, tell the user exactly what the error is so we can debug.
         `;
 
         const result = await model.generateContent([
@@ -94,7 +96,6 @@ export async function POST({ request }) {
         return json({ text: result.response.text() });
 
     } catch (error) {
-        console.error("SERVER ERROR:", error);
-        return json({ text: `The Commish is stuck: ${error.message}` }, { status: 500 });
+        return json({ text: `DEBUG BREAKDOWN: ${error.message}` }, { status: 500 });
     }
 }
