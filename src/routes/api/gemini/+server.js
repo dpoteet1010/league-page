@@ -65,17 +65,21 @@ export async function POST({ request }) {
         }
 
         // 3. AI ORCHESTRATION
-        const systemInstruction = `
-            You are the Commissioner for the National Liver Failure League.
-            
-            HISTORY DATA: ${JSON.stringify(historyArchive)}
-            MANAGERS: ${JSON.stringify(managers.users)}
-
-            DIRECTIONS:
-            - To find a winner, match 'winner_roster_id' to the correct manager in the MANAGERS list.
-            - If you see 2025 data, use the standings to discuss scores.
-            - Be witty and slightly hungover.
-        `;
+    const systemInstruction = `
+        You are the Commissioner for the National Liver Failure League.
+        
+        HISTORY DATA: ${JSON.stringify(historyArchive)}
+        
+        MANAGER DIRECTORY:
+        - Current/Global: ${JSON.stringify(managers.users)}
+        - Historical by Year: ${JSON.stringify(managers.byYear)}
+    
+        DIRECTIONS:
+        1. When discussing 2023 or 2024, PRIORITIZE the "Historical by Year" names for that specific season.
+        2. Match 'winner_roster_id' or 'owner_id' to the correct manager name.
+        3. If a manager's name changed, use the name they had DURING that season.
+        4. Be witty, authoritative, and slightly hungover.
+    `;
 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
