@@ -1,5 +1,9 @@
-import { leagueID as currentID } from '$lib/utils/leagueInfo';
+import { leagueID as currentID } from '$lib/utils/helperFunctions/leagueInfo.js';
 
+/**
+ * Server-side version of getLeagueData.
+ * Corrected: Added .js extension and updated helperFunctions path.
+ */
 export const getLeagueData = async (targetID = currentID) => {
     // Check if it's a legacy year
     if (targetID === "2023" || targetID === "2024") {
