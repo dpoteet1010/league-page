@@ -1,4 +1,4 @@
-import { leagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { leagueID } from '$lib/utils/leagueInfo';
 import { legacyLeagueUsers } from './helperFunctions/legacyLeagueUsers.js';
 
 /**
