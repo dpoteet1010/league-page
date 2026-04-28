@@ -1,10 +1,10 @@
-import { getLeagueData } from "./leagueDataServer";
-import { getNflState } from "./nflStateServer";
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
+import { getLeagueData } from "./leagueDataServer.js";
+import { getNflState } from "./nflStateServer.js";
+import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
 
 /**
  * Server-side version of getLeagueMatchups.
- * Removed Svelte store dependencies and standardized fetch logic.
+ * Corrected: Updated paths to helperFunctions and added .js extensions.
  */
 export const getLeagueMatchups = async () => {
     // 1. Fetch NFL state and League configuration
