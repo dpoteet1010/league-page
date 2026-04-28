@@ -1,12 +1,12 @@
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
-import { getNflState } from "./nflStateServer";
-import { getLeagueData } from "./leagueDataServer";
-import { getLeagueRosters } from "./leagueRostersServer";
+import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { getNflState } from "./nflStateServer.js";
+import { getLeagueData } from "./leagueDataServer.js";
+import { getLeagueRosters } from "./leagueRostersServer.js";
 import { round } from '$lib/utils/helperFunctions/universalFunctions.js';
 
 /**
  * Server-side version of getLeagueStandings.
- * Calculates current record, points, and division standings.
+ * Corrected: Fixed import path to helperFunctions and added .js extensions.
  */
 export const getLeagueStandings = async () => {
     // 1. Fetch prerequisite data
