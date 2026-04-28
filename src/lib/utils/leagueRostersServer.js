@@ -1,9 +1,9 @@
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
+import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
 import { legacyLeagueRosters } from './helperFunctions/legacyLeagueRosters.js';
 
 /**
  * Server-side version of getLeagueRosters.
- * Combines legacy static data with live Sleeper API data.
+ * Corrected: Fixed import path for leagueInfo and ensured .js extension.
  */
 export const getLeagueRosters = async (queryLeagueID = defaultLeagueID) => {
     const leagueIDStr = String(queryLeagueID);
