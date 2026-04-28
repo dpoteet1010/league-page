@@ -2,7 +2,7 @@ import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
 import { getNflState } from "./nflStateServer";
 import { getLeagueData } from "./leagueDataServer";
 import { getLeagueRosters } from "./leagueRostersServer";
-import { round } from '$lib/utils/universalFunctions';
+import { round } from '$lib/utils/helperFunctions/universalFunctions.js';
 
 /**
  * Server-side version of getLeagueStandings.
