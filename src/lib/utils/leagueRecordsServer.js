@@ -3,7 +3,7 @@ import { getNflState } from './nflStateServer';
 import { getLeagueRosters } from "./leagueRostersServer";
 import { getBrackets } from './bracketsServer';
 import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
-import { getManagers, round, sortHighAndLow } from '$lib/utils/universalFunctions';
+import { getManagers, round, sortHighAndLow } from '$lib/utils/helperFunctions/universalFunctions.js';
 import { Records } from '$lib/utils/dataClasses';
 import { legacyMatchups } from './helperFunctions/legacyMatchups.js';
 
