@@ -1,37 +1,38 @@
 import { json } from '@sveltejs/kit';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { SECRET_GEMINI_API_KEY } from '$env/static/private';
+// 1. Change from 'static' to 'dynamic'
+import { env } from '$env/dynamic/private'; 
 
 // Server-side utilities
-import { getLeagueData } from '$lib/utils/leagueDataServer';
-import { getLeagueStandings } from '$lib/utils/leagueStandingsServer';
-import { getLeagueRosters } from '$lib/utils/leagueRostersServer';
-import { getLeagueTransactions } from '$lib/utils/transactionsServer';
-import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer';
-import { getLeagueRecords } from '$lib/utils/leagueRecordsServer';
-import { getDrafts } from '$lib/utils/draftsServer'; 
-import { getBrackets } from '$lib/utils/bracketsServer'; 
-import { getLeagueMatchups } from '$lib/utils/leagueMatchupsServer'; 
-import { getAwards } from '$lib/utils/leagueAwardsServer'; // Added
-
-const genAI = new GoogleGenerativeAI(SECRET_GEMINI_API_KEY);
+import { getLeagueData } from '$lib/utils/leagueDataServer.js';
+import { getLeagueStandings } from '$lib/utils/leagueStandingsServer.js';
+import { getLeagueRosters } from '$lib/utils/leagueRostersServer.js';
+import { getLeagueTransactions } from '$lib/utils/transactionsServer.js';
+import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
+import { getLeagueRecords } from '$lib/utils/leagueRecordsServer.js';
+import { getDrafts } from '$lib/utils/draftsServer.js'; 
+import { getBrackets } from '$lib/utils/bracketsServer.js'; 
+import { getLeagueMatchups } from '$lib/utils/leagueMatchupsServer.js'; 
+import { getAwards } from '$lib/utils/leagueAwardsServer.js'; 
 
 export async function POST({ request }) {
+    // 2. Move genAI initialization inside the POST function 
+    // to ensure it has access to the runtime environment variables
+    const apiKey = env.SECRET_GEMINI_API_KEY;
+    
+    if (!apiKey) {
+        console.error("API Key is missing from environment variables");
+        return json({ error: "The Commish lost his office keys. (Missing API Key)" }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+
     try {
         const { message, history } = await request.json();
 
-        // 1. GATHER ALL LEAGUE DATA
+        // ... rest of your data gathering (getLeagueData, etc.) ...
         const [
-            league, 
-            standings, 
-            rosters, 
-            transactions, 
-            managers, 
-            records, 
-            drafts, 
-            brackets, 
-            matchups,
-            awards // Added to the parallel fetch
+            league, standings, rosters, transactions, managers, records, drafts, brackets, matchups, awards
         ] = await Promise.all([
             getLeagueData(),
             getLeagueStandings(),
@@ -42,45 +43,16 @@ export async function POST({ request }) {
             getDrafts(),
             getBrackets(),
             getLeagueMatchups(),
-            getAwards() // New data source
+            getAwards()
         ]);
 
-        // 2. SYSTEM INSTRUCTIONS (The "Commish" Bible)
-        const systemInstruction = `
-            You are "The Commish," the witty, slightly arrogant, and all-knowing authority of this fantasy football league.
-            
-            LEAGUE CONTEXT:
-            - Name: ${league.name}
-            - Current Season: ${league.season}
-            
-            LEAGUE AWARDS & HISTORY:
-            - Championship & Toilet Bowl History: ${JSON.stringify(awards)}
-            - All-Time Records (Highs/Lows): ${JSON.stringify(records.regularSeasonData)}
-            
-            CURRENT STATE:
-            - Standings: ${JSON.stringify(standings?.standingsInfo)}
-            - Latest Matchups: ${JSON.stringify(matchups?.matchupWeeks?.slice(-1))}
-            - Managers: ${JSON.stringify(managers.teamManagersMap[league.season])}
-            
-            DRAFTS & TRANSACTIONS:
-            - Draft History: ${JSON.stringify(drafts)}
-            - Transaction Aggression (Trades/Waivers): ${JSON.stringify(transactions.totals.allTime)}
-            - Recent Activity: ${JSON.stringify(transactions.transactions.slice(0, 10))}
+        const systemInstruction = `...`; // Your existing prompt
 
-            YOUR MISSION:
-            1. Use the AWARDS data to identify past champions. If someone asks "Who is the GOAT?", look at who has the most titles.
-            2. Reference manager names from the manager map to make responses personal.
-            3. Be snarky but accurate. If someone has won a Toilet Bowl, don't let them forget it.
-            4. When using legacy data (2023-2024), cite it as "historical records."
-        `;
-
-        // 3. INITIALIZE MODEL
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-flash-latest", 
+            model: "gemini-flash-latest", // Use the full string to be safe
             systemInstruction: systemInstruction 
         });
 
-        // 4. CHAT EXECUTION
         const chat = model.startChat({
             history: history || [],
             generationConfig: {
@@ -96,8 +68,6 @@ export async function POST({ request }) {
 
     } catch (error) {
         console.error("Commish API Error:", error);
-        return json({ 
-            error: "The Commish is currently polishing the trophies. Try again in a minute." 
-        }, { status: 500 });
+        return json({ error: "The Commish is currently polishing the trophies." }, { status: 500 });
     }
 }
