@@ -1,11 +1,11 @@
-import { getLeagueData } from './leagueDataServer';
-import { getLeagueRosters } from './leagueRostersServer';
+import { getLeagueData } from './leagueDataServer.js';
+import { getLeagueRosters } from './leagueRostersServer.js';
 import { legacyWinnersBrackets } from './helperFunctions/legacyWinnersBrackets.js';
 import { legacyLosersBrackets } from './helperFunctions/legacyLosersBrackets.js';
 
 /**
  * Server-side version of getAwards. 
- * Removed Svelte store dependencies for AI compatibility.
+ * Corrected for Vercel: Added .js extensions and ensured named exports match +server.js
  */
 export const getAwards = async () => {
     // 1. Fetch current league info
