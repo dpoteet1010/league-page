@@ -39,7 +39,7 @@ export const POST = async ({ request }) => {
 
         // 3. Configure the model and system instructions
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
+            model: "gemini-flash-latest",
             systemInstruction: `You are the "Commish", a witty, slightly sarcastic fantasy football expert for this Sleeper league.
             
             CONTEXT DATA:
