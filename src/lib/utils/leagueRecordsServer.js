@@ -1,15 +1,14 @@
-import { getLeagueData } from './leagueDataServer';
-import { getNflState } from './nflStateServer';
-import { getLeagueRosters } from "./leagueRostersServer";
-import { getBrackets } from './bracketsServer';
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
+import { getLeagueData } from './leagueDataServer.js';
+import { getNflState } from './nflStateServer.js';
+import { getLeagueRosters } from "./leagueRostersServer.js";
+import { getBrackets } from './bracketsServer.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
 import { getManagers, round, sortHighAndLow } from '$lib/utils/helperFunctions/universalFunctions.js';
-import { Records } from '$lib/utils/dataClasses';
+import { Records } from '$lib/utils/dataClasses.js'; // Added .js
 import { legacyMatchups } from './helperFunctions/legacyMatchups.js';
 
 /**
  * Server-side version of getLeagueRecords.
- * This is the primary data source for AI-driven historical analysis.
  */
 export const getLeagueRecords = async () => {
     const nflState = await getNflState();
@@ -34,6 +33,8 @@ export const getLeagueRecords = async () => {
             getLeagueData(curSeason)
         ]);
 
+        if (!rosterRes || !leagueData) break;
+
         const rosters = rosterRes.rosters;
         let processingWeek = week;
 
@@ -41,7 +42,7 @@ export const getLeagueRecords = async () => {
             processingWeek = 99;
         }
 
-        const { season, year } = await processRegularSeason({
+        const { year } = await processRegularSeason({
             leagueData,
             rosters,
             curSeason,
@@ -106,6 +107,9 @@ export const getLeagueRecords = async () => {
         playoffData: playoffRecords.returnRecords() 
     };
 };
+
+// --- INTERNAL HELPERS ---
+// (Ensure these remain below the main export or are defined as const/function)
 
 const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regularSeason }) => {
     let year = Number(leagueData.season);
@@ -187,8 +191,7 @@ const processRegularSeason = async ({ rosters, leagueData, curSeason, week, regu
 const analyzeRosters = ({ year, roster, regularSeason }) => {
     if (!roster?.settings) return;
     const { wins, losses, ties, fpts, fpts_decimal, fpts_against, fpts_against_decimal, ppts, ppts_decimal } = roster.settings;
-    if (wins == 0 && ties == 0 && losses == 0) return;
-
+    
     const safe = (val) => (typeof val === 'number' ? val : 0);
     const fptsFor = safe(fpts) + safe(fpts_decimal) / 100;
     const fptsAgainst = safe(fpts_against) + safe(fpts_against_decimal) / 100;
@@ -208,8 +211,6 @@ const analyzeRosters = ({ year, roster, regularSeason }) => {
 
 const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, matchupDifferentials, year }) => {
     let matchups = {};
-    let pSD = {};
-
     for (const matchup of matchupWeek) {
         const rosterID = matchup?.roster_id;
         if (!rosterID || typeof matchup.points !== 'number') continue;
@@ -238,7 +239,7 @@ const processMatchups = ({ matchupWeek, seasonPointsRecord, record, startWeek, m
         });
     }
 
-    return { sPR: seasonPointsRecord, mD: matchupDifferentials, sW: startWeek - 1, pSD };
+    return { sPR: seasonPointsRecord, mD: matchupDifferentials };
 };
 
 const processPlayoffs = async ({curSeason, playoffRecords, year, week, rosters}) => {
@@ -300,14 +301,10 @@ const digestBracket = (params) => {
             }
         }
 
-        const { sPR, mD, pSD } = processMatchups({
+        const { sPR, mD } = processMatchups({
             matchupWeek, seasonPointsRecord, record: playoffRecords, startWeek, matchupDifferentials, year
         });
 
-        for (const key in pSD) {
-            if (!postSeasonData[key]) { postSeasonData[key] = pSD[key]; continue; }
-            for (const k in pSD[key]) { if (k !== 'manager') postSeasonData[key][k] += pSD[key][k]; }
-        }
         seasonPointsRecord = sPR;
         matchupDifferentials = mD;
     }
