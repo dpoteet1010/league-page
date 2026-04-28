@@ -1,64 +1,51 @@
 import { json } from '@sveltejs/kit';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-// 1. Change from 'static' to 'dynamic'
-import { env } from '$env/dynamic/private'; 
-
-// Server-side utilities
+import { GEMINI_API_KEY } from '$env/static/private'; // SvelteKit's secure import
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getLeagueData } from '$lib/utils/leagueDataServer.js';
 import { getLeagueStandings } from '$lib/utils/leagueStandingsServer.js';
 import { getLeagueRosters } from '$lib/utils/leagueRostersServer.js';
-import { getLeagueTransactions } from '$lib/utils/transactionsServer.js';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
+import { getLeagueTransactions } from '$lib/utils/transactionsServer.js';
 import { getLeagueRecords } from '$lib/utils/leagueRecordsServer.js';
-import { getDrafts } from '$lib/utils/draftsServer.js'; 
-import { getBrackets } from '$lib/utils/bracketsServer.js'; 
-import { getLeagueMatchups } from '$lib/utils/leagueMatchupsServer.js'; 
-import { getAwards } from '$lib/utils/leagueAwardsServer.js'; 
 
-export async function POST({ request }) {
-    // 2. Move genAI initialization inside the POST function 
-    // to ensure it has access to the runtime environment variables
-    const apiKey = env.SECRET_GEMINI_API_KEY;
-    
-    if (!apiKey) {
-        console.error("API Key is missing from environment variables");
-        return json({ error: "The Commish lost his office keys. (Missing API Key)" }, { status: 500 });
-    }
+// Initialize the SDK with the Vercel variable
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-
+export const POST = async ({ request }) => {
     try {
         const { message, history } = await request.json();
 
-        // ... rest of your data gathering (getLeagueData, etc.) ...
-        const [
-            league, standings, rosters, transactions, managers, records, drafts, brackets, matchups, awards
-        ] = await Promise.all([
+        // 1. Fetch Fresh League Context
+        const [league, standings, rosters, managers, transactions, records] = await Promise.all([
             getLeagueData(),
             getLeagueStandings(),
             getLeagueRosters(),
-            getLeagueTransactions(),
             getLeagueTeamManagers(),
-            getLeagueRecords(),
-            getDrafts(),
-            getBrackets(),
-            getLeagueMatchups(),
-            getAwards()
+            getLeagueTransactions(),
+            getLeagueRecords()
         ]);
 
-        const systemInstruction = `...`; // Your existing prompt
-
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-flash-latest", // Use the full string to be safe
-            systemInstruction: systemInstruction 
+            model: "gemini-1.5-flash",
+            systemInstruction: `You are the "Commish", a witty fantasy football expert for this Sleeper league.
+            
+            CONTEXT DATA:
+            - Current Season: ${league.season}
+            - League Name: ${league.name}
+            - Standings: ${JSON.stringify(standings)}
+            - Rosters: ${JSON.stringify(rosters)}
+            - Managers: ${JSON.stringify(managers.teamManagersMap[league.season])}
+            - Recent Transactions: ${JSON.stringify(transactions.transactions.slice(0, 10))}
+            - Historical Records: ${JSON.stringify(records)}
+
+            RULES:
+            1. Be concise but trash-talk slightly if someone is doing poorly.
+            2. Use the manager names provided in the context.
+            3. If asked about trades or waivers, refer to the Recent Transactions.`
         });
 
         const chat = model.startChat({
             history: history || [],
-            generationConfig: {
-                temperature: 0.75,
-                maxOutputTokens: 1000,
-            },
         });
 
         const result = await chat.sendMessage(message);
@@ -67,7 +54,7 @@ export async function POST({ request }) {
         return json({ text: response.text() });
 
     } catch (error) {
-        console.error("Commish API Error:", error);
-        return json({ error: "The Commish is currently polishing the trophies." }, { status: 500 });
+        console.error("Gemini API Error:", error);
+        return json({ error: "Failed to fetch response from the Commish." }, { status: 500 });
     }
-}
+};
