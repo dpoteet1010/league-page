@@ -1,8 +1,8 @@
-import { getLeagueData } from './leagueDataServer';
-import { getNflState } from './nflStateServer';
-import { getLeagueTeamManagers } from './leagueTeamManagersServer';
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
-import { legacyTransactions as legacyTransactionData } from './helperFunctions/legacyTransactions';
+import { getLeagueData } from './leagueDataServer.js';
+import { getNflState } from './nflStateServer.js';
+import { getLeagueTeamManagers } from './leagueTeamManagersServer.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { legacyTransactions as legacyTransactionData } from './helperFunctions/legacyTransactions.js';
 
 /**
  * Server-side version of getLeagueTransactions.
@@ -107,10 +107,13 @@ const digestTransactions = async ({ transactionsData, currentSeason }) => {
             const seasonMap = leagueTeamManagers.teamManagersMap[seasonToUse];
             if (!seasonMap) continue;
 
-            const managers = seasonMap[roster]?.managers || [];
-            for (const manager of managers) {
-                if (!totals.allTime[manager]) totals.allTime[manager] = { trade: 0, waiver: 0 };
-                totals.allTime[manager][type] = (totals.allTime[manager][type] || 0) + 1;
+            // Updated to handle standard user_id based mapping
+            const managerData = seasonMap[roster] || {};
+            const managerID = managerData.user_id;
+
+            if (managerID) {
+                if (!totals.allTime[managerID]) totals.allTime[managerID] = { trade: 0, waiver: 0 };
+                totals.allTime[managerID][type] = (totals.allTime[managerID][type] || 0) + 1;
             }
 
             if (!totals.seasons[seasonToUse]) totals.seasons[seasonToUse] = {};
