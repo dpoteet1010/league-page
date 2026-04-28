@@ -2,7 +2,7 @@ import { getLeagueData } from './leagueDataServer.js';
 import { getNflState } from './nflStateServer.js';
 import { getLeagueRosters } from "./leagueRostersServer.js";
 import { getBrackets } from './bracketsServer.js';
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueinfo.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
 import { round } from '$lib/utils/helperFunctions/universalFunctions.js';
 import { legacyMatchups } from './helperFunctions/legacyMatchups.js';
 
