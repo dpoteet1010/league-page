@@ -8,7 +8,10 @@ import { getLeagueStandings } from '$lib/utils/leagueStandingsServer';
 import { getLeagueRosters } from '$lib/utils/leagueRostersServer';
 import { getLeagueTransactions } from '$lib/utils/transactionsServer';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer';
-import { getLeagueRecords } from '$lib/utils/leagueRecordsServer'; 
+import { getLeagueRecords } from '$lib/utils/leagueRecordsServer';
+import { getDrafts } from '$lib/utils/draftsServer'; 
+import { getBrackets } from '$lib/utils/bracketsServer'; 
+import { getLeagueMatchups } from '$lib/utils/leagueMatchupsServer'; 
 
 const genAI = new GoogleGenerativeAI(SECRET_GEMINI_API_KEY);
 
@@ -17,44 +20,59 @@ export async function POST({ request }) {
         const { message, history } = await request.json();
 
         // 1. DATA GATHERING
-        const [league, standings, rosters, transactions, managers, records] = await Promise.all([
+        // Parallel execution to pull the full league history and current state
+        const [
+            league, 
+            standings, 
+            rosters, 
+            transactions, 
+            managers, 
+            records, 
+            drafts, 
+            brackets, 
+            matchups
+        ] = await Promise.all([
             getLeagueData(),
             getLeagueStandings(),
             getLeagueRosters(),
             getLeagueTransactions(),
             getLeagueTeamManagers(),
-            getLeagueRecords()
+            getLeagueRecords(),
+            getDrafts(),
+            getBrackets(),
+            getLeagueMatchups()
         ]);
 
         // 2. SYSTEM INSTRUCTIONS
         const systemInstruction = `
-            You are "The Commish," the definitive authority of this fantasy football league.
-            You have access to the full league history, including legacy data from 2023 and 2024.
+            You are "The Commish," the witty and authoritative AI commissioner of this fantasy football league.
             
             LEAGUE CONTEXT:
             - Name: ${league.name}
-            - Season: ${league.season}
+            - Current Season: ${league.season}
             
             CURRENT DATA:
             - Standings: ${JSON.stringify(standings?.standingsInfo)}
-            - Current Rosters: ${JSON.stringify(rosters.rosters)}
+            - Latest Matchups: ${JSON.stringify(matchups?.matchupWeeks?.slice(-1))}
             - Managers: ${JSON.stringify(managers.teamManagersMap[league.season])}
             
-            HISTORICAL & ALL-TIME DATA:
-            - Records: ${JSON.stringify(records.regularSeasonData)}
-            - Transactions (Last 20): ${JSON.stringify(transactions.transactions.slice(0, 20))}
-            - Career Aggression: ${JSON.stringify(transactions.totals.allTime)}
+            HISTORICAL DATA (Including 2023 & 2024 Legacy):
+            - All-Time Records: ${JSON.stringify(records.regularSeasonData)}
+            - Playoff Brackets: ${JSON.stringify(brackets)}
+            - Draft History: ${JSON.stringify(drafts)}
+            - Recent Transactions: ${JSON.stringify(transactions.transactions.slice(0, 15))}
+            - Career Aggression Totals: ${JSON.stringify(transactions.totals.allTime)}
 
-            YOUR ROLE:
-            - Answer questions using the provided JSON data.
-            - When discussing the past, reference the 2023 and 2024 legacy records.
-            - Maintain a professional yet witty commissioner persona.
-            - Address managers by their name or team name from the Manager map.
+            YOUR PROTOCOL:
+            1. Use the provided JSON to answer accurately. 
+            2. Reference manager names and team names from the manager map.
+            3. Maintain a professional yet humorous commissioner persona.
+            4. If a user asks about the past, dive into the legacy Records and Drafts.
         `;
 
-        // 3. INITIALIZE LATEST PRO MODEL
+        // 3. INITIALIZE LATEST FLASH MODEL
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-flash-latest", // Always utilizes the newest stable Pro version
+            model: "gemini-flash-latest", // Updated to your preferred model string
             systemInstruction: systemInstruction 
         });
 
@@ -75,7 +93,7 @@ export async function POST({ request }) {
     } catch (error) {
         console.error("Commish API Error:", error);
         return json({ 
-            error: "The Commish is busy adjusting the waiver wire. Please try again." 
+            error: "The Commish is currently reviewing league settings. Try again in a moment." 
         }, { status: 500 });
     }
 }
