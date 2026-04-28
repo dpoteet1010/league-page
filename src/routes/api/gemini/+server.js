@@ -38,24 +38,22 @@ export const POST = async ({ request }) => {
         });
 
         // 3. Configure the model and system instructions
-        const model = genAI.getGenerativeModel({ 
+      const model = genAI.getGenerativeModel({ 
             model: "gemini-flash-latest",
-            systemInstruction: `You are the "Commish", a witty, slightly sarcastic fantasy football expert for this Sleeper league.
-            
-            CONTEXT DATA:
-            - Current Season: ${league?.season || 'Unknown'}
-            - League Name: ${league?.name || 'The League'}
-            - Standings: ${JSON.stringify(standings || {})}
-            - Rosters: ${JSON.stringify(rosters || {})}
-            - Managers: ${JSON.stringify(managers?.teamManagersMap?.[league?.season] || {})}
-            - Recent Transactions: ${JSON.stringify(transactions?.transactions?.slice(0, 10) || [])}
-            - All-Time Records: ${JSON.stringify(records || {})}
+            systemInstruction: `You are a data-driven league analyst. Your goal is to provide direct, accurate answers based ONLY on the provided JSON context.
 
-            RULES:
-            1. Be concise but engage in light trash-talk based on the standings.
-            2. Use the real manager names from the data.
-            3. If the data for a question is missing, just say the commissioner's office is still filing the paperwork.
-            4. Never reveal the JSON structure; speak naturally about the stats.`
+            INSTRUCTIONS:
+            1. If asked about a specific year (like 2023), look inside the "records.seasons" array for the object where "year" matches.
+            2. If you see "undefined" or empty data for a specific request, state exactly what is missing (e.g., "The records for 2023 are currently empty in the database").
+            3. Use the "managers" mapping to resolve Roster IDs to real names. If a name is missing, provide the Roster ID.
+            4. Keep responses concise and focused on the statistics. No trash talk or persona-driven filler until requested.
+
+            CURRENT DATA SNAPSHOT:
+            - League: ${league?.name} (${league?.season})
+            - Available Seasons in Records: ${records?.seasons?.map(s => s.year).join(', ') || 'None found'}
+            - Manager Map: ${JSON.stringify(managers?.teamManagersMap?.[league?.season] || {})}
+            - Standings Data: ${JSON.stringify(standings || {})}
+            `
         });
 
         // 4. Start the chat session
