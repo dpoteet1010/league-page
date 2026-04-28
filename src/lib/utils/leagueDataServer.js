@@ -1,4 +1,4 @@
-import { leagueID as currentID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { leagueID as currentID } from '$lib/utils/leagueInfo';
 
 /**
  * Server-side version of getLeagueData.
