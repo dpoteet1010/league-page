@@ -12,6 +12,7 @@ import { getLeagueRecords } from '$lib/utils/leagueRecordsServer';
 import { getDrafts } from '$lib/utils/draftsServer'; 
 import { getBrackets } from '$lib/utils/bracketsServer'; 
 import { getLeagueMatchups } from '$lib/utils/leagueMatchupsServer'; 
+import { getAwards } from '$lib/utils/leagueAwardsServer'; // Added
 
 const genAI = new GoogleGenerativeAI(SECRET_GEMINI_API_KEY);
 
@@ -19,8 +20,7 @@ export async function POST({ request }) {
     try {
         const { message, history } = await request.json();
 
-        // 1. DATA GATHERING
-        // Parallel execution to pull the full league history and current state
+        // 1. GATHER ALL LEAGUE DATA
         const [
             league, 
             standings, 
@@ -30,7 +30,8 @@ export async function POST({ request }) {
             records, 
             drafts, 
             brackets, 
-            matchups
+            matchups,
+            awards // Added to the parallel fetch
         ] = await Promise.all([
             getLeagueData(),
             getLeagueStandings(),
@@ -40,39 +41,42 @@ export async function POST({ request }) {
             getLeagueRecords(),
             getDrafts(),
             getBrackets(),
-            getLeagueMatchups()
+            getLeagueMatchups(),
+            getAwards() // New data source
         ]);
 
-        // 2. SYSTEM INSTRUCTIONS
+        // 2. SYSTEM INSTRUCTIONS (The "Commish" Bible)
         const systemInstruction = `
-            You are "The Commish," the witty and authoritative AI commissioner of this fantasy football league.
+            You are "The Commish," the witty, slightly arrogant, and all-knowing authority of this fantasy football league.
             
             LEAGUE CONTEXT:
             - Name: ${league.name}
             - Current Season: ${league.season}
             
-            CURRENT DATA:
+            LEAGUE AWARDS & HISTORY:
+            - Championship & Toilet Bowl History: ${JSON.stringify(awards)}
+            - All-Time Records (Highs/Lows): ${JSON.stringify(records.regularSeasonData)}
+            
+            CURRENT STATE:
             - Standings: ${JSON.stringify(standings?.standingsInfo)}
             - Latest Matchups: ${JSON.stringify(matchups?.matchupWeeks?.slice(-1))}
             - Managers: ${JSON.stringify(managers.teamManagersMap[league.season])}
             
-            HISTORICAL DATA (Including 2023 & 2024 Legacy):
-            - All-Time Records: ${JSON.stringify(records.regularSeasonData)}
-            - Playoff Brackets: ${JSON.stringify(brackets)}
+            DRAFTS & TRANSACTIONS:
             - Draft History: ${JSON.stringify(drafts)}
-            - Recent Transactions: ${JSON.stringify(transactions.transactions.slice(0, 15))}
-            - Career Aggression Totals: ${JSON.stringify(transactions.totals.allTime)}
+            - Transaction Aggression (Trades/Waivers): ${JSON.stringify(transactions.totals.allTime)}
+            - Recent Activity: ${JSON.stringify(transactions.transactions.slice(0, 10))}
 
-            YOUR PROTOCOL:
-            1. Use the provided JSON to answer accurately. 
-            2. Reference manager names and team names from the manager map.
-            3. Maintain a professional yet humorous commissioner persona.
-            4. If a user asks about the past, dive into the legacy Records and Drafts.
+            YOUR MISSION:
+            1. Use the AWARDS data to identify past champions. If someone asks "Who is the GOAT?", look at who has the most titles.
+            2. Reference manager names from the manager map to make responses personal.
+            3. Be snarky but accurate. If someone has won a Toilet Bowl, don't let them forget it.
+            4. When using legacy data (2023-2024), cite it as "historical records."
         `;
 
-        // 3. INITIALIZE LATEST FLASH MODEL
+        // 3. INITIALIZE MODEL
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-flash-latest", // Updated to your preferred model string
+            model: "gemini-flash-latest", 
             systemInstruction: systemInstruction 
         });
 
@@ -80,7 +84,7 @@ export async function POST({ request }) {
         const chat = model.startChat({
             history: history || [],
             generationConfig: {
-                temperature: 0.7,
+                temperature: 0.75,
                 maxOutputTokens: 1000,
             },
         });
@@ -93,7 +97,7 @@ export async function POST({ request }) {
     } catch (error) {
         console.error("Commish API Error:", error);
         return json({ 
-            error: "The Commish is currently reviewing league settings. Try again in a moment." 
+            error: "The Commish is currently polishing the trophies. Try again in a minute." 
         }, { status: 500 });
     }
 }
