@@ -16,62 +16,57 @@ export async function POST({ request }) {
         const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         const { prompt } = await request.json();
 
-        // 1. Fetch current 2026 league context
         const currentLeague2026 = await getLeagueData();
-        const managers = await getLeagueTeamManagers();
-
-        // 2. BUILD THE ARCHIVE
         let historyArchive = [];
 
-        // Helper to map managers/teams and align the "Sleeper Winner" shift
-        const processLegacySeason = (year) => {
-            const rosters = legacyLeagueRosters[year]?.rosters;
-            const users = legacyLeagueUsers[year];
-            if (!rosters || !users) return null;
-
-            // FIX: Sleeper stores the winner of year X in the metadata of year X+1
-            const lookupYear = (parseInt(year) + 1).toString();
-            const winnerID = legacyLeagueData[lookupYear]?.metadata?.latest_league_winner_roster_id;
-
-            let seasonMap = {
-                year: year,
-                winner_roster_id: winnerID,
-                teams: {}
-            };
-
-            Object.values(rosters).forEach(roster => {
-                const user = users.find(u => u.user_id === roster.owner_id);
-                seasonMap.teams[roster.roster_id] = {
-                    manager: user ? user.display_name : "Unknown",
-                    teamName: user?.metadata?.team_name || "Unknown Team",
-                    wins: roster.settings?.wins,
-                    fpts: roster.settings?.fpts
-                };
-            });
-            return seasonMap;
+        // 1. PROCESS 2023
+        const rosters2023 = legacyLeagueRosters["2023"]?.rosters;
+        const users2023 = legacyLeagueUsers["2023"];
+        // Manual override based on your confirmation: Evan (Roster 1) won 2023
+        let data2023 = {
+            year: "2023",
+            winner_roster_id: 1, 
+            teams: {}
         };
+        Object.values(rosters2023).forEach(r => {
+            const u = users2023.find(user => user.user_id === r.owner_id);
+            data2023.teams[r.roster_id] = { manager: u?.display_name, teamName: u?.metadata?.team_name, fpts: r.settings?.fpts };
+        });
+        historyArchive.push(data2023);
 
-        // Add 2023 and 2024
-        const data2023 = processLegacySeason("2023");
-        const data2024 = processLegacySeason("2024");
-        if (data2023) historyArchive.push(data2023);
-        if (data2024) historyArchive.push(data2024);
+        // 2. PROCESS 2024
+        const rosters2024 = legacyLeagueRosters["2024"]?.rosters; // Note: Ensure your rosters file has a 2024 key
+        const users2024 = legacyLeagueUsers["2024"];
+        // Manual override based on your confirmation: James (Roster 8) won 2024
+        let data2024 = {
+            year: "2024",
+            winner_roster_id: 8, 
+            teams: {}
+        };
+        if (rosters2024) {
+            Object.values(rosters2024).forEach(r => {
+                const u = users2024.find(user => user.user_id === r.owner_id);
+                data2024.teams[r.roster_id] = { manager: u?.display_name, teamName: u?.metadata?.team_name, fpts: r.settings?.fpts };
+            });
+            historyArchive.push(data2024);
+        }
 
-        // Add 2025 (Pulling from Sleeper API)
-        const sleeper2025Id = currentLeague2026.previous_league_id || "1125215535314714624"; 
+        // 3. PROCESS 2025 (Live Fetch)
+        const sleeper2025Id = "1125215535314714624"; 
         try {
-            const [rRes, uRes] = await Promise.all([
+            const [lRes, rRes, uRes] = await Promise.all([
+                fetch(`https://api.sleeper.app/v1/league/${sleeper2025Id}`),
                 fetch(`https://api.sleeper.app/v1/league/${sleeper2025Id}/rosters`),
                 fetch(`https://api.sleeper.app/v1/league/${sleeper2025Id}/users`)
             ]);
             
+            const lData = await lRes.json();
             const rData = await rRes.json();
             const uData = await uRes.json();
 
             let season2025 = {
                 year: "2025",
-                // The 2025 winner is found in the CURRENT (2026) league metadata
-                winner_roster_id: currentLeague2026.metadata?.latest_league_winner_roster_id,
+                winner_roster_id: lData.metadata?.latest_league_winner_roster_id,
                 teams: {}
             };
 
@@ -80,28 +75,22 @@ export async function POST({ request }) {
                 season2025.teams[roster.roster_id] = {
                     manager: user ? user.display_name : "Unknown",
                     teamName: user?.metadata?.team_name || "Unknown Team",
-                    wins: roster.settings?.wins,
                     fpts: (roster.settings?.fpts || 0) + ((roster.settings?.fpts_decimal || 0) / 100)
                 };
             });
             historyArchive.push(season2025);
-        } catch (e) {
-            console.error("2025 Fetch Failed", e);
-        }
+        } catch (e) { console.error("2025 Fetch Failed", e); }
 
-        // 3. AI ORCHESTRATION
         const systemInstruction = `
-            You are the Commissioner for the National Liver Failure League. It is currently April 2026.
+            You are a helpful assistant providing fantasy football league history.
             
-            LEAGUE HISTORY:
+            LEAGUE DATA:
             ${JSON.stringify(historyArchive)}
 
-            DIRECTIONS:
-            1. Use the "teams" object for each year to identify the manager and team name for that specific season.
-            2. To find the winner of a season, look at "winner_roster_id" for that year and match it to the team in that year's "teams" list.
-            3. The 2025 season IS finished. If you see a winner_roster_id for 2025, acknowledge them as the reigning champ.
-            4. Be witty, cynical, and talk trash about their wins and fantasy points (fpts).
-            5. You are slightly hungover and have a headache from the office lights.
+            INSTRUCTIONS:
+            1. For each year, identify the manager whose roster_id matches the winner_roster_id.
+            2. Report the results clearly: Year, Winner Name, Team Name, and Points.
+            3. Do not use a persona. Be direct and factual.
         `;
 
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -111,7 +100,6 @@ export async function POST({ request }) {
         return json({ text: result.response.text() });
 
     } catch (error) {
-        console.error("Critical System Failure:", error);
-        return json({ text: `System Crash: ${error.message}` }, { status: 500 });
+        return json({ text: `System Error: ${error.message}` }, { status: 500 });
     }
 }
