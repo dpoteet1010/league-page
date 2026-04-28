@@ -1,4 +1,4 @@
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueinfo.js';
 import { getNflState } from "./nflStateServer.js";
 import { getLeagueData } from "./leagueDataServer.js";
 import { getLeagueRosters } from "./leagueRostersServer.js";
@@ -6,7 +6,8 @@ import { round } from '$lib/utils/helperFunctions/universalFunctions.js';
 
 /**
  * Server-side version of getLeagueStandings.
- * Corrected: Fixed import path to helperFunctions and added .js extensions.
+ * Calculates current record, points, and division standings.
+ * Resilient against missing settings data.
  */
 export const getLeagueStandings = async () => {
     // 1. Fetch prerequisite data
@@ -19,11 +20,15 @@ export const getLeagueStandings = async () => {
         return [null, null, null];
     });
 
+    // Safety check: If we don't have the core data, abort early
     if (!nflState || !leagueData || !rostersData) return null;
 
     const yearData = leagueData.season;
-    const regularSeasonLength = (leagueData.settings?.playoff_week_start || 15) - 1;
-    const divisions = leagueData.settings?.divisions && leagueData.settings.divisions > 1;
+    
+    // Safety check: Use optional chaining for settings
+    const playoffStart = leagueData.settings?.playoff_week_start || 15;
+    const regularSeasonLength = playoffStart - 1;
+    const divisions = (leagueData.settings?.divisions || 0) > 1;
     const rosters = rostersData.rosters;
 
     // 2. Validate season status
@@ -36,14 +41,18 @@ export const getLeagueStandings = async () => {
     let standings = {};
     for (const rosterID in rosters) {
         const roster = rosters[rosterID];
+        
+        // Ensure roster.settings exists before accessing properties
+        const settings = roster.settings || {};
+        
         standings[rosterID] = {
             rosterID,
-            wins: roster.settings.wins,
-            losses: roster.settings.losses,
-            ties: roster.settings.ties,
-            fpts: round(roster.settings.fpts + (roster.settings.fpts_decimal / 100)),
-            fptsAgainst: round(roster.settings.fpts_against + (roster.settings.fpts_against_decimal / 100)),
-            streak: roster.metadata?.streak || "0W", // Default to 0W if not present
+            wins: settings.wins || 0,
+            losses: settings.losses || 0,
+            ties: settings.ties || 0,
+            fpts: round((settings.fpts || 0) + ((settings.fpts_decimal || 0) / 100)),
+            fptsAgainst: round((settings.fpts_against || 0) + ((settings.fpts_against_decimal || 0) / 100)),
+            streak: roster.metadata?.streak || "0W",
             divisionWins: divisions ? 0 : null,
             divisionLosses: divisions ? 0 : null,
             divisionTies: divisions ? 0 : null,
@@ -65,7 +74,8 @@ export const getLeagueStandings = async () => {
             for (let i = week - 1; i > 0; i--) {
                 matchupsPromises.push(
                     fetch(`https://api.sleeper.app/v1/league/${defaultLeagueID}/matchups/${i}`)
-                        .then(res => res.json())
+                        .then(res => res.ok ? res.json() : [])
+                        .catch(() => [])
                 );
             }
 
@@ -75,7 +85,9 @@ export const getLeagueStandings = async () => {
             });
 
             for (const matchup of matchupsData) {
-                standings = processStandings(matchup, standings, rosters);
+                if (Array.isArray(matchup)) {
+                    standings = processStandings(matchup, standings, rosters);
+                }
             }
         }
     }
