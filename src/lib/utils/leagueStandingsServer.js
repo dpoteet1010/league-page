@@ -1,4 +1,4 @@
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueinfo.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
 import { getNflState } from "./nflStateServer.js";
 import { getLeagueData } from "./leagueDataServer.js";
 import { getLeagueRosters } from "./leagueRostersServer.js";
