@@ -1,6 +1,6 @@
 import { getLeagueData } from './leagueDataServer.js';
 import { getLeagueRosters } from './leagueRostersServer.js';
-import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
 import { localDrafts } from './helperFunctions/localDrafts.js';
 import { draftSummaries } from './helperFunctions/draft_summary.js';
 
