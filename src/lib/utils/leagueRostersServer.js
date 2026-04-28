@@ -1,4 +1,4 @@
-import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
 import { legacyLeagueRosters } from './helperFunctions/legacyLeagueRosters.js';
 
 /**
