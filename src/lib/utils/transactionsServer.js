@@ -1,7 +1,7 @@
 import { getLeagueData } from './leagueDataServer.js';
 import { getNflState } from './nflStateServer.js';
 import { getLeagueTeamManagers } from './leagueTeamManagersServer.js';
-import { leagueID as defaultLeagueID } from '$lib/utils/helperFunctions/leagueInfo.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
 import { legacyTransactions as legacyTransactionData } from './helperFunctions/legacyTransactions.js';
 
 /**
