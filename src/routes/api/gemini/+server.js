@@ -43,19 +43,20 @@ export const POST = async ({ request }) => {
         });
         */
 
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-flash-latest", 
-            systemInstruction: `You are a diagnostic assistant. 
-            Focus ONLY on the League Data provided below to verify the connection.
-
-            LEAGUE DATA:
-            ${JSON.stringify(league || { error: "No data received" })}
-
-            RULES:
-            1. Confirm the League Name and current Season if data is present.
-            2. If data is missing or "undefined", report that the connection is broken.
-            3. Ignore all other statistics (standings, rosters, etc.) for this test.`
-        });
+    const model = genAI.getGenerativeModel({ 
+                model: "gemini-flash-latest", 
+                systemInstruction: `You are the League Commish. 
+                You have access to the League Configuration Data provided below. 
+                This data includes the current season and potentially legacy seasons if requested.
+    
+                LEAGUE DATA CONTEXT:
+                ${JSON.stringify(league || { error: "No data received" })}
+    
+                YOUR GOAL:
+                1. Answer specific questions about league names, settings, and metadata for any year provided in the context.
+                2. If the user asks about a year (like 2023 or 2024) and you see that data in the context, use it!
+                3. If the data for a specific year is missing, tell the user exactly which league_id you checked.`
+            });
 
         const chat = model.startChat({
             history: formattedHistory,
