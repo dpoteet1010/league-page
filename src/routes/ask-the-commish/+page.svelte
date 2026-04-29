@@ -1,6 +1,11 @@
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, tick } from 'svelte';
     import { fly } from 'svelte/transition';
+    import { get } from 'svelte/store';
+    
+    // IMPORT YOUR STORES (Adjust paths as necessary)
+    import { leagueData, rosters, users } from '$lib/stores'; 
+    import { legacyLeagueData } from '$lib/utils/helperFunctions/legacyLeagueData.js';
 
     let query = "";
     let chatHistory = [
@@ -9,8 +14,9 @@
     let isTyping = false;
     let chatContainer;
 
-    // Auto-scroll to bottom when messages change
+    // Auto-scroll logic
     const scrollToBottom = async () => {
+        await tick();
         if (chatContainer) {
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
@@ -26,11 +32,24 @@
         
         await scrollToBottom();
 
+        // --- OPTION 3: PREPARE DATA PACKET ---
+        // Instead of the server fetching, we grab what the website already knows
+        const contextData = {
+            currentLeague: get(leagueData), // Data for 2025/2026
+            history: legacyLeagueData,      // Data for 2023/2024
+            rosterMapping: get(rosters),    // Current Roster IDs to User IDs
+            managers: get(users)            // Current User IDs to Names
+        };
+
         try {
-            const response = await fetch('/api/gemini', {
+            const response = await fetch('/api/chat', { // Updated to match standard path
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: userMessage })
+                body: JSON.stringify({ 
+                    message: userMessage,
+                    history: chatHistory.slice(0, -1), // Send existing chat history
+                    contextData: contextData           // DATA INJECTION
+                })
             });
 
             const data = await response.json();
@@ -89,6 +108,7 @@
 </div>
 
 <style>
+    /* ... (Styles remain the same as your original code) ... */
     .chat-wrapper {
         max-width: 800px;
         margin: 2rem auto;
@@ -100,102 +120,24 @@
         border: 1px solid #333;
         overflow: hidden;
     }
-
-    .header {
-        padding: 1rem;
-        background: #222;
-        border-bottom: 1px solid #333;
-        text-align: center;
-    }
-
+    .header { padding: 1rem; background: #222; border-bottom: 1px solid #333; text-align: center; }
     .header h1 { margin: 0; font-size: 1.2rem; color: #fff; }
     .header p { margin: 0; font-size: 0.8rem; color: #888; }
-
-    .chat-container {
-        flex: 1;
-        padding: 1.5rem;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .message {
-        display: flex;
-        width: 100%;
-    }
-
+    .chat-container { flex: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; }
+    .message { display: flex; width: 100%; }
     .message.user { justify-content: flex-end; }
     .message.assistant { justify-content: flex-start; }
-
-    .bubble {
-        max-width: 80%;
-        padding: 0.8rem 1.2rem;
-        border-radius: 18px;
-        font-size: 0.95rem;
-        line-height: 1.4;
-    }
-
-    .user .bubble {
-        background: #007bff;
-        color: white;
-        border-bottom-right-radius: 4px;
-    }
-
-    .assistant .bubble {
-        background: #333;
-        color: #eee;
-        border-bottom-left-radius: 4px;
-    }
-
-    .input-area {
-        display: flex;
-        padding: 1rem;
-        background: #222;
-        gap: 0.5rem;
-    }
-
-    input {
-        flex: 1;
-        padding: 0.8rem;
-        border-radius: 8px;
-        border: 1px solid #444;
-        background: #111;
-        color: white;
-        outline: none;
-    }
-
+    .bubble { max-width: 80%; padding: 0.8rem 1.2rem; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; }
+    .user .bubble { background: #007bff; color: white; border-bottom-right-radius: 4px; }
+    .assistant .bubble { background: #333; color: #eee; border-bottom-left-radius: 4px; }
+    .input-area { display: flex; padding: 1rem; background: #222; gap: 0.5rem; }
+    input { flex: 1; padding: 0.8rem; border-radius: 8px; border: 1px solid #444; background: #111; color: white; outline: none; }
     input:focus { border-color: #007bff; }
-
-    button {
-        padding: 0 1.5rem;
-        background: #007bff;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-weight: bold;
-    }
-
-    button:disabled {
-        background: #444;
-        cursor: not-allowed;
-    }
-
-    /* Typing Animation */
+    button { padding: 0 1.5rem; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #444; cursor: not-allowed; }
     .typing { display: flex; gap: 4px; padding: 12px 20px; }
-    .dot {
-        width: 6px;
-        height: 6px;
-        background: #888;
-        border-radius: 50%;
-        animation: blink 1.4s infinite both;
-    }
+    .dot { width: 6px; height: 6px; background: #888; border-radius: 50%; animation: blink 1.4s infinite both; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
-
-    @keyframes blink {
-        0%, 80%, 100% { opacity: 0.2; }
-        40% { opacity: 1; }
-    }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
 </style>
