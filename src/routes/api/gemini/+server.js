@@ -45,7 +45,7 @@ export const POST = async ({ request }) => {
         });
 
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-flash-latest", 
             systemInstruction: `You are the League Commish. You now have the ability to see REAL names.
 
             CONTEXT:
