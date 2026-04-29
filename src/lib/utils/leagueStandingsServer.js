@@ -3,43 +3,41 @@ import { getNflState } from "./nflStateServer.js";
 import { getLeagueData } from "./leagueDataServer.js";
 import { getLeagueRosters } from "./leagueRostersServer.js";
 import { round } from '$lib/utils/helperFunctions/universalFunctions.js';
+import { legacyMatchups } from './helperFunctions/legacyMatchups.js'; // Import local matchups
 
 /**
  * Server-side version of getLeagueStandings.
- * Calculates current record, points, and division standings.
- * Fully resilient against malformed or missing Sleeper settings.
+ * Now supports historical years by accepting a queryLeagueID.
  */
-export const getLeagueStandings = async () => {
-    // 1. Fetch prerequisite data
+export const getLeagueStandings = async (queryLeagueID = defaultLeagueID) => {
+    // 1. Fetch prerequisite data (Hybrid-aware thanks to previous fixes)
     const [nflState, leagueData, rostersData] = await Promise.all([
         getNflState(),
-        getLeagueData(),
-        getLeagueRosters(),
+        getLeagueData(queryLeagueID),
+        getLeagueRosters(queryLeagueID),
     ]).catch((err) => { 
         console.error("Standings Pre-fetch Error:", err); 
         return [null, null, null];
     });
 
-    // 2. Safety Guards: Abort if core data is missing
     if (!nflState || !leagueData || !rostersData) return null;
 
-    // 3. Extract settings with fallbacks
     const settings = leagueData.settings || {};
     const yearData = leagueData.season;
+    const isLegacy = queryLeagueID === "2023" || queryLeagueID === "2024";
     
-    // Safety check: Prevents the "playoff_week_start" undefined crash
     const playoffStart = settings.playoff_week_start || 15;
     const regularSeasonLength = playoffStart - 1;
     const divisions = (settings.divisions || 0) > 1;
     const rosters = rostersData.rosters;
 
-    // 4. Validate season status
+    // 2. Validate season status
     const validStatus = ["in_season", "post_season", "complete"];
-    if (!validStatus.includes(leagueData.status) || nflState.week < 1) {
+    if (!isLegacy && (!validStatus.includes(leagueData.status) || nflState.week < 1)) {
         return null;
     }
 
-    // 5. Initialize Standings Object
+    // 3. Initialize Standings Object
     let standings = {};
     for (const rosterID in rosters) {
         const roster = rosters[rosterID];
@@ -59,34 +57,39 @@ export const getLeagueStandings = async () => {
         }
     }
 
-    // 6. Calculate Division Stats
+    // 4. Calculate Division Stats (Hybrid Logic)
     if (divisions) {
-        let week = 0;
-        if (nflState.season_type == 'regular') {
-            week = nflState.display_week > regularSeasonLength ? regularSeasonLength + 1 : nflState.display_week;
-        } else if (nflState.season_type == 'post') {
-            week = regularSeasonLength + 1;
-        }
+        let matchupsDataArray = [];
 
-        if (week >= 2) {
-            const matchupsPromises = [];
-            for (let i = week - 1; i > 0; i--) {
-                matchupsPromises.push(
-                    fetch(`https://api.sleeper.app/v1/league/${defaultLeagueID}/matchups/${i}`)
-                        .then(res => res.ok ? res.json() : [])
-                        .catch(() => [])
-                );
+        if (isLegacy) {
+            // Use local matchups for 2023/2024
+            matchupsDataArray = legacyMatchups[yearData] || [];
+        } else {
+            // Use Sleeper API for 2025/2026
+            let week = 0;
+            if (nflState.season_type == 'regular') {
+                week = nflState.display_week > regularSeasonLength ? regularSeasonLength + 1 : nflState.display_week;
+            } else if (nflState.season_type == 'post') {
+                week = regularSeasonLength + 1;
             }
 
-            const matchupsDataArray = await Promise.all(matchupsPromises).catch((err) => {
-                console.error("Division Matchup Fetch Error:", err);
-                return [];
-            });
-
-            for (const matchup of matchupsDataArray) {
-                if (Array.isArray(matchup)) {
-                    standings = processStandings(matchup, standings, rosters);
+            if (week >= 2) {
+                const matchupsPromises = [];
+                for (let i = week - 1; i > 0; i--) {
+                    matchupsPromises.push(
+                        fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`)
+                            .then(res => res.ok ? res.json() : [])
+                            .catch(() => [])
+                    );
                 }
+                matchupsDataArray = await Promise.all(matchupsPromises);
+            }
+        }
+
+        // Process the gathered matchups
+        for (const matchup of matchupsDataArray) {
+            if (Array.isArray(matchup)) {
+                standings = processStandings(matchup, standings, rosters);
             }
         }
     }
@@ -97,17 +100,11 @@ export const getLeagueStandings = async () => {
     };
 }
 
-/**
- * Helper to determine division wins/losses by comparing head-to-head scores
- */
 const processStandings = (matchup, standingsData, rosters) => {
     const matchups = {};
     for (const match of matchup) {
         if (!match || !match.roster_id) continue;
-        
-        if (!matchups[match.matchup_id]) {
-            matchups[match.matchup_id] = [];
-        }
+        if (!matchups[match.matchup_id]) matchups[match.matchup_id] = [];
         
         const rosterID = match.roster_id;
         matchups[match.matchup_id].push({
@@ -121,11 +118,9 @@ const processStandings = (matchup, standingsData, rosters) => {
         const teamA = matchups[matchupKey][0];
         const teamB = matchups[matchupKey][1];
 
-        const divisionMatchup = teamA && teamB && 
-                               teamA.division && teamB.division && 
-                               teamA.division == teamB.division;
+        const isDivMatch = teamA && teamB && teamA.division && teamB.division && teamA.division == teamB.division;
 
-        if (divisionMatchup) {
+        if (isDivMatch && standingsData[teamA.rosterID] && standingsData[teamB.rosterID]) {
             if (teamA.points > teamB.points) {
                 standingsData[teamA.rosterID].divisionWins++;
                 standingsData[teamB.rosterID].divisionLosses++;
