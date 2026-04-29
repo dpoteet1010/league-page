@@ -57,7 +57,7 @@ export const POST = async ({ request }) => {
         */
 
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-flash-latest", 
             systemInstruction: `You are the League Commish.
             
             You have access to a HISTORY of league settings. Each year has its own name, roster positions, and metadata (like winners).
