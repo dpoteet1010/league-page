@@ -44,7 +44,7 @@ export const POST = async ({ request }) => {
         */
 
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-flash-latest", 
             systemInstruction: `You are a diagnostic assistant. 
             Focus ONLY on the League Data provided below to verify the connection.
 
