@@ -9,13 +9,10 @@ export const POST = async ({ request }) => {
         const { message, history, contextData } = await request.json();
 
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-flash-latest", 
-            systemInstruction: `You are the League Commish. You are a data-driven analyst.
-            Use the provided contextData to answer questions. 
-            The contextData includes live data for the current season and legacy data for past seasons.
-            
-            Always bridge Roster IDs to Real Names using the mapping provided.
-            Be professional, concise, and witty.`
+            model: "gemini-1.5-flash", 
+            systemInstruction: `You are a helpful league assistant. 
+            You are being tested on your ability to read 'contextData'. 
+            Answer questions based ONLY on the league information provided in the context.`
         });
 
         const formattedHistory = (history || []).map(item => ({
@@ -25,20 +22,20 @@ export const POST = async ({ request }) => {
 
         const chat = model.startChat({ history: formattedHistory });
 
-        // We combine the message with the context data for the ultimate prompt
-        const fullPrompt = `
-            CONTEXT DATA: ${JSON.stringify(contextData)}
+        // Combine the injected context with the user's specific question
+        const testPrompt = `
+            CONTEXT DATA: ${JSON.stringify(contextData.leagueInfo)}
             
             USER QUESTION: ${message}
         `;
 
-        const result = await chat.sendMessage(fullPrompt);
+        const result = await chat.sendMessage(testPrompt);
         const response = await result.response;
         
         return json({ text: response.text() });
 
     } catch (error) {
-        console.error("Gemini Error:", error);
-        return json({ error: "Commish is offline." }, { status: 500 });
+        console.error("Test Error:", error);
+        return json({ error: "The Commish is offline." }, { status: 500 });
     }
 };
