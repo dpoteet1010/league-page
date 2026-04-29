@@ -1,4 +1,4 @@
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueinfo.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo.js';
 // Import your local legacy transaction data
 import { legacyTransactions } from './helperFunctions/legacyTransactions.js';
 
