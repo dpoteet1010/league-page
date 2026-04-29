@@ -7,11 +7,6 @@ import { getLeagueData } from '$lib/utils/leagueDataServer.js';
 import { getLeagueTeamManagers } from '$lib/utils/leagueTeamManagersServer.js';
 import { getLeagueRosters } from '$lib/utils/leagueRostersServer.js';
 
-// --- INACTIVE IMPORTS ---
-// import { getLeagueStandings } from '$lib/utils/leagueStandingsServer.js';
-// import { getLeagueTransactions } from '$lib/utils/transactionsServer.js';
-// import { getLeagueRecords } from '$lib/utils/leagueRecordsServer.js';
-
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export const POST = async ({ request }) => {
@@ -24,42 +19,44 @@ export const POST = async ({ request }) => {
             parts: [{ text: String(item.text || item.parts?.[0]?.text || "") }],
         }));
 
-        // 1. Fetch League Data (History Walk)
-        const leagueHistory = {};
-        const currentLeague = await getLeagueData().catch(() => null); 
-        if (currentLeague) {
-            leagueHistory[currentLeague.season] = currentLeague;
-            const year2024 = await getLeagueData("2024").catch(() => null);
-            const year2023 = await getLeagueData("2023").catch(() => null);
-            if (year2024) leagueHistory["2024"] = year2024;
-            if (year2023) leagueHistory["2023"] = year2023;
-        }
+        // --- OPTIMIZED PARALLEL FETCH ---
+        // Fire all requests at once to stay under the 10s Vercel timeout
+        const [
+            currentLeague, 
+            year2024, 
+            year2023, 
+            managersData, 
+            rostersData
+        ] = await Promise.all([
+            getLeagueData().catch(e => { console.error(e); return null; }),
+            getLeagueData("2024").catch(e => { console.error(e); return null; }),
+            getLeagueData("2023").catch(e => { console.error(e); return null; }),
+            getLeagueTeamManagers().catch(e => { console.error(e); return { teamManagersMap: {} }; }),
+            getLeagueRosters().catch(e => { console.error(e); return {}; })
+        ]);
 
-        // 2. Fetch Managers and Rosters (The Bridge)
-        const [managersData, rostersData] = await Promise.all([
-            getLeagueTeamManagers(),
-            getLeagueRosters()
-        ]).catch(err => {
-            console.error("Context Fetching Error:", err);
-            return [{}, {}];
-        });
+        // Organize the history for the AI
+        const leagueHistory = {};
+        if (currentLeague) leagueHistory[currentLeague.season] = currentLeague;
+        if (year2024) leagueHistory["2024"] = year2024;
+        if (year2023) leagueHistory["2023"] = leagueHistory["2023"] || year2023;
 
         const model = genAI.getGenerativeModel({ 
             model: "gemini-flash-latest", 
-            systemInstruction: `You are the League Commish. You now have the ability to see REAL names.
+            systemInstruction: `You are the League Commish. You have access to the full history and manager identities.
 
             CONTEXT:
-            - League History: ${JSON.stringify(leagueHistory)}
-            - Manager Profiles: ${JSON.stringify(managersData.teamManagersMap || {})}
-            - Roster Mapping: ${JSON.stringify(rostersData || {})}
+            - League History (Settings/Winners): ${JSON.stringify(leagueHistory)}
+            - Manager Profiles (IDs to Names): ${JSON.stringify(managersData.teamManagersMap || {})}
+            - Roster Mapping (Roster ID to User ID): ${JSON.stringify(rostersData || {})}
 
-            DIAGNOSTIC RULES:
-            1. To find a winner's name: 
-               a. Look at the "metadata.latest_league_winner_roster_id" for a year.
-               b. Use the "Roster Mapping" for that year to find the "user_id" for that roster.
-               c. Use the "Manager Profiles" for that year to find the "name" for that user_id.
-            2. ALWAYS use real names or team names if available. 
-            3. If you can't find a name, tell the user exactly which Roster ID or User ID was missing in the chain.`
+            DIAGNOSTIC WORKFLOW:
+            1. If asked for a winner of a specific year:
+               a. Find 'latest_league_winner_roster_id' in History for that year.
+               b. Match that Roster ID to a 'user_id' in Roster Mapping.
+               c. Match that 'user_id' to a Name in Manager Profiles.
+            2. Always prioritize Real Names or Team Names.
+            3. Stay in character as a professional commissioner. If data is missing, explain exactly where the link in the chain broke.`
         });
 
         const chat = model.startChat({ history: formattedHistory });
@@ -70,6 +67,6 @@ export const POST = async ({ request }) => {
 
     } catch (error) {
         console.error("Gemini API Route Error:", error);
-        return json({ error: error.message || "The Commish is offline." }, { status: 500 });
+        return json({ error: "The Commish is timed out. Try again in a moment." }, { status: 500 });
     }
 };
