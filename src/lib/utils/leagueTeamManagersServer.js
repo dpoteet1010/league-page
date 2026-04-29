@@ -1,56 +1,59 @@
-import { leagueID } from '$lib/utils/leagueInfo';
-import { legacyLeagueUsers } from './helperFunctions/legacyLeagueUsers.js';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo.js';
+// Import your local legacy user data (2023/2024)
+import { legacyUsers } from './helperFunctions/legacyUsers.js'; 
 
 /**
  * Server-side version of getLeagueTeamManagers.
- * Corrected: Path to leagueInfo, .js extension, and structural alignment for Gemini.
+ * Consolidates Sleeper users and legacy local users into a single map.
  */
-export const getLeagueTeamManagers = async () => {
-    // 1. Fetch Current Sleeper Users
-    const res = await fetch(`https://api.sleeper.app/v1/league/${leagueID}/users`);
-    if (!res.ok) throw new Error("Managers Fetch Failed");
-    const currentUsers = await res.json();
-    
-    // 2. Initialize the master data object
-    // Note: We use 'teamManagersMap' to match the expectations of your Gemini system prompt
-    const finalData = {
-        users: {},           // Global map of user_id -> user object
-        teamManagersMap: {}  // Seasonal map: { "2023": { user_id: user }, ... }
-    };
-
-    // 3. Process Current Users (Assuming 2026 based on your current project state)
-    const currentYear = "2026"; 
-    finalData.teamManagersMap[currentYear] = {};
-
-    for (const user of currentUsers) {
-        const userData = {
-            user_id: user.user_id,
-            display_name: user.display_name,
-            avatar: user.avatar
-        };
-        finalData.users[user.user_id] = userData;
-        finalData.teamManagersMap[currentYear][user.user_id] = userData;
-    }
-
-    // 4. Inject Legacy Users (2023 & 2024)
-    for (const year in legacyLeagueUsers) {
-        finalData.teamManagersMap[year] = {};
-        for (const user of legacyLeagueUsers[year]) {
-            const userData = {
-                user_id: user.user_id,
-                display_name: user.display_name || user.user_name,
-                avatar: user.avatar
-            };
-            
-            // Add to seasonal map
-            finalData.teamManagersMap[year][user.user_id] = userData;
-            
-            // Add to global map if not already there
-            if (!finalData.users[user.user_id]) {
-                finalData.users[user.user_id] = userData;
-            }
+export const getLeagueTeamManagers = async (queryLeagueID = defaultLeagueID) => {
+    try {
+        // 1. Fetch current Sleeper users (for 2025/2026)
+        const response = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/users`)
+            .catch(() => null);
+        
+        let sleeperUsers = [];
+        if (response && response.ok) {
+            sleeperUsers = await response.json();
         }
-    }
 
-    return finalData;
-}
+        // 2. Initialize the Global Manager Map with your Legacy Data
+        // legacyUsers should be structured as: { "2023": { "1": { name: "..." }, ... }, "2024": {...} }
+        const teamManagersMap = {
+            ...legacyUsers, 
+        };
+
+        // 3. Process Sleeper users into the current season slot
+        // We'll dynamically determine the year from the context or a default
+        const currentYear = "2025"; 
+        
+        // Ensure we don't overwrite if it already exists, or initialize it
+        if (!teamManagersMap[currentYear]) {
+            teamManagersMap[currentYear] = {};
+        }
+        
+        for (const user of sleeperUsers) {
+            // Sleeper uses user_id to link to rosters
+            const uid = user.user_id;
+            
+            teamManagersMap[currentYear][uid] = {
+                name: user.metadata?.team_name || user.display_name || "Unknown Manager",
+                avatar: user.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
+                display_name: user.display_name
+            };
+        }
+
+        return { 
+            teamManagersMap,
+            success: true 
+        };
+
+    } catch (err) {
+        console.error("Error in leagueTeamManagersServer:", err);
+        // Fallback to just legacy data if the API fetch fails
+        return { 
+            teamManagersMap: legacyUsers || {}, 
+            success: false 
+        };
+    }
+};
