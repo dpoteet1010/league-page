@@ -1,16 +1,17 @@
 import { getLeagueData } from "./leagueDataServer.js";
 import { getNflState } from "./nflStateServer.js";
-import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo';
+import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo.js';
+import { legacyMatchups } from './helperFunctions/legacyMatchups.js';
 
 /**
  * Server-side version of getLeagueMatchups.
- * Corrected: Updated paths to helperFunctions and added .js extensions.
+ * Handles both Sleeper API chains and local legacy years.
  */
-export const getLeagueMatchups = async () => {
-    // 1. Fetch NFL state and League configuration
+export const getLeagueMatchups = async (queryLeagueID = defaultLeagueID) => {
+    // 1. Fetch NFL state and League configuration (Hybrid-aware)
     const [nflState, leagueData] = await Promise.all([
         getNflState(),
-        getLeagueData(),
+        getLeagueData(queryLeagueID),
     ]).catch((err) => { 
         console.error("Matchups Pre-fetch Error:", err); 
         return [null, null];
@@ -18,7 +19,11 @@ export const getLeagueMatchups = async () => {
 
     if (!nflState || !leagueData) return null;
 
-    // 2. Determine current timeline
+    const year = leagueData.season;
+    const isLegacy = queryLeagueID === "2023" || queryLeagueID === "2024";
+    const regularSeasonLength = (leagueData.settings?.playoff_week_start || 15) - 1;
+
+    // 2. Determine current timeline for Sleeper seasons
     let week = 1;
     if (nflState.season_type == 'regular') {
         week = nflState.display_week;
@@ -26,37 +31,42 @@ export const getLeagueMatchups = async () => {
         week = 18;
     }
 
-    const year = leagueData.season;
-    const regularSeasonLength = leagueData.settings.playoff_week_start - 1;
-
-    // 3. Queue up all regular season matchup fetches
-    const matchupsPromises = [];
-    for (let i = 1; i < leagueData.settings.playoff_week_start; i++) {
-        matchupsPromises.push(
-            fetch(`https://api.sleeper.app/v1/league/${defaultLeagueID}/matchups/${i}`)
-                .then(res => {
-                    if (!res.ok) throw new Error(`Failed to fetch week ${i}`);
-                    return res.json();
-                })
-        );
-    }
-
-    // 4. Resolve all weekly data
-    const matchupsData = await Promise.all(matchupsPromises).catch((err) => { 
-        console.error("Batch Matchup Fetch Error:", err);
-        return [];
-    });
-
     const matchupWeeks = [];
-    
-    // 5. Process weeks into a keyed matchup object
-    for (let i = 1; i <= matchupsData.length; i++) {
-        const processed = processMatchups(matchupsData[i - 1], i);
-        if (processed) {
-            matchupWeeks.push({
-                matchups: processed.matchups,
-                week: processed.week
-            });
+
+    // 3. HYBRID LOGIC: Check for Legacy Data First
+    if (isLegacy) {
+        // If 2023/2024, pull from local legacyMatchups.js
+        const legacyData = legacyMatchups[year] || [];
+        
+        // Legacy data is usually already processed or stored as weekly arrays
+        for (let i = 0; i < legacyData.length; i++) {
+            const processed = processMatchups(legacyData[i], i + 1);
+            if (processed) {
+                matchupWeeks.push(processed);
+            }
+        }
+    } else {
+        // 4. SLEEPER LOGIC: Fetch from API
+        const matchupsPromises = [];
+        for (let i = 1; i <= regularSeasonLength; i++) {
+            matchupsPromises.push(
+                fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`)
+                    .then(res => res.ok ? res.json() : [])
+                    .catch(() => [])
+            );
+        }
+
+        const matchupsData = await Promise.all(matchupsPromises).catch((err) => { 
+            console.error("Batch Matchup Fetch Error:", err);
+            return [];
+        });
+
+        // Process weeks into a keyed matchup object
+        for (let i = 1; i <= matchupsData.length; i++) {
+            const processed = processMatchups(matchupsData[i - 1], i);
+            if (processed) {
+                matchupWeeks.push(processed);
+            }
         }
     }
 
@@ -84,7 +94,7 @@ const processMatchups = (inputMatchups, week) => {
             roster_id: match.roster_id,
             starters: match.starters,
             points: match.starters_points,
-            total_points: match.points // Adding total points as well for easier AI parsing
+            total_points: match.points // Useful for AI context
         });
     }
     return { matchups, week };
