@@ -18,18 +18,31 @@ export const POST = async ({ request }) => {
     try {
         const { message, history } = await request.json();
 
+        // Ensure the message is a clean string
+        const cleanMessage = String(message?.text || message || "");
+
         const formattedHistory = (history || []).map(item => ({
             role: item.role === 'user' ? 'user' : 'model',
             parts: [{ text: String(item.text || item.parts?.[0]?.text || "") }],
         }));
 
-        // --- ACTIVE FETCH ---
-        const league = await getLeagueData().catch(err => {
-            console.error("League Data Fetch Error:", err);
-            return null;
-        });
+        // --- ACTIVE FETCH (The "History Walk") ---
+        const leagueHistory = {};
+        
+        // 1. Get the current season (Sleeper)
+        const currentLeague = await getLeagueData().catch(() => null); 
+        if (currentLeague) {
+            leagueHistory[currentLeague.season] = currentLeague;
+        }
 
-        // --- INACTIVE FETCHES ---
+        // 2. Explicitly fetch Legacy years (from your local data logic)
+        const year2024 = await getLeagueData("2024").catch(() => null);
+        const year2023 = await getLeagueData("2023").catch(() => null);
+
+        if (year2024) leagueHistory["2024"] = year2024;
+        if (year2023) leagueHistory["2023"] = year2023;
+
+        // --- INACTIVE FETCHES (Commented out for visibility) ---
         /*
         const [standings, rosters, managers, transactions, records] = await Promise.all([
             getLeagueStandings(),
@@ -43,26 +56,28 @@ export const POST = async ({ request }) => {
         });
         */
 
-    const model = genAI.getGenerativeModel({ 
-                model: "gemini-flash-latest", 
-                systemInstruction: `You are the League Commish. 
-                You have access to the League Configuration Data provided below. 
-                This data includes the current season and potentially legacy seasons if requested.
-    
-                LEAGUE DATA CONTEXT:
-                ${JSON.stringify(league || { error: "No data received" })}
-    
-                YOUR GOAL:
-                1. Answer specific questions about league names, settings, and metadata for any year provided in the context.
-                2. If the user asks about a year (like 2023 or 2024) and you see that data in the context, use it!
-                3. If the data for a specific year is missing, tell the user exactly which league_id you checked.`
-            });
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash", 
+            systemInstruction: `You are the League Commish.
+            
+            You have access to a HISTORY of league settings. Each year has its own name, roster positions, and metadata (like winners).
+            
+            LEAGUE HISTORY CONTEXT:
+            ${JSON.stringify(leagueHistory)}
+
+            GOAL:
+            - When asked about 2023, look at the data under the "2023" key.
+            - When asked about 2024, look at the data under the "2024" key.
+            - If asked about "latest_league_winner_roster_id", check the "metadata" section for that specific year.
+            - If data is missing for a year, be specific about what you looked for.
+            - Keep the persona professional but firm, like a real fantasy commissioner.`
+        });
 
         const chat = model.startChat({
             history: formattedHistory,
         });
 
-        const result = await chat.sendMessage(String(message));
+        const result = await chat.sendMessage(cleanMessage);
         const response = await result.response;
         
         return json({ text: response.text() });
