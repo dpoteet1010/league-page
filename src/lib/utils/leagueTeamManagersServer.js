@@ -1,16 +1,16 @@
 import { leagueID as defaultLeagueID } from '$lib/utils/leagueInfo.js';
 import { legacyLeagueUsers } from './helperFunctions/legacyLeagueUsers.js'; 
+import { getLeagueData } from './leagueDataServer.js';
 
 /**
  * Server-side version of getLeagueTeamManagers.
- * Maps both Sleeper API and local legacy arrays into a consistent [year][userID] object.
+ * Dynamically walks the Sleeper chain and merges with local legacy data.
  */
 export const getLeagueTeamManagers = async (queryLeagueID = defaultLeagueID) => {
     try {
         const teamManagersMap = {};
 
-        // 1. Process Legacy Data (2023 & 2024)
-        // Since these are arrays, we loop through them to build the nested map
+        // 1. Process Legacy Data (The only hardcoded part)
         for (const year in legacyLeagueUsers) {
             teamManagersMap[year] = {};
             legacyLeagueUsers[year].forEach(user => {
@@ -22,25 +22,35 @@ export const getLeagueTeamManagers = async (queryLeagueID = defaultLeagueID) => 
             });
         }
 
-        // 2. Fetch and Process Current Sleeper Users (e.g., 2025/2026)
-        const response = await fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/users`)
-            .catch(() => null);
-        
-        if (response && response.ok) {
-            const sleeperUsers = await response.json();
-            
-            // We'll assume the active season is 2025 for this slot
-            // You can also dynamically pull this from leagueData if preferred
-            const currentYear = "2025"; 
-            if (!teamManagersMap[currentYear]) teamManagersMap[currentYear] = {};
+        // 2. Dynamically walk the Sleeper Chain
+        let loopID = queryLeagueID;
+        while (loopID && loopID !== "0" && loopID !== "2023" && loopID !== "2024") {
+            // Get league info to find out what YEAR this ID belongs to
+            const leagueInfo = await getLeagueData(loopID);
+            if (!leagueInfo) break;
 
-            sleeperUsers.forEach(user => {
-                const uid = user.user_id;
-                teamManagersMap[currentYear][uid] = {
-                    name: user.metadata?.team_name || user.display_name || "Unknown Manager",
-                    avatar: user.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
-                };
-            });
+            const year = leagueInfo.season;
+            
+            // Fetch users for this specific year in the chain
+            const response = await fetch(`https://api.sleeper.app/v1/league/${loopID}/users`)
+                .catch(() => null);
+            
+            if (response && response.ok) {
+                const sleeperUsers = await response.json();
+                
+                if (!teamManagersMap[year]) teamManagersMap[year] = {};
+
+                sleeperUsers.forEach(user => {
+                    const uid = user.user_id;
+                    teamManagersMap[year][uid] = {
+                        name: user.metadata?.team_name || user.display_name || "Unknown Manager",
+                        avatar: user.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
+                    };
+                });
+            }
+
+            // Move to the previous year in the Sleeper chain
+            loopID = leagueInfo.previous_league_id;
         }
 
         return { 
