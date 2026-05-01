@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { matchupsStore } from '$lib/stores';
 
-export const getLeagueStateInference = () => {
+export const getLeagueState = () => {
     const data = get(matchupsStore);
     if (!data.matchupWeeks) return null;
 
