@@ -1,6 +1,6 @@
 <!-- src/routes/test-engine/+page.svelte -->
 <script>
-    import { getLeagueMatchups } from '$lib/utils/matchups'; // Your existing fetcher
+    import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js'; // Your existing fetcher
     import { generateLeagueInsights } from '$lib/utils/dataEngine/leagueState';
     import { onMount } from 'svelte';
 
