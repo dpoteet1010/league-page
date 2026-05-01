@@ -1,7 +1,7 @@
 <!-- src/routes/test-engine/+page.svelte -->
 <script>
     import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js'; // Your existing fetcher
-    import { generateLeagueInsights } from '$lib/utils/dataEngine/leagueState';
+    import { getLeagueState } from '$lib/utils/dataEngine/leagueState';
     import { onMount } from 'svelte';
 
     let selectedYear = "2025";
