@@ -13,7 +13,7 @@
         // 1. Get the raw matchup data (handles Sleeper or Legacy automatically)
         const data = await getLeagueMatchups(selectedYear); 
         // 2. Run your new Analysis Engine
-        engineOutput = generateLeagueInsights(data.matchupWeeks);
+        engineOutput = getLeagueState(data.matchupWeeks);
         loading = false;
     }
 
