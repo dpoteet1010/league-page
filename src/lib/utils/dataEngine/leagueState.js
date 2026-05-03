@@ -1,27 +1,24 @@
 import { get } from 'svelte/store';
-import { matchupsStore, teamManagersStore } from '$lib/stores';
+import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
 export const getLeagueState = (currentLeagueID) => {
     const data = get(matchupsStore);
     const teamManagersData = get(teamManagersStore);
+    const allLeagueMetadata = get(leagueData);
     
     if (!data.matchupWeeks) return null;
 
-    const stats = {};
+    // 1. Resolve LeagueID to Season/Year
+    // We look in the leagueData store for the object associated with this ID
+    const seasonMetadata = allLeagueMetadata[currentLeagueID];
+    const year = seasonMetadata?.season; // This will be "2023", "2024", etc.
 
-    // 1. Find the season year that corresponds to this League ID
-    // We search the teamManagersMap to see which year contains this league's data
-    const yearEntry = Object.entries(teamManagersData?.teamManagersMap || {}).find(
-        ([year, rosters]) => {
-            // Check if any roster in this year belongs to the currentLeagueID
-            // Note: If your map doesn't store leagueID per roster, 
-            // you can also pass 'year' directly from the UI dropdown.
-            return data.leagueID === currentLeagueID; 
-        }
-    );
+    if (!year) {
+        console.warn(`[getLeagueState] No season year found for LeagueID: ${currentLeagueID}`);
+    }
 
-    const year = yearEntry ? yearEntry[0] : null;
     const yearMap = teamManagersData?.teamManagersMap?.[year] || {};
+    const stats = {};
 
     data.matchupWeeks.forEach(week => {
         Object.values(week.matchups).forEach(matchupGroup => {
@@ -31,9 +28,9 @@ export const getLeagueState = (currentLeagueID) => {
                 if (!stats[t.roster_id]) {
                     const teamInfo = yearMap[t.roster_id];
                     
-                    // Map manager IDs to Display Names
+                    // Map manager IDs to Display Names using the year-specific map
                     const managerNames = teamInfo?.managers?.map(mID => 
-                        teamManagersData.users[mID]?.display_name || "Unknown"
+                        teamManagersData.users?.[mID]?.display_name || "Unknown"
                     ).join(' & ') || "Unknown Manager";
 
                     stats[t.roster_id] = { 
@@ -47,7 +44,7 @@ export const getLeagueState = (currentLeagueID) => {
                 }
             });
 
-            // Math logic
+            // Scoring Logic
             stats[t1.roster_id].pf += t1.points;
             stats[t1.roster_id].pa += t2.points;
             stats[t2.roster_id].pf += t2.points;
