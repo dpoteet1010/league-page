@@ -1,6 +1,6 @@
 <script>
     import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js';
-    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/yourFileName.js'; 
+    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
     import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
     import { matchupsStore, teamManagersStore } from '$lib/stores';
     import { onMount } from 'svelte';
