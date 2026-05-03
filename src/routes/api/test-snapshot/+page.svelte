@@ -1,69 +1,70 @@
-<script>
-    import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js';
-    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
-    import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-    import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
-    import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
-    import { onMount } from 'svelte';
+import { get } from 'svelte/store';
+import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
-    let selectedLeagueID = ""; // Start empty
-    let loading = false;
+export const getLeagueState = (currentLeagueID) => {
+    // 1. Pull current snapshots of all stores
+    const data = get(matchupsStore);
+    const teamManagersData = get(teamManagersStore);
+    const allMetadata = get(leagueData);
+    
+    // Safety check: if matchups haven't loaded, return null
+    if (!data || !data.matchupWeeks) return null;
 
-    // 1. Automatically build the seasons list from the store
-    // This creates an array of {year, id} by looking at the processed data
-    $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
-        .sort((a, b) => b - a) // Most recent first
-        .map(year => {
-            // We find the ID by looking at your leagueData cache for that year
-            const id = Object.keys($leagueData).find(key => $leagueData[key].season == year);
-            return { year, id: id || year }; 
-        });
-
-    // 2. Set the default selection once the store loads
-    $: if (seasons.length > 0 && !selectedLeagueID) {
-        selectedLeagueID = seasons[0].id;
+    // 2. Resolve Year (Handles legacy IDs like "2023" and Sleeper IDs)
+    let year = allMetadata[currentLeagueID]?.season;
+    if (!year && !isNaN(currentLeagueID)) {
+        year = currentLeagueID.toString(); 
     }
 
-    // 3. Reactive calculation
-    $: engineOutput = ($matchupsStore && $teamManagersStore && selectedLeagueID) 
-        ? getLeagueState(selectedLeagueID) 
-        : null;
+    // 3. Get the roster-to-manager mapping for this specific year
+    const yearMap = teamManagersData?.teamManagersMap?.[year] || {};
+    const stats = {};
 
-    async function runEngine() {
-        loading = true;
-        try {
-            // We load the manager map first to populate our dropdown options
-            await getLeagueTeamManagers();
-            // Then fetch the specific matchup data for the current selection
-            if (selectedLeagueID) {
-                await Promise.all([
-                    getLeagueData(selectedLeagueID),
-                    getLeagueMatchups(selectedLeagueID)
-                ]);
+    // 4. Iterate through weeks and matchups
+    data.matchupWeeks.forEach(week => {
+        if (!week.matchups) return;
+
+        Object.values(week.matchups).forEach(matchupGroup => {
+            const [t1, t2] = matchupGroup;
+            if (!t1 || !t2) return;
+
+            // Initialize stats for both teams if they don't exist
+            [t1, t2].forEach(t => {
+                if (!stats[t.roster_id]) {
+                    const teamInfo = yearMap[t.roster_id];
+                    
+                    // Map Manager IDs to Display Names
+                    const managerNames = teamInfo?.managers?.map(mID => 
+                        teamManagersData.users?.[mID]?.display_name || "Unknown"
+                    ).join(' & ') || "Unknown Manager";
+
+                    stats[t.roster_id] = { 
+                        wins: 0, 
+                        losses: 0, 
+                        pf: 0, 
+                        pa: 0,
+                        manager: managerNames,
+                        team: teamInfo?.team?.name || `Team ${t.roster_id}`
+                    };
+                }
+            });
+
+            // 5. Update Points For and Points Against
+            stats[t1.roster_id].pf += t1.points;
+            stats[t1.roster_id].pa += t2.points;
+            stats[t2.roster_id].pf += t2.points;
+            stats[t2.roster_id].pa += t1.points;
+
+            // 6. Update Wins and Losses
+            if (t1.points > t2.points) {
+                stats[t1.roster_id].wins++; 
+                stats[t2.roster_id].losses++;
+            } else if (t2.points > t1.points) {
+                stats[t2.roster_id].wins++; 
+                stats[t1.roster_id].losses++;
             }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            loading = false;
-        }
-    }
+        });
+    });
 
-    onMount(runEngine);
-</script>
-
-<h1>Engine Validator</h1>
-
-{#if seasons.length > 0}
-    <select bind:value={selectedLeagueID} on:change={runEngine}>
-        {#each seasons as season}
-            <option value={season.id}>{season.year}</option>
-        {/each}
-    </select>
-{/if}
-
-<style>
-    .grid { display: flex; gap: 2rem; }
-    pre { background: #f4f4f4; padding: 1rem; max-height: 500px; overflow: auto; font-size: 12px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
-</style>
+    return stats;
+};
