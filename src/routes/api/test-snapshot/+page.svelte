@@ -1,20 +1,38 @@
-<!-- src/routes/test-engine/+page.svelte -->
 <script>
-    import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js'; // Your existing fetcher
-    import { getLeagueState } from '$lib/utils/dataEngine/leagueState';
+    import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js';
+    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/yourFileName.js'; 
+    import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+    import { matchupsStore, teamManagersStore } from '$lib/stores';
     import { onMount } from 'svelte';
 
-    let selectedYear = "2025";
-    let engineOutput = null;
+    // Update these to your actual IDs
+    const seasons = [
+        { year: '2025', id: 'YOUR_2025_ID' },
+        { year: '2024', id: 'YOUR_2024_ID' },
+        { year: '2023', id: 'YOUR_2023_ID' }
+    ];
+
+    let selectedLeagueID = seasons[0].id;
     let loading = false;
+
+    // Reactively run the engine whenever the ID or stores change
+    $: engineOutput = ($matchupsStore && $teamManagersStore) 
+        ? getLeagueState(selectedLeagueID) 
+        : null;
 
     async function runEngine() {
         loading = true;
-        // 1. Get the raw matchup data (handles Sleeper or Legacy automatically)
-        const data = await getLeagueMatchups(selectedYear); 
-        // 2. Run your new Analysis Engine
-        engineOutput = getLeagueState(data.matchupWeeks);
-        loading = false;
+        try {
+            // Pass the ID to your fetcher
+            await Promise.all([
+                getLeagueMatchups(selectedLeagueID),
+                getLeagueTeamManagers()
+            ]);
+        } catch (e) {
+            console.error("Fetch Error:", e);
+        } finally {
+            loading = false;
+        }
     }
 
     onMount(runEngine);
@@ -22,10 +40,10 @@
 
 <h1>Engine Validator</h1>
 
-<select bind:value={selectedYear} on:change={runEngine}>
-    <option value="2023">2023 (Legacy)</option>
-    <option value="2024">2024 (Legacy)</option>
-    <option value="2025">2025 (Sleeper)</option>
+<select bind:value={selectedLeagueID} on:change={runEngine}>
+    {#each seasons as season}
+        <option value={season.id}>{season.year} ({season.id})</option>
+    {/each}
 </select>
 
 {#if loading}
