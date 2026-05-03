@@ -1,6 +1,6 @@
 <script>
     import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js';
-    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/teamManagers.js'; 
+    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
     import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
     import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
     import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
