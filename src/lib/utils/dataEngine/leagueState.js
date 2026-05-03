@@ -1,3 +1,6 @@
+import { get } from 'svelte/store'; 
+import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
+
 export const getLeagueState = (currentLeagueID) => {
     const data = get(matchupsStore);
     const teamManagersData = get(teamManagersStore);
