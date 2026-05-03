@@ -54,9 +54,9 @@
                     {#each Object.entries(engineOutput) as [id, stats]}
                         <tr>
                             <td>{id}</td>
-                            <td>{stats.wins}-{stats.losses}</td>
-                            <td>{stats.pf.toFixed(2)}</td>
-                            <td>{stats.pa.toFixed(2)}</td>
+                            <td>{stats.wins || 0}-{stats.losses || 0}</td>
+                            <td>{Number(stats.pf || 0).toFixed(2)}</td>
+                            <td>{Number(stats.pa || 0).toFixed(2)}</td>
                         </tr>
                     {/each}
                 </tbody>
