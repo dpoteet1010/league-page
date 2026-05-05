@@ -1,53 +1,48 @@
 import { get } from 'svelte/store';
-import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
+// We now import the isolated engine store to protect the live site
+import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
 /**
- * Calculates the league standings and stats for a specific season.
- * @param {string} currentLeagueID - The ID of the league/season to calculate.
+ * Calculates league standings/statistics for a specific season.
+ * Uses engineMatchupsStore to allow for historical analysis without 
+ * affecting the main website's matchupsStore.
  */
 export const getLeagueState = (currentLeagueID) => {
-    // 1. Pull the latest snapshots from the stores
-    const data = get(matchupsStore);
+    // 1. Pull latest snapshots from our isolated engine store
+    const data = get(engineMatchupsStore);
     const teamManagersData = get(teamManagersStore);
     const allMetadata = get(leagueData);
 
-    // 2. STRICTOR VALIDATION: 
-    // We check if the data in the store actually belongs to the ID we requested.
-    // This prevents "stale data" from one season showing up under another season's header.
+    // 2. Strict ID Validation:
+    // Only proceed if the data in the engineMatchupsStore matches the ID 
+    // selected in the UI. This prevents 2025 stats showing for 2024.
     if (!data || !data.matchupWeeks || data.leagueID !== currentLeagueID) {
         return null;
     }
 
-    // 3. Resolve the Year (Season) string
-    // This connects the Sleeper League ID to the keys used in teamManagersMap
+    // 3. Resolve the Year
     let year = allMetadata[currentLeagueID]?.season;
-    
-    // Fallback: If it's a legacy ID (which is just the year string), use it directly
     if (!year && !isNaN(currentLeagueID)) {
         year = currentLeagueID.toString();
     }
 
-    // 4. Get the mapping of roster_ids to managers for this specific year
+    // 4. Map Roster IDs to Managers for this year
     const yearMap = teamManagersData?.teamManagersMap?.[year] || {};
     const stats = {};
 
-    // 5. Process every week and every matchup
+    // 5. Iterate through all weeks of data
     data.matchupWeeks.forEach(week => {
-        // Skip weeks with no matchup data
         if (!week.matchups) return;
 
         Object.values(week.matchups).forEach(matchupGroup => {
             const [t1, t2] = matchupGroup;
-
-            // Ensure both teams exist in the matchup
             if (!t1 || !t2) return;
 
+            // Initialize stats for both teams
             [t1, t2].forEach(t => {
-                // Initialize the team object if we haven't seen this roster_id yet
                 if (!stats[t.roster_id]) {
                     const teamInfo = yearMap[t.roster_id];
                     
-                    // Convert manager IDs into Display Names (e.g., "John & Jane")
                     const managerNames = teamInfo?.managers?.map(mID => 
                         teamManagersData.users?.[mID]?.display_name || "Unknown"
                     ).join(' & ') || "Unknown Manager";
@@ -63,14 +58,13 @@ export const getLeagueState = (currentLeagueID) => {
                 }
             });
 
-            // 6. Aggregate Points For (PF) and Points Against (PA)
+            // 6. Aggregate Points
             stats[t1.roster_id].pf += t1.points;
             stats[t1.roster_id].pa += t2.points;
-            
             stats[t2.roster_id].pf += t2.points;
             stats[t2.roster_id].pa += t1.points;
 
-            // 7. Calculate Wins and Losses
+            // 7. Calculate Records
             if (t1.points > t2.points) {
                 stats[t1.roster_id].wins++;
                 stats[t2.roster_id].losses++;
@@ -78,7 +72,6 @@ export const getLeagueState = (currentLeagueID) => {
                 stats[t2.roster_id].wins++;
                 stats[t1.roster_id].losses++;
             }
-            // Note: Ties are currently ignored in record (0.5 wins not added)
         });
     });
 
