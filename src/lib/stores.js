@@ -16,3 +16,8 @@ export const posts = writable([]);
 export const brackets = writable({});
 export const standingsStore = writable({});
 export const engineMatchupsStore = writable({history: {}});
+export const enginePlayoffStore = writable({
+    winners: [],
+    losers: [],
+    history: {}
+});
