@@ -5,7 +5,7 @@
   import { getSpecificYearMatchups, engineMatchupsStore } from '$lib/utils/dataEngine/allMatchups.js';
   import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
   import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
-  import { getBrackets } from '$lib/utils/helperFunctions/brackets.js'; 
+  import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets.js'; 
   import { leagueData, teamManagersStore } from '$lib/stores/index.js';
 
   let selectedLeagueId = leagueID;
