@@ -5,7 +5,7 @@
   // NOTE: adjust these two import paths to wherever you saved
   // getSpecificYearMatchups / getLeagueState / getLeagueData
   import { getSpecificYearMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js';
-  import { getLeagueState } from '$lib/utils/helperFunctions/leagueState.js';
+  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
   import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
   import { teamManagersStore } from '$lib/stores';
 
