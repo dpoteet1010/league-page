@@ -1,6 +1,6 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import { leagueID } from '$lib/utils/leagueInfo.js';
+  import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo.js'; // Your actual current ID
   import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
   import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
   import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
@@ -8,15 +8,16 @@
   import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets.js'; 
   import { leagueData, teamManagersStore, engineMatchupsStore } from '$lib/stores';
 
-  let selectedLeagueId = leagueID;
+  let selectedLeagueId = mainLeagueID;
   let verifiedStandings = [];
   let champManager = null;
   let loserManager = null;
   let loading = false;
 
-  // Reverted back to 4-character strings so allMatchups.js captures 'isLegacyYear' properly
+  // FIXED: Using your exact mainLeagueID variable directly from your project config,
+  // along with the 4-character strings your legacyMatchups utility expects.
   const standardSeasons = [
-    { id: '1125925345759711232', label: '2025 Season' },
+    { id: mainLeagueID, label: 'Current Season' },
     { id: '2024', label: '2024 Legacy' },
     { id: '2023', label: '2023 Legacy' }
   ];
@@ -29,35 +30,26 @@
     loserManager = null;
     
     try {
-      // Isolate legacy check matching your engine logic
-      const isLegacy = !isNaN(leagueId) && leagueId.toString().length === 4;
-
-      // 1. Safe-settle execution pipeline wrapper to protect legacy mock data from live 404 crashes
-      if (isLegacy) {
-        // For legacy, load your mock matchups data layer engine first
-        await getSpecificYearMatchups(leagueId);
-      } else {
-        // Live data flow context
-        await Promise.all([
-          getLeagueData(leagueId).catch(() => null),
-          getSpecificYearMatchups(leagueId).catch(() => null),
-          getSpecificYearPlayoffs(leagueId).catch(() => null)
-        ]);
-      }
+      // Defensively load data so a live network issue doesn't freeze the screen
+      try { await getLeagueData(leagueId).catch(() => null); } catch(e){}
+      try { await getSpecificYearMatchups(leagueId).catch(() => null); } catch(e){}
+      try { await getSpecificYearPlayoffs(leagueId).catch(() => null); } catch(e){}
+      try { await getBrackets(leagueId).catch(() => null); } catch(e){}
 
       await tick();
 
-      const managersSnapshot = $teamManagersStore;
-      const globalDataSnapshot = $leagueData;
+      const managersSnapshot = $teamManagersStore || {};
+      const globalDataSnapshot = $leagueData || {};
       
-      // Target localized or base root configurations
       const activeLeagueMetadata = globalDataSnapshot[leagueId] || globalDataSnapshot || {};
       const matchupsSnapshot = $engineMatchupsStore?.matchupWeeks || [];
       
-      // Safely catch any live bracket retrieval failures for legacy sets
-      const finalBracketsSnapshot = await getBrackets(leagueId).catch(() => null);
+      let finalBracketsSnapshot = null;
+      try {
+        finalBracketsSnapshot = await getBrackets(leagueId);
+      } catch (e) {}
 
-      // 2. Feed localized data records directly into parsing engine layout
+      // Feed the store structures directly into your data calculation layout
       const engineOutput = getLeagueState(
         matchupsSnapshot, 
         managersSnapshot, 
@@ -65,14 +57,14 @@
         finalBracketsSnapshot
       );
 
-      // 3. Fallback extraction layer mapping regular data fields cleanly
       verifiedStandings = engineOutput.standings || [];
-      
       const podium = engineOutput.podiums || { championId: null, lastPlaceId: null };
+      
+      const isLegacy = !isNaN(leagueId) && leagueId.toString().length === 4;
       const activeSeasonYear = isLegacy ? leagueId.toString() : (activeLeagueMetadata?.season || "2025");
       const activeYearManagers = managersSnapshot?.teamManagersMap?.[activeSeasonYear] || {};
 
-      // 4. Fallback profile names logic to show layout fields if mapping isn't fully set
+      // Name resolution checks
       if (podium.championId) {
         const champMeta = activeYearManagers[podium.championId.toString()];
         const matchedStandingsCard = verifiedStandings.find(s => s.rosterId === podium.championId);
@@ -94,7 +86,7 @@
       }
 
     } catch (e) {
-      console.error("Error evaluating diagnostics snapshot:", e);
+      console.error("Error evaluating diagnostic calculation structures:", e);
     } finally {
       loading = false;
     }
