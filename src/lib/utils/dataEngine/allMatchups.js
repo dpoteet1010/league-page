@@ -4,7 +4,6 @@ import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
 import { get } from 'svelte/store';
 import { engineMatchupsStore } from '$lib/stores'; 
-// Import your local legacy matchups file
 import { legacyMatchups } from '$lib/utils/helperFunctions/legacyMatchups.js';
 
 export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
@@ -16,7 +15,7 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
         return currentStore.history[queryLeagueID];
     }
 
-    // 2. CHECK FOR LEGACY SEASONS (e.g., if queryLeagueID is "2024" or "2023")
+    // 2. Handle Legacy Seasons (2023, 2024)
     const isLegacyYear = isNaN(queryLeagueID) === false && queryLeagueID.toString().length === 4;
     
     if (isLegacyYear) {
@@ -28,7 +27,6 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
             return null;
         }
 
-        // Format legacy data to match our engine's expectations
         const matchupWeeks = [];
         Object.entries(yearMatchups).forEach(([weekNum, inputMatchups]) => {
             const processed = processMatchups(inputMatchups, parseInt(weekNum));
@@ -56,7 +54,7 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
         return legacySeasonData;
     }
 
-    // 3. API FETCH LOGIC (For active/recent Sleeper IDs like 2025)
+    // 3. API Fetch Logic (2025+)
     const [nflState, leagueData] = await waitForAll(
         getNflState(),
         getLeagueData(queryLeagueID),
@@ -116,6 +114,7 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
     return seasonData;
 };
 
+// FIXED: Looking directly at match.points instead of match.starters_points
 const processMatchups = (inputMatchups, week) => {
     if (!inputMatchups || inputMatchups.length === 0) return false;
     const matchups = {};
@@ -126,7 +125,7 @@ const processMatchups = (inputMatchups, week) => {
         matchups[match.matchup_id].push({
             roster_id: match.roster_id,
             starters: match.starters,
-            points: match.starters_points || match.points || 0, // Fallback for various data formats
+            points: match.points, // <-- FIXED: Point accurately to schema root
         });
     }
     return { matchups, week };
