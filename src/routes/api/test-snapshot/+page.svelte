@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo.js';
   import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-  import { getLeagueState } from '$lib/utils/dataEngine/LeagueState.js';
+  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
   import { teamManagersStore, leagueData } from '$lib/stores';
 
   let selectedLeagueId = mainLeagueID;
