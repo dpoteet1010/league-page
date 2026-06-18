@@ -1,6 +1,6 @@
 <script>
     // 1. FIXED: Import your isolated fetcher instead of the live site's fetcher
-    import { getSpecificYearMatchups } from '$lib/utils/helperFunctions/allMatchups.js';
+    import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
     import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
     import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
     import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
