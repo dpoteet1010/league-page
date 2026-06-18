@@ -100,7 +100,7 @@
     <select id="season-select" bind:value={selectedLeagueId} on:change={() => loadSeasonData(selectedLeagueId)} disabled={loading}>
       {#each standardSeasons as season}
         <option value={season.id}>{season.label}</option>
-      {--/each}
+      {/each}
     </select>
   </div>
 
