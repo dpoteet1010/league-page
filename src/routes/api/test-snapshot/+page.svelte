@@ -1,75 +1,53 @@
-<script>
-    import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-    import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
-    import { determinePlayoffPodiums, getLeagueState } from '$lib/utils/dataEngine/leagueState.js'; 
-    
-    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
-    import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-    import { onMount } from 'svelte';
+// api/api-testsnapshot.js
+import { getSleeperBaseData, getSleeperWeeklyState, buildLeagueSnapshot } from '../utils/leagueState.js';
 
-    import { engineMatchupsStore, enginePlayoffStore, teamManagersStore, leagueData } from '$lib/stores';
+export default async function handler(req, res) {
+  // Enforce GET requests for testing state structures
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
-    let selectedLeagueID = "";
-    let loading = false;
+  // Fallback testing targets if explicit query strings aren't passed
+  const leagueId = req.query.leagueId || '112233445566778899'; 
+  const targetWeek = parseInt(req.query.week, 10) || 14; 
+  const isHistorical = req.query.historical === 'true';
 
-    $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
-        .sort((a, b) => Number(b) - Number(a))
-        .map(year => {
-            const id = Object.keys($leagueData || {}).find(key => $leagueData[key]?.season == year);
-            return { year, id: id || year }; 
-        });
-
-    $: engineOutput = ($engineMatchupsStore && $teamManagersStore && $enginePlayoffStore?.year) 
-        ? getLeagueState($engineMatchupsStore, $teamManagersStore, $enginePlayoffStore.year) 
-        : {};
-
-    $: podium = determinePlayoffPodiums($enginePlayoffStore);
-    
-    // FIXED: Maps raw roster IDs back to clean display metadata matching your schema format
-    $: champMeta = (podium.championId && $enginePlayoffStore?.year && $teamManagersStore?.teamManagersMap?.[$enginePlayoffStore.year])
-        ? $teamManagersStore.teamManagersMap[$enginePlayoffStore.year][podium.championId]
-        : null;
-
-    $: champManager = champMeta ? {
-        teamName: champMeta?.team?.name || `Team ${podium.championId}`,
-        name: champMeta?.managers?.map(mID => $teamManagersStore.users?.[mID]?.display_name || "Unknown").join(' & ')
-    } : null;
-
-    $: loserMeta = (podium.lastPlaceId && $enginePlayoffStore?.year && $teamManagersStore?.teamManagersMap?.[$enginePlayoffStore.year])
-        ? $teamManagersStore.teamManagersMap[$enginePlayoffStore.year][podium.lastPlaceId]
-        : null;
-
-    $: loserManager = loserMeta ? {
-        teamName: loserMeta?.team?.name || `Team ${podium.lastPlaceId}`,
-        name: loserMeta?.managers?.map(mID => $teamManagersStore.users?.[mID]?.display_name || "Unknown").join(' & ')
-    } : null;
-
-    async function loadSeasonData() {
-        if (!selectedLeagueID) return;
-        loading = true;
-        try {
-            await Promise.all([
-                getLeagueData(selectedLeagueID),
-                getSpecificYearMatchups(selectedLeagueID),
-                getSpecificYearPlayoffs(selectedLeagueID)
-            ]);
-        } catch (e) {
-            console.error("Error loading season data:", e);
-        } finally {
-            loading = false;
+  try {
+    // Optimization: If processing a closed historical year, skip heavy API processing loops
+    if (isHistorical) {
+      return res.status(200).json({
+        message: 'Static context returned for historical records.',
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          note: "Archived static snapshots are served directly without remote API polling overhead."
         }
+      });
     }
 
-    onMount(async () => {
-        loading = true;
-        const managers = await getLeagueTeamManagers();
-        const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
-        if (years.length > 0) {
-            const firstYear = years[0];
-            const idMatch = Object.keys($leagueData || {}).find(key => $leagueData[key].season == firstYear);
-            selectedLeagueID = idMatch || firstYear;
-            await loadSeasonData();
-        }
-        loading = false;
+    // Step 1: Concurrent core data extraction
+    const baseData = await getSleeperBaseData(leagueId);
+
+    // Step 2: Dynamic time-series score tracking 
+    const matchupAggregates = await getSleeperWeeklyState(leagueId, targetWeek);
+
+    // Step 3: Synthesis and formatting
+    const structuralSnapshot = buildLeagueSnapshot({
+      ...baseData,
+      matchupAggregates
     });
-</script>
+
+    return res.status(200).json({
+      success: true,
+      executionTime: new Date().toISOString(),
+      payload: structuralSnapshot
+    });
+
+  } catch (error) {
+    console.error('API Test Snapshot Generation Failure:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to synthesize league snapshot format.',
+      details: error.message
+    });
+  }
+}
