@@ -1,5 +1,3 @@
-import { get } from 'svelte/store';
-
 /**
  * Normalizes and processes active and historical league data to construct
  * comprehensive regular season standings and track playoff podium finishes.
@@ -10,7 +8,7 @@ import { get } from 'svelte/store';
  * @param {Object} finalBrackets - The pre-calculated bracket object returned by getBrackets()
  * @returns {Object} Cleaned, aggregated league statistics and standings
  */
-export const processLeagueState = (engineMatchupsStore, teamManagersStore, leagueData, finalBrackets) => {
+export const getLeagueState = (engineMatchupsStore, teamManagersStore, leagueData, finalBrackets) => {
     if (!engineMatchupsStore || !teamManagersStore || !leagueData) {
         return { standings: [], podiums: { championId: null, lastPlaceId: null } };
     }
