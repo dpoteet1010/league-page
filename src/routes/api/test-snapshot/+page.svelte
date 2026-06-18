@@ -1,14 +1,13 @@
 <script>
-    import { getLeagueData } from "$lib/utils/helperFunctions/leagueData.js";
-    import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
-    import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
-    import { waitForAll } from "$lib/utils/helperFunctions/multiPromise.js";
-    import { get } from 'svelte/store';
-    import { engineMatchupsStore } from '$lib/stores';
-    
-    // 2. FIXED: Swap matchupsStore out for engineMatchupsStore
-    import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
-    import { onMount } from 'svelte';
+import { getLeagueData } from "$lib/utils/helperFunctions/leagueData.js";
+import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
+import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
+import { waitForAll } from "$lib/utils/helperFunctions/multiPromise.js";
+import { get } from 'svelte/store';
+import { onMount } from 'svelte';
+
+// All store imports consolidated into one line
+import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
     let selectedLeagueID = "";
     let loading = false;
