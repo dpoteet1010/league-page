@@ -1,82 +1,47 @@
-import { get } from 'svelte/store';
-import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
-
 /**
- * Accurately calculates league standings/statistics for a selected season.
- * Processes matchups by grouping teams with identical matchup_ids per week.
- * Processes ALL available weeks in the dataset.
+ * Traverses an evaluated playoff store object to find the champion and league loser roster IDs.
  */
-export const getLeagueState = (currentLeagueID) => {
-    const data = get(engineMatchupsStore);
-    const teamManagersData = get(teamManagersStore);
-    const allMetadata = get(leagueData);
-
-    // 1. Unified ID verification check
-    if (!data || !data.matchupWeeks || data.leagueID != currentLeagueID) {
-        return null;
+export const determinePlayoffPodiums = (playoffStoreValue) => {
+    if (!playoffStoreValue?.champs?.bracket?.length) {
+        return { championId: null, lastPlaceId: null };
     }
 
-    let year = allMetadata[currentLeagueID]?.season;
-    if (!year && !isNaN(currentLeagueID)) {
-        year = currentLeagueID.toString(); 
+    // 1. Extract Champion (Winner of the very last round in the championship bracket)
+    const champsBracket = playoffStoreValue.champs.bracket;
+    const finalChampsRound = champsBracket[champsBracket.length - 1];
+    const finalChampsMatchup = finalChampsRound?.[0]; // Usually just 1 matchup in the finals
+
+    let championId = null;
+    if (finalChampsMatchup) {
+        const t1 = finalChampsMatchup[0];
+        const t2 = finalChampsMatchup[1];
+        
+        // Sum points across all available playoff match weeks for this round
+        const t1Pts = Object.values(t1?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+        const t2Pts = Object.values(t2?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+        
+        championId = t1Pts > t2Pts ? t1.roster_id : t2.roster_id;
     }
 
-    const yearMap = teamManagersData?.teamManagersMap?.[year] || {};
-    const stats = {};
+    // 2. Extract Last Place (Loser of the final round in the losers/toilet bowl bracket)
+    const losersBracket = playoffStoreValue.losers?.bracket || [];
+    let lastPlaceId = null;
+    
+    if (losersBracket.length > 0) {
+        const finalLosersRound = losersBracket[losersBracket.length - 1];
+        const finalLosersMatchup = finalLosersRound?.[0];
 
-    // 2. Loop through every single available week
-    data.matchupWeeks.forEach(week => {
-        if (!week.matchups) return;
+        if (finalLosersMatchup) {
+            const t1 = finalLosersMatchup[0];
+            const t2 = finalLosersMatchup[1];
 
-        Object.values(week.matchups).forEach(matchupGroup => {
-            const [t1, t2] = matchupGroup;
-            if (!t1 || !t2) return;
+            const t1Pts = Object.values(t1?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+            const t2Pts = Object.values(t2?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+            
+            // In a standard toilet bowl/loser bracket, the team that LOSES stays at the bottom
+            lastPlaceId = t1Pts < t2Pts ? t1.roster_id : t2.roster_id;
+        }
+    }
 
-            // Initialize stats entry for both teams
-            [t1, t2].forEach(t => {
-                if (!stats[t.roster_id]) {
-                    const teamInfo = yearMap[t.roster_id];
-                    
-                    const managerNames = teamInfo?.managers?.map(mID => 
-                        teamManagersData.users?.[mID]?.display_name || "Unknown"
-                    ).join(' & ') || "Unknown Manager";
-
-                    stats[t.roster_id] = { 
-                        wins: 0, 
-                        losses: 0, 
-                        ties: 0,
-                        pf: 0, 
-                        pa: 0,
-                        manager: managerNames,
-                        team: teamInfo?.team?.name || `Team ${t.roster_id}`
-                    };
-                }
-            });
-
-            // 3. Extract points precisely
-            const t1Points = Number(t1.points || 0);
-            const t2Points = Number(t2.points || 0);
-
-            // 4. Aggregate Scores
-            stats[t1.roster_id].pf += t1Points;
-            stats[t1.roster_id].pa += t2Points;
-
-            stats[t2.roster_id].pf += t2Points;
-            stats[t2.roster_id].pa += t1Points;
-
-            // 5. Calculate Standings
-            if (t1Points > t2Points) {
-                stats[t1.roster_id].wins++;
-                stats[t2.roster_id].losses++;
-            } else if (t2Points > t1Points) {
-                stats[t2.roster_id].wins++;
-                stats[t1.roster_id].losses++;
-            } else {
-                stats[t1.roster_id].ties++;
-                stats[t2.roster_id].ties++;
-            }
-        });
-    });
-
-    return stats;
+    return { championId, lastPlaceId };
 };
