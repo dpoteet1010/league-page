@@ -1,6 +1,11 @@
 import { get } from 'svelte/store';
 import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
+/**
+ * Accurately calculates league standings/statistics for a selected season.
+ * Processes matchups by grouping teams with identical matchup_ids per week.
+ * STRICT LIMIT: Only evaluates Weeks 1 through 14.
+ */
 export const getLeagueState = (currentLeagueID) => {
     const data = get(engineMatchupsStore);
     const teamManagersData = get(teamManagersStore);
@@ -22,6 +27,10 @@ export const getLeagueState = (currentLeagueID) => {
     // 2. Loop through every week
     data.matchupWeeks.forEach(week => {
         if (!week.matchups) return;
+
+        // --- NEW CHOP RULE ---
+        // Force the engine to strictly skip anything beyond week 14 (e.g. fantasy playoffs)
+        if (week.week > 14) return;
 
         Object.values(week.matchups).forEach(matchupGroup => {
             const [t1, t2] = matchupGroup;
