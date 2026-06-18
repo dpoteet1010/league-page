@@ -1,11 +1,10 @@
 <script>
     import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
     import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
-    import { determinePlayoffPodiums } from '$lib/utils/dataEngine/leagueState.js'; 
+    import { determinePlayoffPodiums, getLeagueState } from '$lib/utils/dataEngine/leagueState.js'; 
     
     import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
     import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-    import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
     import { onMount } from 'svelte';
 
     import { engineMatchupsStore, enginePlayoffStore, teamManagersStore, leagueData } from '$lib/stores';
@@ -20,19 +19,18 @@
             return { year, id: id || year }; 
         });
 
-    $: engineOutput = (selectedLeagueID && $engineMatchupsStore && $teamManagersStore) 
-        ? getLeagueState(selectedLeagueID) 
-        : null;
+    // FIX: Pass stores as reactive parameters so this recomputes dynamically
+    $: engineOutput = ($engineMatchupsStore && $teamManagersStore && $enginePlayoffStore?.year) 
+        ? getLeagueState($engineMatchupsStore, $teamManagersStore, $enginePlayoffStore.year) 
+        : {};
 
-    // Reactively compute the season results whenever the playoff store changes
     $: podium = determinePlayoffPodiums($enginePlayoffStore);
     
-    // Helper mapping functions to easily convert raw IDs into clean display metadata
-    $: champManager = podium.championId && $teamManagersStore?.teamManagersMap[$enginePlayoffStore.year]?.[podium.championId]
+    $: champManager = (podium.championId && $enginePlayoffStore?.year && $teamManagersStore?.teamManagersMap?.[$enginePlayoffStore.year])
         ? $teamManagersStore.teamManagersMap[$enginePlayoffStore.year][podium.championId]
         : null;
 
-    $: loserManager = podium.lastPlaceId && $teamManagersStore?.teamManagersMap[$enginePlayoffStore.year]?.[podium.lastPlaceId]
+    $: loserManager = (podium.lastPlaceId && $enginePlayoffStore?.year && $teamManagersStore?.teamManagersMap?.[$enginePlayoffStore.year])
         ? $teamManagersStore.teamManagersMap[$enginePlayoffStore.year][podium.lastPlaceId]
         : null;
 
@@ -82,9 +80,8 @@
 
     {#if loading}
         <div class="status">Loading season data...</div>
-    {:else if engineOutput}
+    {:else if Object.keys(engineOutput).length > 0 || $enginePlayoffStore?.champs}
         
-        <!-- NEW: High-level Season Summary Cards Card Layout -->
         <div class="podium-banner">
             <div class="card champion-card">
                 <h3>🏆 League Champion</h3>
@@ -148,8 +145,6 @@
 <style>
     .container { padding: 2rem; font-family: sans-serif; }
     .controls { margin-bottom: 2rem; }
-    
-    /* Podium Dashboard Styles */
     .podium-banner { 
         display: grid; 
         grid-template-columns: 1fr 1fr; 
