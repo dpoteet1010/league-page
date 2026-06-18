@@ -1,9 +1,12 @@
 <script>
-    import { getLeagueMatchups } from '$lib/utils/helperFunctions/leagueMatchups.js';
+    // 1. FIXED: Import your isolated fetcher instead of the live site's fetcher
+    import { getSpecificYearMatchups } from '$lib/utils/helperFunctions/allMatchups.js';
     import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
     import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
     import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
-    import { matchupsStore, teamManagersStore, leagueData } from '$lib/stores';
+    
+    // 2. FIXED: Swap matchupsStore out for engineMatchupsStore
+    import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
     import { onMount } from 'svelte';
 
     let selectedLeagueID = "";
@@ -11,7 +14,7 @@
 
     // Build the dropdown list dynamically from the teamManagersStore
     $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
-        .sort((a, b) => b - a)
+        .sort((a, b) => Number(b) - Number(a))
         .map(year => {
             // Find the long League ID in the leagueData cache that matches this year
             const id = Object.keys($leagueData || {}).find(key => $leagueData[key]?.season == year);
@@ -19,7 +22,8 @@
         });
 
     // Reactive: Trigger the engine when the ID or stores change
-    $: engineOutput = (selectedLeagueID && $matchupsStore && $teamManagersStore) 
+    // 3. FIXED: Listen to $engineMatchupsStore here instead of the live store
+    $: engineOutput = (selectedLeagueID && $engineMatchupsStore && $teamManagersStore) 
         ? getLeagueState(selectedLeagueID) 
         : null;
 
@@ -29,7 +33,7 @@
         try {
             await Promise.all([
                 getLeagueData(selectedLeagueID),
-                getLeagueMatchups(selectedLeagueID)
+                getSpecificYearMatchups(selectedLeagueID) // 4. FIXED: Use the sandbox fetcher
             ]);
         } catch (e) {
             console.error("Error loading season:", e);
@@ -44,7 +48,7 @@
         const managers = await getLeagueTeamManagers();
         
         // 2. Determine the initial ID to show
-        const years = Object.keys(managers.teamManagersMap).sort((a, b) => b - a);
+        const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
         if (years.length > 0) {
             const firstYear = years[0];
             // Check if we already have a real ID cached for this year
