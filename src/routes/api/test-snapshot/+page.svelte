@@ -1,27 +1,23 @@
 <script>
-import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
-import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
-import { onMount } from 'svelte';
+    import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
+    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
+    import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
+    import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+    import { onMount } from 'svelte';
 
-// Clean, unified store imports
-import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
+    // Store imports consolidated perfectly
+    import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
     let selectedLeagueID = "";
     let loading = false;
 
-    // Build the dropdown list dynamically from the teamManagersStore
     $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
         .sort((a, b) => Number(b) - Number(a))
         .map(year => {
-            // Find the long League ID in the leagueData cache that matches this year
             const id = Object.keys($leagueData || {}).find(key => $leagueData[key]?.season == year);
             return { year, id: id || year }; 
         });
 
-    // Reactive: Trigger the engine when the ID or stores change
-    // 3. FIXED: Listen to $engineMatchupsStore here instead of the live store
     $: engineOutput = (selectedLeagueID && $engineMatchupsStore && $teamManagersStore) 
         ? getLeagueState(selectedLeagueID) 
         : null;
@@ -32,7 +28,7 @@ import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores'
         try {
             await Promise.all([
                 getLeagueData(selectedLeagueID),
-                getSpecificYearMatchups(selectedLeagueID) // 4. FIXED: Use the sandbox fetcher
+                getSpecificYearMatchups(selectedLeagueID)
             ]);
         } catch (e) {
             console.error("Error loading season:", e);
@@ -43,18 +39,12 @@ import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores'
 
     onMount(async () => {
         loading = true;
-        // 1. Load the manager map first so we know what seasons exist
         const managers = await getLeagueTeamManagers();
-        
-        // 2. Determine the initial ID to show
         const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
         if (years.length > 0) {
             const firstYear = years[0];
-            // Check if we already have a real ID cached for this year
             const idMatch = Object.keys($leagueData || {}).find(key => $leagueData[key].season == firstYear);
             selectedLeagueID = idMatch || firstYear;
-            
-            // 3. Fetch the actual matchups for this season
             await loadSeasonData();
         }
         loading = false;
