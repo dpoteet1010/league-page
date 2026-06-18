@@ -1,9 +1,10 @@
 <script>
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo.js';
   import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
-  import { teamManagersStore } from '$lib/stores';
+  import { getLeagueState } from '$lib/utils/dataEngine/getLeagueState.js';
+  import { teamManagersStore, leagueData } from '$lib/stores';
 
   let selectedLeagueId = mainLeagueID;
   let loading = false;
@@ -21,19 +22,27 @@
     { id: '2023', label: '2023 Legacy' }
   ];
 
-  // NOTE: this assumes teamManagersStore looks like
-  //   { teamManagersMap: { [year]: { [rosterId]: { team: { name, avatar }, managers: [userId, ...] } } }, users: { [userId]: { display_name } } }
-  // Confirm against your real store shape — adjust if it differs.
-  function buildManagersForYear(managersSnapshot, yearString) {
-    const activeYearManagers = managersSnapshot?.teamManagersMap?.[yearString] || {};
+  // Matches the resolution logic from your working getLeagueState:
+  // pull the real season from the leagueData store, falling back to the
+  // leagueID itself only when it's a legacy 4-digit year.
+  function resolveYear(currentLeagueID, allMetadata) {
+    let year = allMetadata?.[currentLeagueID]?.season;
+    if (!year && !isNaN(currentLeagueID)) {
+      year = currentLeagueID.toString();
+    }
+    return year;
+  }
+
+  function buildManagersForYear(managersSnapshot, year) {
+    const yearMap = managersSnapshot?.teamManagersMap?.[year] || {};
     const out = {};
-    Object.entries(activeYearManagers).forEach(([rosterId, meta]) => {
-      const managerNames = (meta?.managers || [])
-        .map((mID) => managersSnapshot?.users?.[mID]?.display_name || `User ${mID}`)
-        .join(' & ');
+    Object.entries(yearMap).forEach(([rosterId, teamInfo]) => {
+      const managerNames = teamInfo?.managers
+        ?.map((mID) => managersSnapshot.users?.[mID]?.display_name || 'Unknown')
+        .join(' & ') || 'Unknown Manager';
       out[rosterId] = {
-        name: meta?.team?.name || `Team ${rosterId}`,
-        avatar: meta?.team?.avatar || '',
+        name: teamInfo?.team?.name || `Team ${rosterId}`,
+        avatar: teamInfo?.team?.avatar || '',
         managerNames
       };
     });
@@ -53,9 +62,6 @@
     weeklyResults = [];
 
     try {
-      const isLegacy = !isNaN(leagueId) && leagueId.toString().length === 4;
-      const yearString = isLegacy ? leagueId.toString() : '2025';
-
       const matchupsData = await getSpecificYearMatchups(leagueId).catch((err) => {
         debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`);
         return null;
@@ -64,9 +70,13 @@
       debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
       debugLogs.push(`regularSeasonLength: ${matchupsData?.regularSeasonLength ?? 'N/A'}`);
 
-      const managersSnapshot = $teamManagersStore || {};
-      const managersForYear = buildManagersForYear(managersSnapshot, yearString);
-      debugLogs.push(`Managers resolved for ${yearString}: ${Object.keys(managersForYear).length}`);
+      const managersSnapshot = get(teamManagersStore) || {};
+      const allMetadata = get(leagueData) || {};
+      const year = resolveYear(leagueId, allMetadata);
+      debugLogs.push(`Resolved year for manager lookup: ${year}`);
+
+      const managersForYear = buildManagersForYear(managersSnapshot, year);
+      debugLogs.push(`Managers resolved for ${year}: ${Object.keys(managersForYear).length}`);
 
       if (!matchupsData) {
         debugLogs.push('No matchupsData returned — cannot run getLeagueState.');
@@ -129,7 +139,7 @@
       <tbody>
         {#each standings as team}
           <tr>
-            <td>{team.name}</td>
+            <td>{team.name} <span class="manager-tag">({team.managerNames})</span></td>
             <td>{team.regularSeason.wins}</td>
             <td>{team.regularSeason.losses}</td>
             <td>{team.regularSeason.ties}</td>
@@ -200,6 +210,7 @@
   select, button { padding: 0.5rem 1rem; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; }
   button { cursor: pointer; background: #f5f5f5; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
+  .manager-tag { font-size: 0.8em; color: #888; font-weight: normal; }
   .data-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; font-size: 0.9rem; }
   .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: center; }
   .data-table th { background: #f5f5f5; }
