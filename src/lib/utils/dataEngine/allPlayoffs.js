@@ -41,6 +41,13 @@ export const getSpecificYearPlayoffs = async (queryLeagueID = mainLeagueID) => {
         for (let week = playoffsStart; week < 18; week++) {
             const legacyWeekMatchups = legacyMatchups?.[stringYear]?.[week] || [];
             bracketsAndMatchupFetches.push(Promise.resolve(legacyWeekMatchups));
+            console.log(
+  JSON.stringify(finalBrackets.champs.bracket, null, 2)
+);
+
+console.log(
+  JSON.stringify(finalBrackets.losers.bracket, null, 2)
+);
         }
 
         const playoffMatchups = await Promise.all(bracketsAndMatchupFetches);
