@@ -4,24 +4,59 @@ import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
 import { get } from 'svelte/store';
 import { engineMatchupsStore } from '$lib/stores'; 
+// Import your local legacy matchups file
+import { legacyMatchups } from '$lib/utils/helperFunctions/legacyMatchups.js';
 
-/**
- * Fetches matchups for a specific league ID and stores them in a 
- * dedicated engine store to avoid polluting the main site matchups.
- */
 export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
     const currentStore = get(engineMatchupsStore);
     
-    // 1. Check if we already have this specific ID in our private history cache
+    // 1. Check cache first
     if (currentStore.history && currentStore.history[queryLeagueID]) {
-        engineMatchupsStore.update(s => ({
-            ...s,
-            ...s.history[queryLeagueID]
-        }));
+        engineMatchupsStore.update(s => ({ ...s, ...s.history[queryLeagueID] }));
         return currentStore.history[queryLeagueID];
     }
 
-    // 2. Fetch Metadata for the specific year
+    // 2. CHECK FOR LEGACY SEASONS (e.g., if queryLeagueID is "2024" or "2023")
+    const isLegacyYear = isNaN(queryLeagueID) === false && queryLeagueID.toString().length === 4;
+    
+    if (isLegacyYear) {
+        const yearStr = queryLeagueID.toString();
+        const yearMatchups = legacyMatchups[yearStr];
+
+        if (!yearMatchups) {
+            console.error(`No legacy matchups found for year ${yearStr}`);
+            return null;
+        }
+
+        // Format legacy data to match our engine's expectations
+        const matchupWeeks = [];
+        Object.entries(yearMatchups).forEach(([weekNum, inputMatchups]) => {
+            const processed = processMatchups(inputMatchups, parseInt(weekNum));
+            if (processed) {
+                matchupWeeks.push({
+                    matchups: processed.matchups,
+                    week: processed.week
+                });
+            }
+        });
+
+        const legacySeasonData = {
+            matchupWeeks,
+            leagueID: yearStr,
+            year: yearStr,
+            week: 14,
+            regularSeasonLength: 14
+        };
+
+        engineMatchupsStore.update(s => ({
+            ...legacySeasonData,
+            history: { ...(s.history || {}), [queryLeagueID]: legacySeasonData }
+        }));
+
+        return legacySeasonData;
+    }
+
+    // 3. API FETCH LOGIC (For active/recent Sleeper IDs like 2025)
     const [nflState, leagueData] = await waitForAll(
         getNflState(),
         getLeagueData(queryLeagueID),
@@ -32,18 +67,13 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 
     if (!leagueData) return null;
 
-    // 3. Determine how many weeks to fetch
     let week = 1;
-    if (nflState.season_type === 'regular') {
-        week = nflState.display_week;
-    } else if (nflState.season_type === 'post') {
-        week = 18;
-    }
+    if (nflState.season_type === 'regular') week = nflState.display_week;
+    else if (nflState.season_type === 'post') week = 18;
     
     const year = leagueData.season;
     const regularSeasonLength = leagueData.settings.playoff_week_start - 1;
 
-    // 4. Batch fetch matchup data for the season
     const matchupsPromises = [];
     for (let i = 1; i <= regularSeasonLength; i++) {
         matchupsPromises.push(
@@ -52,14 +82,9 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
     }
     
     const matchupsRes = await waitForAll(...matchupsPromises);
-
-    // 5. Parse JSON responses
     const matchupsJsonPromises = [];
     for (const res of matchupsRes) {
-        if (!res.ok) {
-            console.error(`Failed to fetch week matchups: ${res.status}`);
-            continue;
-        }
+        if (!res.ok) continue;
         matchupsJsonPromises.push(res.json());
     }
     
@@ -67,15 +92,11 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
         console.error("Error parsing matchups JSON:", err); 
     });
 
-    // 6. Process the raw Sleeper data into your engine's format
     const matchupWeeks = [];
     for (let i = 1; i <= matchupsData.length; i++) {
         const processed = processMatchups(matchupsData[i - 1], i);
         if (processed) {
-            matchupWeeks.push({
-                matchups: processed.matchups,
-                week: processed.week
-            });
+            matchupWeeks.push({ matchups: processed.matchups, week: processed.week });
         }
     }
 
@@ -87,22 +108,16 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
         regularSeasonLength
     };
 
-    // 7. Update the Dedicated Engine Store
     engineMatchupsStore.update(s => ({
         ...seasonData,
-        history: {
-            ...(s.history || {}),
-            [queryLeagueID]: seasonData
-        }
+        history: { ...(s.history || {}), [queryLeagueID]: seasonData }
     }));
 
     return seasonData;
 };
 
 const processMatchups = (inputMatchups, week) => {
-    if (!inputMatchups || inputMatchups.length === 0) {
-        return false;
-    }
+    if (!inputMatchups || inputMatchups.length === 0) return false;
     const matchups = {};
     for (const match of inputMatchups) {
         if (!matchups[match.matchup_id]) {
@@ -111,7 +126,7 @@ const processMatchups = (inputMatchups, week) => {
         matchups[match.matchup_id].push({
             roster_id: match.roster_id,
             starters: match.starters,
-            points: match.starters_points,
+            points: match.starters_points || match.points || 0, // Fallback for various data formats
         });
     }
     return { matchups, week };
