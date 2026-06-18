@@ -1,9 +1,10 @@
 <script>
-    // 1. FIXED: Import your isolated fetcher instead of the live site's fetcher
-    import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-    import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
-    import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-    import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+    import { getLeagueData } from "$lib/utils/helperFunctions/leagueData.js";
+    import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
+    import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
+    import { waitForAll } from "$lib/utils/helperFunctions/multiPromise.js";
+    import { get } from 'svelte/store';
+    import { engineMatchupsStore } from '$lib/stores';
     
     // 2. FIXED: Swap matchupsStore out for engineMatchupsStore
     import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
