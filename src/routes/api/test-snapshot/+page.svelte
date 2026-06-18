@@ -1,216 +1,267 @@
 <script>
-  import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-  import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
-  import { determinePlayoffPodiums, getLeagueState } from '$lib/utils/dataEngine/leagueState.js'; 
-  
-  import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
-  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
   import { onMount, tick } from 'svelte';
+  import { leagueID } from '$lib/utils/leagueInfo';
+  import { getLeagueData } from '$lib/utils/dataEngine/leagueData';
+  import { getSpecificYearMatchups, engineMatchupsStore } from '$lib/utils/dataEngine/allMatchups';
+  import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs';
+  import { getLeagueState } from '$lib/utils/dataEngine/leagueState';
+  import { getBrackets } from '$lib/utils/helperFunctions/brackets'; // Maps legacy structures securely
+  import { leagueData, teamManagersStore } from '$lib/stores';
 
-  import { engineMatchupsStore, enginePlayoffStore, teamManagersStore, leagueData } from '$lib/stores';
-
-  let selectedLeagueID = "";
-  let loading = false;
-
-  // Local state cache to protect the UI from global store mutation drift
-  let verifiedStandings = {};
+  let selectedLeagueId = leagueID;
+  let verifiedStandings = [];
   let champManager = null;
   let loserManager = null;
+  let loading = false;
 
-  // Map seasons dynamically from the league data cache
-  $: seasons = Object.values($leagueData || {})
-    .filter(league => league && league.season)
-    .sort((a, b) => Number(b.season) - Number(a.season))
-    .map(league => ({
-      year: league.season,
-      id: league.league_id || league.id
-    }));
+  const standardSeasons = [
+    { id: '1125925345759711232', label: '2025 Season' },
+    { id: '2024', label: '2024 Legacy' },
+    { id: '2023', label: '2023 Legacy' }
+  ];
 
   async function loadSeasonData(leagueId) {
     if (!leagueId) return;
     loading = true;
+    verifiedStandings = [];
+    champManager = null;
+    loserManager = null;
     
     try {
-      // 1. Await all required datasets concurrently
+      // 1. Concurrently resolve all data structures across modern and historical timelines
       await Promise.all([
         getLeagueData(leagueId),
         getSpecificYearMatchups(leagueId),
-        getSpecificYearPlayoffs(leagueId)
+        getSpecificYearPlayoffs(leagueId),
+        getBrackets(leagueId)
       ]);
 
-      // 2. Wait one tick to guarantee Svelte stores have written their updates
       await tick();
 
-      // 3. Capture snapshots of the stores right now
+      // 2. Isolate internal snapshot variables out of stores
       const matchupsSnapshot = $engineMatchupsStore;
       const managersSnapshot = $teamManagersStore;
-      const playoffSnapshot = $enginePlayoffStore;
+      const globalDataSnapshot = $leagueData;
+      const activeLeagueMetadata = globalDataSnapshot[leagueId] || globalDataSnapshot;
+      
+      // Pull processed data directly from your UI's evaluated layout parser
+      const finalBracketsSnapshot = await getBrackets(leagueId);
 
-      // 4. Resolve the targeted season year from our current league target
-      const activeSeasonYear = $leagueData[leagueId]?.season || playoffSnapshot?.year || "2025";
+      // 3. Feed all 4 required metrics into the updated layout-agnostic function
+      const engineOutput = getLeagueState(
+        matchupsSnapshot, 
+        managersSnapshot, 
+        activeLeagueMetadata, 
+        finalBracketsSnapshot
+      );
 
-      // 5. Calculate standings using isolated snapshot data
-      verifiedStandings = getLeagueState(matchupsSnapshot, managersSnapshot, activeSeasonYear);
-
-      // 6. Calculate playoffs podiums using isolated snapshot data
-      const podium = determinePlayoffPodiums(playoffSnapshot);
+      // 4. Bind compiled standings array cleanly
+      verifiedStandings = engineOutput.standings || [];
+      
+      const podium = engineOutput.podiums || { championId: null, lastPlaceId: null };
+      const activeSeasonYear = activeLeagueMetadata?.season || (leagueId === '2023' || leagueId === '2024' ? leagueId : "2025");
       const activeYearManagers = managersSnapshot?.teamManagersMap?.[activeSeasonYear] || {};
 
-      const champMeta = podium.championId ? activeYearManagers[podium.championId] : null;
-      champManager = champMeta ? {
-        teamName: champMeta?.team?.name || `Team ${podium.championId}`,
-        name: champMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Unknown").join(' & ')
-      } : null;
+      // 5. Parse Champion metadata identities
+      if (podium.championId) {
+        const champMeta = activeYearManagers[podium.championId];
+        champManager = {
+          teamName: champMeta?.team?.name || `Team ${podium.championId}`,
+          name: champMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Unknown").join(' & ') || "Unknown Manager"
+        };
+      }
 
-      const loserMeta = podium.lastPlaceId ? activeYearManagers[podium.lastPlaceId] : null;
-      loserManager = loserMeta ? {
-        teamName: loserMeta?.team?.name || `Team ${podium.lastPlaceId}`,
-        name: loserMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Unknown").join(' & ')
-      } : null;
+      // 6. Parse Bottom Toilet Bowl/Consolation Loser identities
+      if (podium.lastPlaceId) {
+        const loserMeta = activeYearManagers[podium.lastPlaceId];
+        loserManager = {
+          teamName: loserMeta?.team?.name || `Team ${podium.lastPlaceId}`,
+          name: loserMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Unknown").join(' & ') || "Unknown Manager"
+        };
+      }
 
     } catch (e) {
-      console.error("Error synchronizing season snapshot parameters:", e);
+      console.error("Error evaluating season diagnostic snapshot metrics:", e);
     } finally {
       loading = false;
     }
   }
 
-  function handleSeasonChange(event) {
-    selectedLeagueID = event.target.value;
-    loadSeasonData(selectedLeagueID);
-  }
-
-  onMount(async () => {
-    loading = true;
-    
-    // Warm up core metadata contexts
-    await Promise.all([
-      getLeagueTeamManagers(),
-      getLeagueData()
-    ]);
-
-    const availableYears = Object.keys($teamManagersStore?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
-    
-    if (availableYears.length > 0) {
-      const newestYear = availableYears[0];
-      const idMatch = Object.keys($leagueData || {}).find(key => $leagueData[key]?.season == newestYear);
-      
-      selectedLeagueID = idMatch || newestYear;
-      await loadSeasonData(selectedLeagueID);
-    }
-    loading = false;
+  onMount(() => {
+    loadSeasonData(selectedLeagueId);
   });
 </script>
 
-<div class="container">
-  <h1>Engine Validator</h1>
+<main class="container">
+  <h2>League State Diagnostics Panel</h2>
 
-  {#if seasons.length > 0}
-    <div class="controls">
-      <label for="season-select">Select Season:</label>
-      <select id="season-select" value={selectedLeagueID} on:change={handleSeasonChange}>
-        {#each seasons as season}
-          <option value={season.id}>{season.year}</option>
-        {/each}
-      </select>
-    </div>
-  {/if}
+  <div class="control-row">
+    <label for="season-select"><strong>Select target season layout:</strong></label>
+    <select id="season-select" bind:value={selectedLeagueId} on:change={() => loadSeasonData(selectedLeagueId)} disabled={loading}>
+      {#each standardSeasons as season}
+        <option value={season.id}>{season.label}</option>
+      {--/each}
+    </select>
+  </div>
 
   {#if loading}
-    <div class="status">Loading data cleanly, avoiding store drift...</div>
+    <div class="status-msg p-loading">Processing historical layout timelines...</div>
   {:else}
-    <div class="podium-banner">
-      <div class="card champion-card">
+    <div class="podium-grid">
+      <!-- Champion Display Panel -->
+      <div class="podium-card gold">
         <h3>🏆 League Champion</h3>
         {#if champManager}
-          <p class="team-name">{champManager.teamName}</p>
-          <p class="manager-name">Owner: {champManager.name}</p>
+          <div class="meta-title">{champManager.teamName}</div>
+          <div class="meta-sub">Manager: {champManager.name}</div>
         {:else}
-          <p class="tbd">Playoffs ongoing or data unresolved</p>
+          <div class="meta-empty">Playoffs ongoing or data unresolved</div>
         {/if}
       </div>
 
-      <div class="card loser-card">
+      <!-- Toilet Bowl Loser Panel -->
+      <div class="podium-card poop">
         <h3>💩 Toilet Bowl Loser</h3>
         {#if loserManager}
-          <p class="team-name">{loserManager.teamName}</p>
-          <p class="manager-name">Owner: {loserManager.name}</p>
+          <div class="meta-title">{loserManager.teamName}</div>
+          <div class="meta-sub">Manager: {loserManager.name}</div>
         {:else}
-          <p class="tbd">Playoffs ongoing or data unresolved</p>
+          <div class="meta-empty">Playoffs ongoing or data unresolved</div>
         {/if}
       </div>
     </div>
 
-    <div class="grid">
-      <section>
-        <h2>Standings Output</h2>
-        <table>
-          <thead>
+    <!-- Regular Season Standings Overview Table -->
+    <div class="table-wrapper">
+      <h3>Regular Season Standings</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Team Name / Manager</th>
+            <th>Record</th>
+            <th>Points For (PF)</th>
+            <th>Points Against (PA)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each verifiedStandings as stats}
             <tr>
-              <th>Manager / Team</th>
-              <th>Record</th>
-              <th>PF</th>
-              <th>PA</th>
+              <td>
+                <div class="td-team">{stats.name}</div>
+              </td>
+              <td class="td-record">{stats.wins} - {stats.losses}{#if stats.ties > 0} - {stats.ties}{/if}</td>
+              <td>{Number(stats.fptsFor || 0).toFixed(2)}</td>
+              <td>{Number(stats.fptsAgainst || 0).toFixed(2)}</td>
             </tr>
-          </thead>
-          <tbody>
-            {#each Object.entries(verifiedStandings) as [id, stats]}
-              <tr>
-                <td>
-                  <strong>{stats.team}</strong><br/>
-                  <small>{stats.manager}</small>
-                </td>
-                <td>{stats.wins}-{stats.losses}{#if stats.ties > 0}-{stats.ties}{/if}</td>
-                <td>{Number(stats.pf || 0).toFixed(2)}</td>
-                <td>{Number(stats.pa || 0).toFixed(2)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Raw Playoff Bracket JSON</h2>
-        <pre>{JSON.stringify($enginePlayoffStore, null, 2)}</pre>
-      </section>
+          {:else}
+            <tr>
+              <td colspan="4" class="no-data">No data found for this season context.</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     </div>
   {/if}
-</div>
+</main>
 
 <style>
-  .container { padding: 2rem; font-family: sans-serif; }
-  .controls { margin-bottom: 2rem; }
-  .podium-banner { 
-    display: grid; 
-    grid-template-columns: 1fr 1fr; 
-    gap: 1.5rem; 
-    margin-bottom: 2.5rem; 
+  .container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    font-family: system-ui, -apple-system, sans-serif;
   }
-  .card { 
-    padding: 1.5rem; 
-    border-radius: 8px; 
-    border: 1px solid #ddd;
+  .control-row {
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
   }
-  .champion-card { 
-    background: #f0fff4; 
-    border-color: #c6f6d5; 
-    color: #22543d;
+  select {
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    border-radius: 6px;
+    border: 1px solid #ccc;
   }
-  .loser-card { 
-    background: #fff5f5; 
-    border-color: #fed7d7; 
-    color: #742a2a;
+  .status-msg {
+    padding: 2rem;
+    background: #f0f0f0;
+    border-radius: 8px;
+    text-align: center;
+    font-style: italic;
   }
-  .card h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .team-name { font-size: 1.6rem; font-weight: bold; margin: 0 0 0.25rem 0; }
-  .manager-name { font-size: 0.95rem; margin: 0; opacity: 0.85; }
-  .tbd { font-style: italic; opacity: 0.7; }
-
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-  .status { padding: 2rem; background: #eee; text-align: center; border-radius: 8px; }
-  pre { background: #1e1e1e; color: #dcdcdc; padding: 1rem; border-radius: 8px; max-height: 600px; overflow: auto; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-  th { background-color: #f8f8f8; }
-  small { color: #666; }
+  .podium-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .podium-card {
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 6px solid #ccc;
+    background: #fcfcfc;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  .podium-card.gold {
+    border-left-color: #ffd700;
+    background: #fffdf3;
+  }
+  .podium-card.poop {
+    border-left-color: #8b5a2b;
+    background: #fbf7f3;
+  }
+  .podium-card h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+  }
+  .meta-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #222;
+  }
+  .meta-sub {
+    font-size: 0.95rem;
+    color: #666;
+    margin-top: 0.25rem;
+  }
+  .meta-empty {
+    color: #999;
+    font-style: italic;
+  }
+  .table-wrapper {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    text-align: left;
+  }
+  th, td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee;
+  }
+  th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #444;
+  }
+  .td-team {
+    font-weight: 600;
+    color: #111;
+  }
+  .td-record {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+  .no-data {
+    text-align: center;
+    color: #999;
+    padding: 3rem 0;
+  }
 </style>
