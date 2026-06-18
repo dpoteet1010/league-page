@@ -158,7 +158,7 @@
           {/each}
         </ul>
       </div>
-    if}
+    {/if}
   {/if}
 </main>
 
