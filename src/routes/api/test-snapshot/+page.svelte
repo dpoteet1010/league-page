@@ -14,12 +14,11 @@
   let loserManager = null;
   let loading = false;
 
-  // FIXED: Replaced plain text years with your genuine historical Sleeper League IDs 
-  // so the built-in store mapping logic matches perfectly out of the box
+  // Reverted back to 4-character strings so allMatchups.js captures 'isLegacyYear' properly
   const standardSeasons = [
     { id: '1125925345759711232', label: '2025 Season' },
-    { id: '1049444158942363648', label: '2024 Legacy' }, // Replace with your actual 2024 Sleeper ID if different
-    { id: '919014643196231680',  label: '2023 Legacy' }  // Replace with your actual 2023 Sleeper ID if different
+    { id: '2024', label: '2024 Legacy' },
+    { id: '2023', label: '2023 Legacy' }
   ];
 
   async function loadSeasonData(leagueId) {
@@ -30,23 +29,35 @@
     loserManager = null;
     
     try {
-      // 1. Concurrently pull assets exactly as done in the working application build
-      await Promise.all([
-        getLeagueData(leagueId),
-        getSpecificYearMatchups(leagueId),
-        getSpecificYearPlayoffs(leagueId),
-        getBrackets(leagueId)
-      ]);
+      // Isolate legacy check matching your engine logic
+      const isLegacy = !isNaN(leagueId) && leagueId.toString().length === 4;
+
+      // 1. Safe-settle execution pipeline wrapper to protect legacy mock data from live 404 crashes
+      if (isLegacy) {
+        // For legacy, load your mock matchups data layer engine first
+        await getSpecificYearMatchups(leagueId);
+      } else {
+        // Live data flow context
+        await Promise.all([
+          getLeagueData(leagueId).catch(() => null),
+          getSpecificYearMatchups(leagueId).catch(() => null),
+          getSpecificYearPlayoffs(leagueId).catch(() => null)
+        ]);
+      }
 
       await tick();
 
       const managersSnapshot = $teamManagersStore;
       const globalDataSnapshot = $leagueData;
-      const activeLeagueMetadata = globalDataSnapshot[leagueId] || globalDataSnapshot;
+      
+      // Target localized or base root configurations
+      const activeLeagueMetadata = globalDataSnapshot[leagueId] || globalDataSnapshot || {};
       const matchupsSnapshot = $engineMatchupsStore?.matchupWeeks || [];
-      const finalBracketsSnapshot = await getBrackets(leagueId);
+      
+      // Safely catch any live bracket retrieval failures for legacy sets
+      const finalBracketsSnapshot = await getBrackets(leagueId).catch(() => null);
 
-      // 2. Feed datasets through the layout engine
+      // 2. Feed localized data records directly into parsing engine layout
       const engineOutput = getLeagueState(
         matchupsSnapshot, 
         managersSnapshot, 
@@ -54,26 +65,31 @@
         finalBracketsSnapshot
       );
 
+      // 3. Fallback extraction layer mapping regular data fields cleanly
       verifiedStandings = engineOutput.standings || [];
       
       const podium = engineOutput.podiums || { championId: null, lastPlaceId: null };
-      const activeSeasonYear = activeLeagueMetadata?.season;
+      const activeSeasonYear = isLegacy ? leagueId.toString() : (activeLeagueMetadata?.season || "2025");
       const activeYearManagers = managersSnapshot?.teamManagersMap?.[activeSeasonYear] || {};
 
-      // 3. Native framework profile lookups
+      // 4. Fallback profile names logic to show layout fields if mapping isn't fully set
       if (podium.championId) {
-        const champMeta = activeYearManagers[podium.championId];
+        const champMeta = activeYearManagers[podium.championId.toString()];
+        const matchedStandingsCard = verifiedStandings.find(s => s.rosterId === podium.championId);
+        
         champManager = {
-          teamName: champMeta?.team?.name || `Team ${podium.championId}`,
-          name: champMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Unknown").join(' & ') || "Unknown Manager"
+          teamName: champMeta?.team?.name || matchedStandingsCard?.name || `Team ${podium.championId}`,
+          name: champMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Historical Roster").join(' & ') || "Legacy Manager"
         };
       }
 
       if (podium.lastPlaceId) {
-        const loserMeta = activeYearManagers[podium.lastPlaceId];
+        const loserMeta = activeYearManagers[podium.lastPlaceId.toString()];
+        const matchedStandingsCard = verifiedStandings.find(s => s.rosterId === podium.lastPlaceId);
+        
         loserManager = {
-          teamName: loserMeta?.team?.name || `Team ${podium.lastPlaceId}`,
-          name: loserMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Unknown").join(' & ') || "Unknown Manager"
+          teamName: loserMeta?.team?.name || matchedStandingsCard?.name || `Team ${podium.lastPlaceId}`,
+          name: loserMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Historical Roster").join(' & ') || "Legacy Manager"
         };
       }
 
@@ -144,7 +160,7 @@
           {#each verifiedStandings as stats}
             <tr>
               <td>
-                <div class="td-team">{stats.name}</div>
+                <div class="td-team">{stats.name || `Team ${stats.rosterId}`}</div>
               </td>
               <td class="td-record">{stats.wins} - {stats.losses}{#if stats.ties > 0} - {stats.ties}{/if}</td>
               <td>{Number(stats.fptsFor || 0).toFixed(2)}</td>
