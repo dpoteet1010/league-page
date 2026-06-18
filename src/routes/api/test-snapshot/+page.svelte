@@ -1,108 +1,120 @@
 <script>
-  import { onMount, tick } from 'svelte';
-  import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo.js'; // Your actual current ID
-  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-  import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-  import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
-  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+  import { onMount } from 'svelte';
+  import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo.js'; 
   import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets.js'; 
-  import { leagueData, teamManagersStore, engineMatchupsStore } from '$lib/stores';
+  import { teamManagersStore } from '$lib/stores';
 
   let selectedLeagueId = mainLeagueID;
-  let verifiedStandings = [];
   let champManager = null;
   let loserManager = null;
   let loading = false;
+  let debugLogs = [];
 
-  // FIXED: Using your exact mainLeagueID variable directly from your project config,
-  // along with the 4-character strings your legacyMatchups utility expects.
   const standardSeasons = [
     { id: mainLeagueID, label: 'Current Season' },
     { id: '2024', label: '2024 Legacy' },
     { id: '2023', label: '2023 Legacy' }
   ];
 
-  async function loadSeasonData(leagueId) {
+  // Helper to safely extract names out of your global managers store database
+  function resolveTeamAndManagerName(rosterId, targetYear, managersSnapshot) {
+    if (!rosterId) return null;
+    
+    const yearString = targetYear.toString();
+    const activeYearManagers = managersSnapshot?.teamManagersMap?.[yearString] || {};
+    const rosterMeta = activeYearManagers[rosterId.toString()];
+
+    // Resolve team name
+    const teamName = rosterMeta?.team?.name || `Team ${rosterId}`;
+    
+    // Resolve owner/manager display names
+    let managerDisplayNames = "Legacy Manager";
+    if (rosterMeta?.managers && managersSnapshot?.users) {
+      managerDisplayNames = rosterMeta.managers
+        .map(mID => managersSnapshot.users[mID]?.display_name || `User ${mID}`)
+        .join(' & ');
+    }
+
+    return { teamName, managerDisplayNames };
+  }
+
+  async function loadPlayoffOutcomes(leagueId) {
     if (!leagueId) return;
     loading = true;
-    verifiedStandings = [];
     champManager = null;
     loserManager = null;
+    debugLogs = [];
     
     try {
-      // Defensively load data so a live network issue doesn't freeze the screen
-      try { await getLeagueData(leagueId).catch(() => null); } catch(e){}
-      try { await getSpecificYearMatchups(leagueId).catch(() => null); } catch(e){}
-      try { await getSpecificYearPlayoffs(leagueId).catch(() => null); } catch(e){}
-      try { await getBrackets(leagueId).catch(() => null); } catch(e){}
+      // 1. Fetch your bracket structural configuration payload
+      const bracketData = await getBrackets(leagueId).catch((err) => {
+        debugLogs.push(`Bracket load failed: ${err.message}`);
+        return null;
+      });
 
-      await tick();
-
+      // 2. Capture the exact state of your static roster mappings
       const managersSnapshot = $teamManagersStore || {};
-      const globalDataSnapshot = $leagueData || {};
       
-      const activeLeagueMetadata = globalDataSnapshot[leagueId] || globalDataSnapshot || {};
-      const matchupsSnapshot = $engineMatchupsStore?.matchupWeeks || [];
-      
-      let finalBracketsSnapshot = null;
-      try {
-        finalBracketsSnapshot = await getBrackets(leagueId);
-      } catch (e) {}
-
-      // Feed the store structures directly into your data calculation layout
-      const engineOutput = getLeagueState(
-        matchupsSnapshot, 
-        managersSnapshot, 
-        activeLeagueMetadata, 
-        finalBracketsSnapshot
-      );
-
-      verifiedStandings = engineOutput.standings || [];
-      const podium = engineOutput.podiums || { championId: null, lastPlaceId: null };
-      
+      // Figure out what historical year metadata we are tracking against
       const isLegacy = !isNaN(leagueId) && leagueId.toString().length === 4;
-      const activeSeasonYear = isLegacy ? leagueId.toString() : (activeLeagueMetadata?.season || "2025");
-      const activeYearManagers = managersSnapshot?.teamManagersMap?.[activeSeasonYear] || {};
+      const targetYear = isLegacy ? leagueId.toString() : "2025"; 
 
-      // Name resolution checks
-      if (podium.championId) {
-        const champMeta = activeYearManagers[podium.championId.toString()];
-        const matchedStandingsCard = verifiedStandings.find(s => s.rosterId === podium.championId);
-        
-        champManager = {
-          teamName: champMeta?.team?.name || matchedStandingsCard?.name || `Team ${podium.championId}`,
-          name: champMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Historical Roster").join(' & ') || "Legacy Manager"
-        };
+      if (!bracketData) {
+        debugLogs.push(`No bracket data returned from getBrackets for ID: ${leagueId}`);
+        return;
       }
 
-      if (podium.lastPlaceId) {
-        const loserMeta = activeYearManagers[podium.lastPlaceId.toString()];
-        const matchedStandingsCard = verifiedStandings.find(s => s.rosterId === podium.lastPlaceId);
-        
-        loserManager = {
-          teamName: loserMeta?.team?.name || matchedStandingsCard?.name || `Team ${podium.lastPlaceId}`,
-          name: loserMeta?.managers?.map(mID => managersSnapshot.users?.[mID]?.display_name || "Historical Roster").join(' & ') || "Legacy Manager"
-        };
+      debugLogs.push(`Champ Bracket Data Keys: ${Object.keys(bracketData.champBracket || {})}`);
+      debugLogs.push(`Loser Bracket Data Keys: ${Object.keys(bracketData.loserBracket || {})}`);
+
+      // 3. Directly target the final championship round out of your bracket structures
+      const championId = bracketData.champBracket?.champion || bracketData.champion;
+      const lastPlaceId = bracketData.loserBracket?.lastPlace || bracketData.loser || bracketData.toiletBowlLoser;
+
+      // 4. Resolve the roster identity profiles if the IDs were located
+      if (championId) {
+        const resolvedChamp = resolveTeamAndManagerName(championId, targetYear, managersSnapshot);
+        if (resolvedChamp) {
+          champManager = {
+            teamName: resolvedChamp.teamName,
+            name: resolvedChamp.managerDisplayNames
+          };
+        }
+      } else {
+        debugLogs.push("Could not find a valid champion roster ID inside the returned bracket object.");
+      }
+
+      if (lastPlaceId) {
+        const resolvedLoser = resolveTeamAndManagerName(lastPlaceId, targetYear, managersSnapshot);
+        if (resolvedLoser) {
+          loserManager = {
+            teamName: resolvedLoser.teamName,
+            name: resolvedLoser.managerDisplayNames
+          };
+        }
+      } else {
+        debugLogs.push("Could not find a valid lastPlace/loser roster ID inside the returned bracket object.");
       }
 
     } catch (e) {
-      console.error("Error evaluating diagnostic calculation structures:", e);
+      console.error("Critical error extracting playoff layout records:", e);
+      debugLogs.push(`Catch block crash: ${e.message}`);
     } finally {
       loading = false;
     }
   }
 
   onMount(() => {
-    loadSeasonData(selectedLeagueId);
+    loadPlayoffOutcomes(selectedLeagueId);
   });
 </script>
 
 <main class="container">
-  <h2>League State Diagnostics Panel</h2>
+  <h2>Playoff Bracket Diagnostics Panel</h2>
 
   <div class="control-row">
     <label for="season-select"><strong>Select target season layout:</strong></label>
-    <select id="season-select" bind:value={selectedLeagueId} on:change={() => loadSeasonData(selectedLeagueId)} disabled={loading}>
+    <select id="season-select" bind:value={selectedLeagueId} on:change={() => loadPlayoffOutcomes(selectedLeagueId)} disabled={loading}>
       {#each standardSeasons as season}
         <option value={season.id}>{season.label}</option>
       {/each}
@@ -110,7 +122,7 @@
   </div>
 
   {#if loading}
-    <div class="status-msg">Processing historical layout timelines...</div>
+    <div class="status-msg">Analyzing playoff bracket structural nodes...</div>
   {:else}
     <div class="podium-grid">
       <!-- Champion Display Panel -->
@@ -120,7 +132,7 @@
           <div class="meta-title">{champManager.teamName}</div>
           <div class="meta-sub">Manager: {champManager.name}</div>
         {:else}
-          <div class="meta-empty">Playoffs ongoing or data unresolved</div>
+          <div class="meta-empty">Unresolved Champion ID or details missing</div>
         {/if}
       </div>
 
@@ -131,47 +143,28 @@
           <div class="meta-title">{loserManager.teamName}</div>
           <div class="meta-sub">Manager: {loserManager.name}</div>
         {:else}
-          <div class="meta-empty">Playoffs ongoing or data unresolved</div>
+          <div class="meta-empty">Unresolved Loser ID or details missing</div>
         {/if}
       </div>
     </div>
 
-    <!-- Regular Season Standings Overview Table -->
-    <div class="table-wrapper">
-      <h3>Regular Season Standings</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Team Name / Manager</th>
-            <th>Record</th>
-            <th>Points For (PF)</th>
-            <th>Points Against (PA)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each verifiedStandings as stats}
-            <tr>
-              <td>
-                <div class="td-team">{stats.name || `Team ${stats.rosterId}`}</div>
-              </td>
-              <td class="td-record">{stats.wins} - {stats.losses}{#if stats.ties > 0} - {stats.ties}{/if}</td>
-              <td>{Number(stats.fptsFor || 0).toFixed(2)}</td>
-              <td>{Number(stats.fptsAgainst || 0).toFixed(2)}</td>
-            </tr>
-          {:else}
-            <tr>
-              <td colspan="4" class="no-data">No data found for this season context.</td>
-            </tr>
+    <!-- Diagnostic Log Dump Terminal to see exactly what properties getBrackets outputs -->
+    {#if debugLogs.length > 0}
+      <div class="debug-terminal">
+        <h4>System Trace Logs</h4>
+        <ul>
+          {#each debugLogs as log}
+            <li><code>{log}</code></li>
           {/each}
-        </tbody>
-      </table>
-    </div>
+        </ul>
+      </div>
+    fi}
   {/if}
 </main>
 
 <style>
   .container {
-    max-width: 1000px;
+    max-width: 800px;
     margin: 2rem auto;
     padding: 0 1rem;
     font-family: system-ui, -apple-system, sans-serif;
@@ -234,39 +227,23 @@
     color: #999;
     font-style: italic;
   }
-  .table-wrapper {
-    background: #fff;
-    border: 1px solid #eee;
-    border-radius: 8px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  .debug-terminal {
+    background: #1e1e1e;
+    color: #00ff00;
+    padding: 1rem;
+    border-radius: 6px;
+    font-family: monospace;
+    margin-top: 2rem;
   }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 1rem;
-    text-align: left;
+  .debug-terminal h4 {
+    margin: 0 0 0.5rem 0;
+    color: #fff;
   }
-  th, td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #eee;
+  .debug-terminal ul {
+    margin: 0;
+    padding-left: 1.2rem;
   }
-  th {
-    background: #f8f9fa;
-    font-weight: 600;
-    color: #444;
-  }
-  .td-team {
-    font-weight: 600;
-    color: #111;
-  }
-  .td-record {
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-  }
-  .no-data {
-    text-align: center;
-    color: #999;
-    padding: 3rem 0;
+  .debug-terminal li {
+    margin-bottom: 0.25rem;
   }
 </style>
