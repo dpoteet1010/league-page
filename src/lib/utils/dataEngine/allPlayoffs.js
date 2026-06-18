@@ -1,11 +1,11 @@
-import { getLeagueData } from './leagueData';
+import { getLeagueData } from '$lib/utils/helperFunctions/leagueData';
 import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
-import { getLeagueRosters } from './leagueRosters';
+import { getLeagueRosters } from '$lib/utils/helperFunctions/leagueRosters';
 import { get } from 'svelte/store';
 import { enginePlayoffStore } from '$lib/stores';
-import { legacyWinnersBrackets } from '../helperFunctions/legacyWinnersBrackets';
-import { legacyLosersBrackets } from '../helperFunctions/legacyLosersBrackets';
-import { legacyMatchups } from '../helperFunctions/legacyMatchups';
+import { legacyWinnersBrackets } from '$lib/utils/helperFunctions/legacyWinnersBrackets';
+import { legacyLosersBrackets } from '$lib/utils/helperFunctions/legacyLosersBrackets';
+import { legacyMatchups } from '$lib/utils/helperFunctions/legacyMatchups';
 
 /**
  * Evaluates and returns fully processed bracket states for a target year or league ID.
