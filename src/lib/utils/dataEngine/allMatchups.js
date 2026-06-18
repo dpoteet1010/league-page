@@ -1,7 +1,7 @@
-import { getLeagueData } from "./leagueData";
+import { getLeagueData } from "$lib/utils/helperFunctions/leagueData.js";
 import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
-import { getNflState } from "./nflState";
-import { waitForAll } from './multiPromise';
+import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
+import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
 import { get } from 'svelte/store';
 import { engineMatchupsStore } from '$lib/stores'; 
 
@@ -14,7 +14,6 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
     
     // 1. Check if we already have this specific ID in our private history cache
     if (currentStore.history && currentStore.history[queryLeagueID]) {
-        // Update the "active" view to this cached version
         engineMatchupsStore.update(s => ({
             ...s,
             ...s.history[queryLeagueID]
@@ -89,7 +88,6 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
     };
 
     // 7. Update the Dedicated Engine Store
-    // We update the root properties for the current view AND the history for caching
     engineMatchupsStore.update(s => ({
         ...seasonData,
         history: {
@@ -101,9 +99,6 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
     return seasonData;
 };
 
-/**
- * Internal helper to group raw Sleeper players into matchup pairs
- */
 const processMatchups = (inputMatchups, week) => {
     if (!inputMatchups || inputMatchups.length === 0) {
         return false;
