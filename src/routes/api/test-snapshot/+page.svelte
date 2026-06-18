@@ -1,7 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { leagueID } from '$lib/utils/leagueInfo';
-  import { getLeagueData } from '$lib/utils/dataEngine/leagueData';
+  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData';
   import { getSpecificYearMatchups, engineMatchupsStore } from '$lib/utils/dataEngine/allMatchups';
   import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs';
   import { getLeagueState } from '$lib/utils/dataEngine/leagueState';
