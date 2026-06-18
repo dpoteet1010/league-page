@@ -1,12 +1,11 @@
 <script>
-import { getLeagueData } from "$lib/utils/helperFunctions/leagueData.js";
-import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
-import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
-import { waitForAll } from "$lib/utils/helperFunctions/multiPromise.js";
-import { get } from 'svelte/store';
+import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
+import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
+import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
+import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
 import { onMount } from 'svelte';
 
-// All store imports consolidated into one line
+// Clean, unified store imports
 import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
 
     let selectedLeagueID = "";
