@@ -1,53 +1,114 @@
-// api/api-testsnapshot.js
-import { getSleeperBaseData, getSleeperWeeklyState, buildLeagueSnapshot } from '../utils/leagueState.js';
+<script>
+  import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
+  import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
+  import { determinePlayoffPodiums, getLeagueState } from '$lib/utils/dataEngine/leagueState.js'; 
+  
+  import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
+  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
+  import { onMount } from 'svelte';
 
-export default async function handler(req, res) {
-  // Enforce GET requests for testing state structures
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  import { engineMatchupsStore, enginePlayoffStore, teamManagersStore, leagueData } from '$lib/stores';
 
-  // Fallback testing targets if explicit query strings aren't passed
-  const leagueId = req.query.leagueId || '112233445566778899'; 
-  const targetWeek = parseInt(req.query.week, 10) || 14; 
-  const isHistorical = req.query.historical === 'true';
+  let selectedLeagueID = "";
+  let loading = false;
 
-  try {
-    // Optimization: If processing a closed historical year, skip heavy API processing loops
-    if (isHistorical) {
-      return res.status(200).json({
-        message: 'Static context returned for historical records.',
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          note: "Archived static snapshots are served directly without remote API polling overhead."
-        }
-      });
+  // Build out the list of available seasons from the managers store
+  $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
+    .sort((a, b) => Number(b) - Number(a))
+    .map(year => {
+      const id = Object.keys($leagueData || {}).find(key => $leagueData[key]?.season == year);
+      return { year, id: id || year }; 
+    });
+
+  // Identify the active target year based on the current user selection
+  $: targetYear = Object.values($leagueData || {}).find(l => l.status === "active" || l.league_id === selectedLeagueID)?.season 
+    || $enginePlayoffStore?.year 
+    || "2025";
+
+  // Explicitly tie league calculation outputs to selectedLeagueID state updates
+  $: engineOutput = (selectedLeagueID && $engineMatchupsStore && $teamManagersStore) 
+    ? getLeagueState($engineMatchupsStore, $teamManagersStore, targetYear) 
+    : {};
+
+  $: podium = determinePlayoffPodiums($enginePlayoffStore);
+  
+  // Map podium rosters back to clean team metadata structures
+  $: champMeta = (podium.championId && targetYear && $teamManagersStore?.teamManagersMap?.[targetYear])
+    ? $teamManagersStore.teamManagersMap[targetYear][podium.championId]
+    : null;
+
+  $: champManager = champMeta ? {
+    teamName: champMeta?.team?.name || `Team ${podium.championId}`,
+    name: champMeta?.managers?.map(mID => $teamManagersStore.users?.[mID]?.display_name || "Unknown").join(' & ')
+  } : null;
+
+  $: loserMeta = (podium.lastPlaceId && targetYear && $teamManagersStore?.teamManagersMap?.[targetYear])
+    ? $teamManagersStore.teamManagersMap[targetYear][podium.lastPlaceId]
+    : null;
+
+  $: loserManager = loserMeta ? {
+    teamName: loserMeta?.team?.name || `Team ${podium.lastPlaceId}`,
+    name: loserMeta?.managers?.map(mID => $teamManagersStore.users?.[mID]?.display_name || "Unknown").join(' & ')
+  } : null;
+
+  // Data pipeline loader engine
+  async function loadSeasonData() {
+    if (!selectedLeagueID) return;
+    loading = true;
+    try {
+      await Promise.all([
+        getLeagueData(selectedLeagueID),
+        getSpecificYearMatchups(selectedLeagueID),
+        getSpecificYearPlayoffs(selectedLeagueID)
+      ]);
+    } catch (e) {
+      console.error("Error loading season data:", e);
+    } finally {
+      loading = false;
     }
-
-    // Step 1: Concurrent core data extraction
-    const baseData = await getSleeperBaseData(leagueId);
-
-    // Step 2: Dynamic time-series score tracking 
-    const matchupAggregates = await getSleeperWeeklyState(leagueId, targetWeek);
-
-    // Step 3: Synthesis and formatting
-    const structuralSnapshot = buildLeagueSnapshot({
-      ...baseData,
-      matchupAggregates
-    });
-
-    return res.status(200).json({
-      success: true,
-      executionTime: new Date().toISOString(),
-      payload: structuralSnapshot
-    });
-
-  } catch (error) {
-    console.error('API Test Snapshot Generation Failure:', error.message);
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to synthesize league snapshot format.',
-      details: error.message
-    });
   }
-}
+
+  // Reactively run loader engine whenever user updates the dropdown select selection
+  $: if (selectedLeagueID) {
+    loadSeasonData();
+  }
+
+  onMount(async () => {
+    loading = true;
+    // Fetch baseline team manager contexts first
+    const managers = await getLeagueTeamManagers();
+    const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
+    
+    if (years.length > 0) {
+      const newestYear = years[0];
+      
+      // Hydrate the league config database mapping to resolve real IDs before choosing default
+      const fallbackData = await getLeagueData(); 
+      const currentLeagueMap = fallbackData || $leagueData || {};
+      
+      const idMatch = Object.keys(currentLeagueMap).find(key => currentLeagueMap[key]?.season == newestYear);
+      selectedLeagueID = idMatch || newestYear;
+    }
+    loading = false;
+  });
+</script>
+
+{#if loading}
+  <p>Loading season snapshot parameters...</p>
+{:else}
+  <div>
+    <label for="season-select">Select Season:</label>
+    <select id="season-select" bind:value={selectedLeagueID}>
+      {#each seasons as season}
+        <option value={season.id}>{season.year}</option>
+      {/each}
+    </select>
+
+    {#if champManager}
+      <p><strong>Champion:</strong> {champManager.teamName} ({champManager.name})</p>
+    {/if}
+    {#if loserManager}
+      <p><strong>Last Place:</strong> {loserManager.teamName} ({loserManager.name})</p>
+    {/if}
+  </div>
+{/if}
