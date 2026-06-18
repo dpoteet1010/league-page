@@ -1,12 +1,15 @@
 <script>
     import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
+    // Import the new playoff engine function
+    import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
+    
     import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js'; 
     import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
     import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
     import { onMount } from 'svelte';
 
-    // Store imports consolidated perfectly
-    import { engineMatchupsStore, teamManagersStore, leagueData } from '$lib/stores';
+    // Store references updated to include enginePlayoffStore
+    import { engineMatchupsStore, enginePlayoffStore, teamManagersStore, leagueData } from '$lib/stores';
 
     let selectedLeagueID = "";
     let loading = false;
@@ -26,12 +29,14 @@
         if (!selectedLeagueID) return;
         loading = true;
         try {
+            // Fires both your matchup pipeline AND your playoff structural pipeline concurrently!
             await Promise.all([
                 getLeagueData(selectedLeagueID),
-                getSpecificYearMatchups(selectedLeagueID)
+                getSpecificYearMatchups(selectedLeagueID),
+                getSpecificYearPlayoffs(selectedLeagueID)
             ]);
         } catch (e) {
-            console.error("Error loading season:", e);
+            console.error("Error loading season data:", e);
         } finally {
             loading = false;
         }
@@ -96,9 +101,10 @@
                 </table>
             </section>
 
+            <!-- Splitting the raw output area so you can check Standings and Bracket streams easily -->
             <section>
-                <h2>Raw JSON</h2>
-                <pre>{JSON.stringify(engineOutput, null, 2)}</pre>
+                <h2>Raw Playoff Bracket JSON</h2>
+                <pre>{JSON.stringify($enginePlayoffStore, null, 2)}</pre>
             </section>
         </div>
     {:else}
