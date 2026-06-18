@@ -1,75 +1,93 @@
-import { get } from 'svelte/store';
-import { engineMatchupsStore, teamManagersStore } from '$lib/stores';
-
 /**
- * Compiles weekly matchup data into a structured regular season standings object.
- * Used by the validator UI grid table.
+ * Compiles weekly matchup datasets into structured regular season standings.
+ * Reacts instantly when store values update on screen.
  */
-export const getLeagueState = (leagueID) => {
-    const matchupsByWeek = get(engineMatchupsStore);
-    const managersStore = get(teamManagersStore);
-    
-    // Safely pull the correct year out of our store based on the active league ID mapping
-    const targetYear = Object.keys(managersStore?.teamManagersMap || {}).find(year => {
-        const matchingId = Object.keys(managersStore?.teamManagersMap[year] || {})[0];
-        // If the store context matches, capture this season's key
-        return managersStore.year === year; 
-    }) || managersStore?.year || "2025";
+export const getLeagueState = (matchupsStoreValue, teamManagersStoreValue, selectedLeagueYear) => {
+    // Safety guard against unresolved initialization timelines
+    if (!matchupsStoreValue || !teamManagersStoreValue) return {};
 
-    const currentYearManagers = managersStore?.teamManagersMap?.[targetYear] || {};
+    // 1. Resolve target season year context
+    const targetYear = selectedLeagueYear || teamManagersStoreValue.year || "2025";
+    const currentYearManagers = teamManagersStoreValue?.teamManagersMap?.[targetYear] || {};
     const standings = {};
 
-    // Initialize standings object for all managers in the league
+    // 2. Pre-populate teams mapping using current year manager profiles
     Object.entries(currentYearManagers).forEach(([rosterId, managerMeta]) => {
         standings[rosterId] = {
             team: managerMeta.teamName || `Team ${rosterId}`,
             manager: managerMeta.name || "Unknown Manager",
             wins: 0,
             losses: 0,
+            ties: 0,
             pf: 0,
             pa: 0
         };
     });
 
-    // Loop through weeks and aggregate metrics
-    Object.entries(matchupsByWeek || {}).forEach(([week, matchupsList]) => {
-        if (!Array.isArray(matchupsList)) return;
+    // Extract raw data structures (handles both direct array mapping and nested objects safely)
+    const weeksData = matchupsStoreValue.matchupWeeks || Object.entries(matchupsStoreValue);
 
-        // Group team performances by matchup_id to calculate wins/losses and points against (PA)
+    // 3. Loop through every regular season match week and aggregate numbers
+    weeksData.forEach((weekItem) => {
+        // Safe structural fallback to parse both engine private history format and raw api responses
+        let matchupsList = weekItem.matchups || weekItem[1];
+        let numericalWeek = weekItem.week || parseInt(weekItem[0]);
+
+        if (!matchupsList) return;
+
+        // Group team performances by matchup_id to resolve head-to-head pairings
         const matchupPairs = {};
-        matchupsList.forEach(teamPerf => {
-            if (!teamPerf.matchup_id) return;
-            if (!matchupPairs[teamPerf.matchup_id]) {
-                matchupPairs[teamPerf.matchup_id] = [];
-            }
-            matchupPairs[teamPerf.matchup_id].push(teamPerf);
-        });
 
-        // Evaluate heads-up match pairs
+        // If the inner layer is grouped as an object structure (processed by engine matchups)
+        if (!Array.isArray(matchupsList)) {
+            Object.values(matchupsList).forEach(pairGroup => {
+                const pairId = pairGroup[0]?.matchup_id || Math.random();
+                if (!matchupPairs[pairId]) matchupPairs[pairId] = [];
+                matchupPairs[pairId] = pairGroup;
+            });
+        } else {
+            // Otherwise parse as flat arrays (raw API response patterns)
+            matchupsList.forEach(teamPerf => {
+                if (!teamPerf.matchup_id) return;
+                if (!matchupPairs[teamPerf.matchup_id]) {
+                    matchupPairs[teamPerf.matchup_id] = [];
+                }
+                matchupPairs[teamPerf.matchup_id].push(teamPerf);
+            });
+        }
+
+        // 4. Calculate Wins, Losses, and Total Points
         Object.values(matchupPairs).forEach(pair => {
-            if (pair.length !== 2) return; // Skip incomplete data or byes
+            if (pair.length !== 2) return; // Ignore incomplete weeks, byes, or broken pairings safely
 
             const [teamA, teamB] = pair;
             const recordA = standings[teamA.roster_id];
             const recordB = standings[teamB.roster_id];
 
+            // If a manager left the league or roster IDs changed incorrectly, ignore to avoid script crashes
             if (!recordA || !recordB) return;
 
-            // Accumulate Points For (PF)
-            recordA.pf += (teamA.points || 0);
-            recordB.pf += (teamB.points || 0);
+            // Extract total points scores using root 'points' fallback checks
+            const pointsA = Number(teamA.points || 0);
+            const pointsB = Number(teamB.points || 0);
 
-            // Accumulate Points Against (PA)
-            recordA.pa += (teamB.points || 0);
-            recordB.pa += (teamA.points || 0);
+            // Accumulate Points For (PF) and Points Against (PA)
+            recordA.pf += pointsA;
+            recordA.pa += pointsB;
 
-            // Assign Wins/Losses
-            if (teamA.points > teamB.points) {
+            recordB.pf += pointsB;
+            recordB.pa += pointsA;
+
+            // Resolve Match outcome records
+            if (pointsA > pointsB) {
                 recordA.wins += 1;
                 recordB.losses += 1;
-            } else {
+            } else if (pointsB > pointsA) {
                 recordB.wins += 1;
                 recordA.losses += 1;
+            } else {
+                recordA.ties += 1;
+                recordB.ties += 1;
             }
         });
     });
@@ -78,14 +96,15 @@ export const getLeagueState = (leagueID) => {
 };
 
 /**
- * Traverses an evaluated playoff store object to find the champion and league loser roster IDs.
+ * Traverses an evaluated playoff store tree structure to isolate the 
+ * exact roster IDs representing first and last place podium positions.
  */
 export const determinePlayoffPodiums = (playoffStoreValue) => {
     if (!playoffStoreValue?.champs?.bracket?.length) {
         return { championId: null, lastPlaceId: null };
     }
 
-    // 1. Extract Champion (Winner of the final round in the championship bracket)
+    // 1. Extract Champion (Winner of the very final matchup slot in the primary bracket tree)
     const champsBracket = playoffStoreValue.champs.bracket;
     const finalChampsRound = champsBracket[champsBracket.length - 1];
     const finalChampsMatchup = finalChampsRound?.[0];
@@ -95,13 +114,16 @@ export const determinePlayoffPodiums = (playoffStoreValue) => {
         const t1 = finalChampsMatchup[0];
         const t2 = finalChampsMatchup[1];
         
-        const t1Pts = Object.values(t1?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
-        const t2Pts = Object.values(t2?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+        // Sum multi-week playoff rules perfectly if applicable (e.g. 2-week championships)
+        const t1Pts = Object.values(t1?.points || {}).reduce((sum, val) => (sum || 0) + (val || 0), 0);
+        const t2Pts = Object.values(t2?.points || {}).reduce((sum, val) => (sum || 0) + (val || 0), 0);
         
-        championId = t1Pts > t2Pts ? t1.roster_id : t2.roster_id;
+        if (t1.roster_id && t2.roster_id) {
+            championId = t1Pts > t2Pts ? t1.roster_id : t2.roster_id;
+        }
     }
 
-    // 2. Extract Last Place (Loser of the final round in the losers/toilet bowl bracket)
+    // 2. Extract Last Place Toilet Bowl Loser (The team that loses the final match chain)
     const losersBracket = playoffStoreValue.losers?.bracket || [];
     let lastPlaceId = null;
     
@@ -113,10 +135,13 @@ export const determinePlayoffPodiums = (playoffStoreValue) => {
             const t1 = finalLosersMatchup[0];
             const t2 = finalLosersMatchup[1];
 
-            const t1Pts = Object.values(t1?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
-            const t2Pts = Object.values(t2?.points || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+            const t1Pts = Object.values(t1?.points || {}).reduce((sum, val) => (sum || 0) + (val || 0), 0);
+            const t2Pts = Object.values(t2?.points || {}).reduce((sum, val) => (sum || 0) + (val || 0), 0);
             
-            lastPlaceId = t1Pts < t2Pts ? t1.roster_id : t2.roster_id;
+            if (t1.roster_id && t2.roster_id) {
+                // In Sleeper's standard consolation/toilet bowl bracket, the LOSING side drops to the absolute bottom
+                lastPlaceId = t1Pts < t2Pts ? t1.roster_id : t2.roster_id;
+            }
         }
     }
 
