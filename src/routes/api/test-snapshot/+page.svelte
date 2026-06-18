@@ -2,11 +2,11 @@
   import { onMount, tick } from 'svelte';
   import { leagueID } from '$lib/utils/leagueInfo.js';
   import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-  import { getSpecificYearMatchups, engineMatchupsStore } from '$lib/utils/dataEngine/allMatchups.js';
+  import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
   import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
   import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
   import { getBrackets } from '$lib/utils/helperFunctions/leagueBrackets.js'; 
-  import { leagueData, teamManagersStore } from '$lib/stores';
+  import { leagueData, teamManagersStore, engineMatchupsStore } from '$lib/stores';
 
   let selectedLeagueId = leagueID;
   let verifiedStandings = [];
@@ -28,7 +28,7 @@
     loserManager = null;
     
     try {
-      // Concurrently resolve all data structures across modern and historical timelines
+      // 1. Concurrently execute data pipeline hydrations
       await Promise.all([
         getLeagueData(leagueId),
         getSpecificYearMatchups(leagueId),
@@ -38,16 +38,18 @@
 
       await tick();
 
-      // Isolate internal snapshot variables out of stores
-      const matchupsSnapshot = $engineMatchupsStore;
+      // 2. Safely capture absolute data snapshots directly out of core application stores
       const managersSnapshot = $teamManagersStore;
       const globalDataSnapshot = $leagueData;
       const activeLeagueMetadata = globalDataSnapshot[leagueId] || globalDataSnapshot;
       
+      // Target the structured array output from your engineMatchupsStore layout
+      const matchupsSnapshot = $engineMatchupsStore?.matchupWeeks || [];
+      
       // Pull processed data directly from your UI's evaluated layout parser
       const finalBracketsSnapshot = await getBrackets(leagueId);
 
-      // Feed all 4 required metrics into the updated layout-agnostic function
+      // 3. Process complete layout datasets 
       const engineOutput = getLeagueState(
         matchupsSnapshot, 
         managersSnapshot, 
@@ -55,14 +57,14 @@
         finalBracketsSnapshot
       );
 
-      // Bind compiled standings array cleanly
+      // 4. Bind compiled standings array cleanly
       verifiedStandings = engineOutput.standings || [];
       
       const podium = engineOutput.podiums || { championId: null, lastPlaceId: null };
       const activeSeasonYear = activeLeagueMetadata?.season || (leagueId === '2023' || leagueId === '2024' ? leagueId : "2025");
       const activeYearManagers = managersSnapshot?.teamManagersMap?.[activeSeasonYear] || {};
 
-      // Parse Champion metadata identities
+      // 5. Parse Champion metadata identities
       if (podium.championId) {
         const champMeta = activeYearManagers[podium.championId];
         champManager = {
@@ -71,7 +73,7 @@
         };
       }
 
-      // Parse Bottom Toilet Bowl/Consolation Loser identities
+      // 6. Parse Bottom Toilet Bowl/Consolation Loser identities
       if (podium.lastPlaceId) {
         const loserMeta = activeYearManagers[podium.lastPlaceId];
         loserManager = {
