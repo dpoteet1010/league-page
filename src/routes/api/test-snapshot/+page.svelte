@@ -1,12 +1,12 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import { leagueID } from '$lib/utils/leagueInfo';
-  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData';
-  import { getSpecificYearMatchups, engineMatchupsStore } from '$lib/utils/dataEngine/allMatchups';
-  import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs';
-  import { getLeagueState } from '$lib/utils/dataEngine/leagueState';
-  import { getBrackets } from '$lib/utils/helperFunctions/brackets'; // Maps legacy structures securely
-  import { leagueData, teamManagersStore } from '$lib/stores';
+  import { leagueID } from '$lib/utils/leagueInfo.js';
+  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
+  import { getSpecificYearMatchups, engineMatchupsStore } from '$lib/utils/dataEngine/allMatchups.js';
+  import { getSpecificYearPlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
+  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+  import { getBrackets } from '$lib/utils/helperFunctions/brackets.js'; 
+  import { leagueData, teamManagersStore } from '$lib/stores/index.js';
 
   let selectedLeagueId = leagueID;
   let verifiedStandings = [];
@@ -28,7 +28,7 @@
     loserManager = null;
     
     try {
-      // 1. Concurrently resolve all data structures across modern and historical timelines
+      // Concurrently resolve all data structures across modern and historical timelines
       await Promise.all([
         getLeagueData(leagueId),
         getSpecificYearMatchups(leagueId),
@@ -38,7 +38,7 @@
 
       await tick();
 
-      // 2. Isolate internal snapshot variables out of stores
+      // Isolate internal snapshot variables out of stores
       const matchupsSnapshot = $engineMatchupsStore;
       const managersSnapshot = $teamManagersStore;
       const globalDataSnapshot = $leagueData;
@@ -47,7 +47,7 @@
       // Pull processed data directly from your UI's evaluated layout parser
       const finalBracketsSnapshot = await getBrackets(leagueId);
 
-      // 3. Feed all 4 required metrics into the updated layout-agnostic function
+      // Feed all 4 required metrics into the updated layout-agnostic function
       const engineOutput = getLeagueState(
         matchupsSnapshot, 
         managersSnapshot, 
@@ -55,14 +55,14 @@
         finalBracketsSnapshot
       );
 
-      // 4. Bind compiled standings array cleanly
+      // Bind compiled standings array cleanly
       verifiedStandings = engineOutput.standings || [];
       
       const podium = engineOutput.podiums || { championId: null, lastPlaceId: null };
       const activeSeasonYear = activeLeagueMetadata?.season || (leagueId === '2023' || leagueId === '2024' ? leagueId : "2025");
       const activeYearManagers = managersSnapshot?.teamManagersMap?.[activeSeasonYear] || {};
 
-      // 5. Parse Champion metadata identities
+      // Parse Champion metadata identities
       if (podium.championId) {
         const champMeta = activeYearManagers[podium.championId];
         champManager = {
@@ -71,7 +71,7 @@
         };
       }
 
-      // 6. Parse Bottom Toilet Bowl/Consolation Loser identities
+      // Parse Bottom Toilet Bowl/Consolation Loser identities
       if (podium.lastPlaceId) {
         const loserMeta = activeYearManagers[podium.lastPlaceId];
         loserManager = {
@@ -105,10 +105,9 @@
   </div>
 
   {#if loading}
-    <div class="status-msg p-loading">Processing historical layout timelines...</div>
+    <div class="status-msg">Processing historical layout timelines...</div>
   {:else}
     <div class="podium-grid">
-      <!-- Champion Display Panel -->
       <div class="podium-card gold">
         <h3>🏆 League Champion</h3>
         {#if champManager}
@@ -119,7 +118,6 @@
         {/if}
       </div>
 
-      <!-- Toilet Bowl Loser Panel -->
       <div class="podium-card poop">
         <h3>💩 Toilet Bowl Loser</h3>
         {#if loserManager}
@@ -131,7 +129,6 @@
       </div>
     </div>
 
-    <!-- Regular Season Standings Overview Table -->
     <div class="table-wrapper">
       <h3>Regular Season Standings</h3>
       <table>
