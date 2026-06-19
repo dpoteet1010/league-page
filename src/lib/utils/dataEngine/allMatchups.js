@@ -1,125 +1,154 @@
-// allPlayoffs.js
-//
-// Pulls a season's raw winners/losers bracket data (live Sleeper API or
-// legacy local files) and resolves it into final placements WITHOUT
-// reconstructing the full bracket tree. Every match with a `p` field is a
-// placement game — its `w`/`l` already give us the final rank for those two
-// rosters directly.
+import { getLeagueData } from "$lib/utils/helperFunctions/leagueData.js";
+import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
+import { getNflState } from "$lib/utils/helperFunctions/nflState.js";
+import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
+import { get } from 'svelte/store';
+import { engineMatchupsStore } from '$lib/stores';
+import { legacyMatchups } from '$lib/utils/helperFunctions/legacyMatchups.js';
 
-import { legacyWinnersBrackets } from '$lib/utils/helperFunctions/legacyWinnersBrackets.js';
-import { legacyLosersBrackets } from '$lib/utils/helperFunctions/legacyLosersBrackets.js';
+const FINAL_POSSIBLE_WEEK = 18;
 
-const LEGACY_YEARS = ['2023', '2024'];
+export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
+	const currentStore = get(engineMatchupsStore);
 
-export async function getLeaguePlayoffs(leagueId) {
-	const debug = [];
-	const idStr = leagueId?.toString();
-
-	if (LEGACY_YEARS.includes(idStr)) {
-		const winnersBracket = legacyWinnersBrackets?.[idStr] || [];
-		const losersBracket = legacyLosersBrackets?.[idStr] || [];
-		debug.push(`Loaded legacy brackets for ${idStr}: ${winnersBracket.length} winners matches, ${losersBracket.length} losers matches.`);
-		return { winnersBracket, losersBracket, debug };
+	if (currentStore.history && currentStore.history[queryLeagueID]) {
+		engineMatchupsStore.update(s => ({ ...s, ...s.history[queryLeagueID] }));
+		return currentStore.history[queryLeagueID];
 	}
 
-	try {
-		const [winnersRes, losersRes] = await Promise.all([
-			fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { compress: true }),
-			fetch(`https://api.sleeper.app/v1/league/${leagueId}/losers_bracket`, { compress: true })
-		]);
+	const isLegacyYear = isNaN(queryLeagueID) === false && queryLeagueID.toString().length === 4;
 
-		const winnersBracket = winnersRes.ok ? await winnersRes.json() : [];
-		const losersBracket = losersRes.ok ? await losersRes.json() : [];
+	if (isLegacyYear) {
+		const yearStr = queryLeagueID.toString();
+		const yearMatchups = legacyMatchups[yearStr];
 
-		debug.push(`Fetched live brackets for league ${leagueId}: ${winnersBracket?.length || 0} winners matches, ${losersBracket?.length || 0} losers matches.`);
+		if (!yearMatchups) {
+			console.error(`No legacy matchups found for year ${yearStr}`);
+			return null;
+		}
 
-		return { winnersBracket: winnersBracket || [], losersBracket: losersBracket || [], debug };
-	} catch (err) {
-		debug.push(`getLeaguePlayoffs fetch failed: ${err.message}`);
-		return { winnersBracket: [], losersBracket: [], debug };
-	}
-}
-
-/**
- * Resolves raw bracket arrays into final placements.
- *
- * Winners bracket: a match with `p` decided means winner finishes rank `p`,
- * loser finishes rank `p + 1` (p:1 -> 1st/2nd, p:3 -> 3rd/4th, etc.)
- *
- * Losers bracket (toilet bowl): uses the SAME local p-numbering (p:1, p:3,
- * p:5...) but it's relative to ITS OWN bracket, not the league overall.
- * To get absolute placement, it's offset by however many teams made the
- * winners bracket — e.g. in a 12-team league with a 6-team playoff field,
- * the losers bracket's own "p:1" game decides 7th/8th place
- * (offset 6 + p:1 = 7th), not 1st/2nd. The winner of the ENTIRE losers
- * bracket therefore finishes 7th, not 1st.
- *
- * @param {Array} winnersBracket
- * @param {Array} losersBracket
- * @param {number} numRosters - used only as a sanity cross-check in debug logs
- * @returns {{ placementsByRosterId: Object, championId: number|null, lastPlaceId: number|null, debug: string[] }}
- */
-export function resolvePlayoffPlacements(winnersBracket, losersBracket, numRosters) {
-	const debug = [];
-	const placementsByRosterId = {};
-
-	const applyPlacement = (rosterId, place) => {
-		if (rosterId == null || place == null) return;
-		if (placementsByRosterId[rosterId] != null) return; // don't let anything overwrite a confirmed placement
-		placementsByRosterId[rosterId] = place;
-	};
-
-	const applyFromBracket = (bracket, label, offset) => {
-		(bracket || []).forEach((match) => {
-			if (match?.p == null) return; // not a placement game, just a bracket-advancement game
-			if (match.w == null || match.l == null) {
-				debug.push(`${label} match m=${match.m} has p=${match.p} but isn't decided yet (missing w/l) — skipping.`);
-				return;
+		const matchupWeeks = [];
+		const debug = [];
+		Object.entries(yearMatchups).forEach(([weekNum, inputMatchups]) => {
+			const processed = processMatchups(inputMatchups, parseInt(weekNum));
+			if (processed) {
+				matchupWeeks.push({
+					matchups: processed.matchups,
+					week: processed.week
+				});
+				if (processed.byeRosterIds.length) {
+					debug.push(`Week ${processed.week}: bye for roster(s) ${processed.byeRosterIds.join(', ')} (excluded from matchups, not paired with anyone).`);
+				}
 			}
-			applyPlacement(match.w, offset + match.p);
-			applyPlacement(match.l, offset + match.p + 1);
 		});
-	};
 
-	const winnersTeamCount = getRosterIdsInBracket(winnersBracket).size;
-	debug.push(`Winners bracket has ${winnersTeamCount} teams — losers bracket placements offset by ${winnersTeamCount}.`);
+		const legacySeasonData = {
+			matchupWeeks,
+			leagueID: yearStr,
+			year: yearStr,
+			week: 14,
+			regularSeasonLength: 14,
+			debug
+		};
 
-	applyFromBracket(winnersBracket, 'Winners', 0);
-	applyFromBracket(losersBracket, 'Losers', winnersTeamCount);
+		engineMatchupsStore.update(s => ({
+			...legacySeasonData,
+			history: { ...(s.history || {}), [queryLeagueID]: legacySeasonData }
+		}));
 
-	const resolvedPlaces = Object.values(placementsByRosterId);
-	const maxPlace = resolvedPlaces.length ? Math.max(...resolvedPlaces) : null;
-
-	if (numRosters && maxPlace != null && maxPlace !== numRosters) {
-		debug.push(`Warning: highest resolved placement is ${maxPlace}, but numRosters is ${numRosters} — some rosters may be missing a final placement.`);
+		return legacySeasonData;
 	}
 
-	const championEntry = Object.entries(placementsByRosterId).find(([, place]) => place === 1);
-	const lastPlaceEntry = maxPlace != null
-		? Object.entries(placementsByRosterId).find(([, place]) => place === maxPlace)
-		: null;
+	const [nflState, leagueData] = await waitForAll(
+		getNflState(),
+		getLeagueData(queryLeagueID),
+	).catch((err) => {
+		console.error("Error fetching metadata:", err);
+		return [null, null];
+	});
 
-	debug.push(`Resolved ${resolvedPlaces.length} placements (highest place number found: ${maxPlace ?? 'none'}).`);
+	if (!leagueData) return null;
 
-	return {
-		placementsByRosterId,
-		championId: championEntry ? Number(championEntry[0]) : null,
-		lastPlaceId: lastPlaceEntry ? Number(lastPlaceEntry[0]) : null,
+	let week = 1;
+	if (nflState.season_type === 'regular') week = nflState.display_week;
+	else if (nflState.season_type === 'post') week = 18;
+
+	const year = leagueData.season;
+	const regularSeasonLength = leagueData.settings.playoff_week_start - 1;
+
+	const matchupsPromises = [];
+	for (let i = 1; i <= FINAL_POSSIBLE_WEEK; i++) {
+		matchupsPromises.push(
+			fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`, { compress: true })
+		);
+	}
+
+	const matchupsRes = await waitForAll(...matchupsPromises);
+
+	const matchupsJsonPromises = matchupsRes.map((res) =>
+		res && res.ok ? res.json() : Promise.resolve(null)
+	);
+
+	const matchupsData = await Promise.all(matchupsJsonPromises).catch((err) => {
+		console.error("Error parsing matchups JSON:", err);
+		return [];
+	});
+
+	const matchupWeeks = [];
+	const debug = [];
+	for (let i = 1; i <= matchupsData.length; i++) {
+		const weekData = matchupsData[i - 1];
+		if (!weekData) continue;
+		const processed = processMatchups(weekData, i);
+		if (processed) {
+			matchupWeeks.push({ matchups: processed.matchups, week: processed.week });
+			if (processed.byeRosterIds.length) {
+				debug.push(`Week ${processed.week}: bye for roster(s) ${processed.byeRosterIds.join(', ')} (excluded from matchups, not paired with anyone).`);
+			}
+		}
+	}
+
+	const seasonData = {
+		matchupWeeks,
+		leagueID: queryLeagueID,
+		year,
+		week,
+		regularSeasonLength,
 		debug
 	};
-}
 
-/**
- * Returns the set of roster_ids that appear anywhere in a raw bracket array
- * (as t1, t2, w, or l — ignoring {w: matchId}/{l: matchId} placeholder
- * references).
- */
-export function getRosterIdsInBracket(bracket) {
-	const ids = new Set();
-	(bracket || []).forEach((match) => {
-		[match?.t1, match?.t2, match?.w, match?.l].forEach((val) => {
-			if (typeof val === 'number') ids.add(val);
+	engineMatchupsStore.update(s => ({
+		...seasonData,
+		history: { ...(s.history || {}), [queryLeagueID]: seasonData }
+	}));
+
+	return seasonData;
+};
+
+// FIXED: skip entries with a null/missing matchup_id instead of grouping
+// them together. A null matchup_id means "no opponent this week" (a bye)
+// — previously, since object keys coerce to strings, two unrelated bye
+// teams both landed in the same `matchups[null]` bucket and got treated
+// as if they'd played each other.
+const processMatchups = (inputMatchups, week) => {
+	if (!inputMatchups || inputMatchups.length === 0) return false;
+	const matchups = {};
+	const byeRosterIds = [];
+
+	for (const match of inputMatchups) {
+		if (match.matchup_id == null) {
+			byeRosterIds.push(match.roster_id);
+			continue;
+		}
+
+		if (!matchups[match.matchup_id]) {
+			matchups[match.matchup_id] = [];
+		}
+		matchups[match.matchup_id].push({
+			roster_id: match.roster_id,
+			starters: match.starters,
+			points: match.points,
 		});
-	});
-	return ids;
-}
+	}
+	return { matchups, week, byeRosterIds };
+};
