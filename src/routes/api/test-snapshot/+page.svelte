@@ -1,30 +1,31 @@
 <script>
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo.js';
   import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+  import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
+  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
+  import { getLeagueState } from '$lib/utils/dataEngine/getLeagueState.js';
   import { teamManagersStore, leagueData } from '$lib/stores';
 
-  let selectedLeagueId = mainLeagueID;
+  let selectedLeagueID = '';
   let loading = false;
   let debugLogs = [];
 
   let standings = [];
   let weeklyResults = [];
-
   let showRawStandings = false;
   let weekFilter = 'all'; // 'all' | 'regular' | 'playoffs'
 
-  const standardSeasons = [
-    { id: mainLeagueID, label: 'Current Season' },
-    { id: '2024', label: '2024 Legacy' },
-    { id: '2023', label: '2023 Legacy' }
-  ];
+  // Build the season picker from whatever years teamManagersStore actually has,
+  // mapping each year back to its real Sleeper leagueID where one exists (current
+  // season), falling back to the year string itself (legacy seasons).
+  $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
+    .sort((a, b) => Number(b) - Number(a))
+    .map((year) => {
+      const matchedLeagueID = Object.keys($leagueData || {}).find((key) => $leagueData[key]?.season == year);
+      return { year, id: matchedLeagueID || year };
+    });
 
-  // Matches the resolution logic from your working getLeagueState:
-  // pull the real season from the leagueData store, falling back to the
-  // leagueID itself only when it's a legacy 4-digit year.
   function resolveYear(currentLeagueID, allMetadata) {
     let year = allMetadata?.[currentLeagueID]?.season;
     if (!year && !isNaN(currentLeagueID)) {
@@ -54,7 +55,7 @@
     return found ? found.name : `Team ${rosterId}`;
   }
 
-  async function loadLeagueState(leagueId) {
+  async function loadSeasonData(leagueId) {
     if (!leagueId) return;
     loading = true;
     debugLogs = [];
@@ -62,13 +63,19 @@
     weeklyResults = [];
 
     try {
-      const matchupsData = await getSpecificYearMatchups(leagueId).catch((err) => {
-        debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`);
-        return null;
-      });
+      const [matchupsData] = await Promise.all([
+        getSpecificYearMatchups(leagueId).catch((err) => {
+          debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`);
+          return null;
+        }),
+        getLeagueData(leagueId).catch((err) => {
+          // expected to fail/no-op for legacy years if getLeagueData only hits the live API
+          debugLogs.push(`getLeagueData note: ${err.message}`);
+          return null;
+        })
+      ]);
 
       debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
-      debugLogs.push(`regularSeasonLength: ${matchupsData?.regularSeasonLength ?? 'N/A'}`);
 
       const managersSnapshot = get(teamManagersStore) || {};
       const allMetadata = get(leagueData) || {};
@@ -83,7 +90,9 @@
         return;
       }
 
-      const result = getLeagueState(matchupsData, managersForYear, null);
+      // IMPORTANT: pass the real data in explicitly — getLeagueState is a pure
+      // function, not a store reader.
+      const result = getLeagueState(matchupsData, managersForYear, allMetadata?.[leagueId] || null);
       standings = result.standings;
       weeklyResults = result.weeklyResults;
       debugLogs.push(...result.debug);
@@ -101,22 +110,41 @@
     return true;
   });
 
-  onMount(() => {
-    loadLeagueState(selectedLeagueId);
+  onMount(async () => {
+    loading = true;
+    // Populate teamManagersStore first — nothing downstream works without this.
+    const managers = await getLeagueTeamManagers().catch((err) => {
+      debugLogs = [...debugLogs, `getLeagueTeamManagers failed: ${err.message}`];
+      return null;
+    });
+
+    const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
+    if (years.length > 0) {
+      const firstYear = years[0];
+      const allMetadata = get(leagueData) || {};
+      const idMatch = Object.keys(allMetadata).find((key) => allMetadata[key]?.season == firstYear);
+      selectedLeagueID = idMatch || firstYear;
+      await loadSeasonData(selectedLeagueID);
+    } else {
+      debugLogs = [...debugLogs, 'getLeagueTeamManagers returned no years — teamManagersMap is empty.'];
+      loading = false;
+    }
   });
 </script>
 
 <main class="container">
   <h2>League State Validation Panel</h2>
 
-  <div class="control-row">
-    <label for="season-select"><strong>Select target season:</strong></label>
-    <select id="season-select" bind:value={selectedLeagueId} on:change={() => loadLeagueState(selectedLeagueId)} disabled={loading}>
-      {#each standardSeasons as season}
-        <option value={season.id}>{season.label}</option>
-      {/each}
-    </select>
-  </div>
+  {#if seasons.length > 0}
+    <div class="control-row">
+      <label for="season-select"><strong>Select target season:</strong></label>
+      <select id="season-select" bind:value={selectedLeagueID} on:change={() => loadSeasonData(selectedLeagueID)} disabled={loading}>
+        {#each seasons as season}
+          <option value={season.id}>{season.year}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   {#if loading}
     <div class="status-msg">Crunching matchups...</div>
