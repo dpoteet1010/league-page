@@ -85,6 +85,8 @@
       ]);
 
       debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
+      debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
+      debugLogs.push(...(matchupsData?.debug || []));
 
       const managersSnapshot = get(teamManagersStore) || {};
       const allMetadata = get(leagueData) || {};
