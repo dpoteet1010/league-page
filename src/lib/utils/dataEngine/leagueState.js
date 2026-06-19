@@ -1,24 +1,22 @@
 /**
- * getLeagueState.js
+ * leagueState.js
  *
- * Turns one season's normalized matchup data (from allMatchups.js's
- * getSpecificYearMatchups) into:
- *   1. weeklyResults — a flat, per-roster-per-week stats engine (the source of truth)
- *   2. standings     — regular season + playoff aggregates per roster, rolled up from weeklyResults
- *
- * Expected input shapes:
- *   seasonMatchupsData = { matchupWeeks: [{ week, matchups: { [matchupId]: [teamA, teamB] } }], regularSeasonLength }
- *     where each team = { roster_id, starters, points }
- *   managersForYear = { [rosterId]: { name, avatar, managerNames } }   // flat, NOT nested by year
- *   leagueData = Sleeper league object (used as a fallback for regularSeasonLength if seasonMatchupsData doesn't have it)
+ * Turns one season's normalized matchup data (from allMatchups.js) plus,
+ * optionally, that season's bracket data (from allPlayoffs.js) into:
+ *   1. weeklyResults — flat per-roster-per-week stats engine
+ *   2. standings     — regular season + playoff weekly aggregates per roster
+ *   3. podiums       — { championId, lastPlaceId }
+ *   4. placementsByRosterId — full final standings (1st...last) when bracket data is supplied
  */
 
-export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) {
+import { resolvePlayoffPlacements } from './allPlayoffs.js';
+
+export function getLeagueState(seasonMatchupsData, managersForYear, leagueData, playoffBrackets) {
   const debug = [];
 
   if (!seasonMatchupsData?.matchupWeeks?.length) {
     debug.push('getLeagueState: no matchupWeeks supplied — returning empty result.');
-    return { standings: [], weeklyResults: [], debug };
+    return { standings: [], weeklyResults: [], podiums: { championId: null, lastPlaceId: null }, placementsByRosterId: {}, debug };
   }
 
   const regularSeasonLength = Number(
@@ -27,7 +25,6 @@ export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) 
   debug.push(`Using regularSeasonLength = ${regularSeasonLength}`);
 
   // ---- 1. Discover every roster that actually appears in the matchup data ----
-  // (Don't rely solely on managersForYear — if it's missing a roster, we still want its stats.)
   const rosterIds = new Set(Object.keys(managersForYear || {}).map(Number));
   seasonMatchupsData.matchupWeeks.forEach(({ matchups }) => {
     Object.values(matchups || {}).forEach((pair) => {
@@ -48,6 +45,7 @@ export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) 
       managerNames: meta.managerNames || '',
       regularSeason: { wins: 0, losses: 0, ties: 0, fptsFor: 0, fptsAgainst: 0, streak: { type: null, count: 0 } },
       playoffs: { wins: 0, losses: 0, ties: 0, fptsFor: 0, fptsAgainst: 0 },
+      finalPlacement: null,
     };
   });
 
@@ -64,7 +62,7 @@ export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) 
     const isPlayoffWeek = weekNum > regularSeasonLength;
 
     Object.values(matchups).forEach((pair) => {
-      if (!Array.isArray(pair) || pair.length !== 2) return; // skip byes / incomplete pairs
+      if (!Array.isArray(pair) || pair.length !== 2) return;
 
       const [teamA, teamB] = pair;
       const rA = Number(teamA.roster_id);
@@ -97,6 +95,7 @@ export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) 
   });
 
   debug.push(`Built ${weeklyResults.length} weekly result rows across ${seasonMatchupsData.matchupWeeks.length} weeks.`);
+  debug.push('Note: weekly W/L during multi-week playoff rounds reflects that single week only, not the combined-round outcome — use finalPlacement/podiums for actual bracket results.');
 
   // ---- 4. Current win/loss streak (regular season only, walking backward) ----
   rosterIds.forEach((rosterId) => {
@@ -108,7 +107,7 @@ export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) 
     let count = 0;
     for (let i = rosterWeeks.length - 1; i >= 0; i--) {
       const { result } = rosterWeeks[i];
-      if (result === 'T') break; // a tie breaks the streak
+      if (result === 'T') break;
       if (type === null) { type = result; count = 1; }
       else if (result === type) count += 1;
       else break;
@@ -116,11 +115,35 @@ export function getLeagueState(seasonMatchupsData, managersForYear, leagueData) 
     standings[rosterId].regularSeason.streak = { type, count };
   });
 
+  // ---- 5. Playoff placements (only if bracket data was supplied) ----
+  let podiums = { championId: null, lastPlaceId: null };
+  let placementsByRosterId = {};
+
+  if (playoffBrackets) {
+    const numRosters = playoffBrackets.numRosters ?? rosterIds.size;
+    const resolved = resolvePlayoffPlacements(playoffBrackets.winnersBracket, playoffBrackets.losersBracket, numRosters);
+    podiums = { championId: resolved.championId, lastPlaceId: resolved.lastPlaceId };
+    placementsByRosterId = resolved.placementsByRosterId;
+    debug.push(...resolved.debug);
+
+    Object.values(standings).forEach((team) => {
+      team.finalPlacement = placementsByRosterId[team.rosterId] ?? null;
+    });
+  } else {
+    debug.push('No playoffBrackets supplied — skipping placement resolution.');
+  }
+
   return {
-    standings: Object.values(standings).sort(
-      (a, b) => b.regularSeason.wins - a.regularSeason.wins || b.regularSeason.fptsFor - a.regularSeason.fptsFor
-    ),
+    standings: Object.values(standings).sort((a, b) => {
+      // Prefer resolved final placement when available, fall back to regular season record
+      if (a.finalPlacement != null && b.finalPlacement != null) return a.finalPlacement - b.finalPlacement;
+      if (a.finalPlacement != null) return -1;
+      if (b.finalPlacement != null) return 1;
+      return b.regularSeason.wins - a.regularSeason.wins || b.regularSeason.fptsFor - a.regularSeason.fptsFor;
+    }),
     weeklyResults,
+    podiums,
+    placementsByRosterId,
     debug,
   };
 }
