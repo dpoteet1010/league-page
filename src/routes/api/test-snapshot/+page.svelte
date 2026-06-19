@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
+  import { getLeaguePlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
   import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
   import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
   import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
@@ -13,18 +14,24 @@
 
   let standings = [];
   let weeklyResults = [];
+  let podiums = { championId: null, lastPlaceId: null };
+  let rawWinnersBracket = [];
+  let rawLosersBracket = [];
+
   let showRawStandings = false;
+  let showRawBrackets = false;
   let weekFilter = 'all'; // 'all' | 'regular' | 'playoffs'
 
-  // Build the season picker from whatever years teamManagersStore actually has,
-  // mapping each year back to its real Sleeper leagueID where one exists (current
-  // season), falling back to the year string itself (legacy seasons).
   $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
     .sort((a, b) => Number(b) - Number(a))
     .map((year) => {
       const matchedLeagueID = Object.keys($leagueData || {}).find((key) => $leagueData[key]?.season == year);
       return { year, id: matchedLeagueID || year };
     });
+
+  $: champTeam = podiums.championId != null ? standings.find((s) => s.rosterId === Number(podiums.championId)) : null;
+  $: loserTeam = podiums.lastPlaceId != null ? standings.find((s) => s.rosterId === Number(podiums.lastPlaceId)) : null;
+  $: placementsTable = standings.filter((s) => s.finalPlacement != null).sort((a, b) => a.finalPlacement - b.finalPlacement);
 
   function resolveYear(currentLeagueID, allMetadata) {
     let year = allMetadata?.[currentLeagueID]?.season;
@@ -61,6 +68,9 @@
     debugLogs = [];
     standings = [];
     weeklyResults = [];
+    podiums = { championId: null, lastPlaceId: null };
+    rawWinnersBracket = [];
+    rawLosersBracket = [];
 
     try {
       const [matchupsData] = await Promise.all([
@@ -69,7 +79,6 @@
           return null;
         }),
         getLeagueData(leagueId).catch((err) => {
-          // expected to fail/no-op for legacy years if getLeagueData only hits the live API
           debugLogs.push(`getLeagueData note: ${err.message}`);
           return null;
         })
@@ -83,18 +92,28 @@
       debugLogs.push(`Resolved year for manager lookup: ${year}`);
 
       const managersForYear = buildManagersForYear(managersSnapshot, year);
-      debugLogs.push(`Managers resolved for ${year}: ${Object.keys(managersForYear).length}`);
+      const numRosters = Object.keys(managersForYear).length;
+      debugLogs.push(`Managers resolved for ${year}: ${numRosters}`);
 
       if (!matchupsData) {
         debugLogs.push('No matchupsData returned — cannot run getLeagueState.');
         return;
       }
 
-      // IMPORTANT: pass the real data in explicitly — getLeagueState is a pure
-      // function, not a store reader.
-      const result = getLeagueState(matchupsData, managersForYear, allMetadata?.[leagueId] || null);
+      const playoffData = await getLeaguePlayoffs(leagueId);
+      rawWinnersBracket = playoffData.winnersBracket;
+      rawLosersBracket = playoffData.losersBracket;
+      debugLogs.push(...playoffData.debug);
+
+      const result = getLeagueState(matchupsData, managersForYear, allMetadata?.[leagueId] || null, {
+        winnersBracket: playoffData.winnersBracket,
+        losersBracket: playoffData.losersBracket,
+        numRosters
+      });
+
       standings = result.standings;
       weeklyResults = result.weeklyResults;
+      podiums = result.podiums;
       debugLogs.push(...result.debug);
     } catch (e) {
       console.error('Critical error building league state:', e);
@@ -112,7 +131,6 @@
 
   onMount(async () => {
     loading = true;
-    // Populate teamManagersStore first — nothing downstream works without this.
     const managers = await getLeagueTeamManagers().catch((err) => {
       debugLogs = [...debugLogs, `getLeagueTeamManagers failed: ${err.message}`];
       return null;
@@ -149,13 +167,51 @@
   {#if loading}
     <div class="status-msg">Crunching matchups...</div>
   {:else}
+    <div class="podium-grid">
+      <div class="podium-card gold">
+        <h3>🏆 League Champion</h3>
+        {#if champTeam}
+          <div class="meta-title">{champTeam.name}</div>
+          <div class="meta-sub">Manager: {champTeam.managerNames || '—'}</div>
+        {:else}
+          <div class="meta-empty">Unresolved — check logs / raw bracket JSON below</div>
+        {/if}
+      </div>
+      <div class="podium-card poop">
+        <h3>💩 Toilet Bowl Loser</h3>
+        {#if loserTeam}
+          <div class="meta-title">{loserTeam.name}</div>
+          <div class="meta-sub">Manager: {loserTeam.managerNames || '—'}</div>
+        {:else}
+          <div class="meta-empty">Unresolved — check logs / raw bracket JSON below</div>
+        {/if}
+      </div>
+    </div>
+
+    {#if placementsTable.length > 0}
+      <h3>Final Placements</h3>
+      <table class="data-table">
+        <thead>
+          <tr><th>Place</th><th>Team</th></tr>
+        </thead>
+        <tbody>
+          {#each placementsTable as team}
+            <tr>
+              <td>{team.finalPlacement}</td>
+              <td>{team.name} <span class="manager-tag">({team.managerNames})</span></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+
     <h3>Standings</h3>
     <table class="data-table">
       <thead>
         <tr>
           <th>Team</th>
           <th colspan="5">Regular Season</th>
-          <th colspan="3">Playoffs</th>
+          <th colspan="3">Playoffs (weekly)</th>
           <th>Streak</th>
         </tr>
         <tr class="subhead">
@@ -193,9 +249,7 @@
     </div>
     <table class="data-table">
       <thead>
-        <tr>
-          <th>Week</th><th>Team</th><th>Opponent</th><th>PF</th><th>PA</th><th>Result</th><th>Playoffs?</th>
-        </tr>
+        <tr><th>Week</th><th>Team</th><th>Opponent</th><th>PF</th><th>PA</th><th>Result</th><th>Playoffs?</th></tr>
       </thead>
       <tbody>
         {#each filteredWeeklyResults as row}
@@ -214,9 +268,13 @@
 
     <div class="control-row">
       <button on:click={() => (showRawStandings = !showRawStandings)}>{showRawStandings ? 'Hide' : 'Show'} Raw Standings JSON</button>
+      <button on:click={() => (showRawBrackets = !showRawBrackets)}>{showRawBrackets ? 'Hide' : 'Show'} Raw Bracket JSON</button>
     </div>
     {#if showRawStandings}
       <pre class="raw-json">{JSON.stringify(standings, null, 2)}</pre>
+    {/if}
+    {#if showRawBrackets}
+      <pre class="raw-json">{JSON.stringify({ winnersBracket: rawWinnersBracket, losersBracket: rawLosersBracket }, null, 2)}</pre>
     {/if}
 
     {#if debugLogs.length > 0}
@@ -239,6 +297,14 @@
   button { cursor: pointer; background: #f5f5f5; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
   .manager-tag { font-size: 0.8em; color: #888; font-weight: normal; }
+  .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+  .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .podium-card.gold { border-left-color: #ffd700; background: #fffdf3; }
+  .podium-card.poop { border-left-color: #8b5a2b; background: #fbf7f3; }
+  .podium-card h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
+  .meta-title { font-size: 1.4rem; font-weight: 700; color: #222; }
+  .meta-sub { font-size: 0.95rem; color: #666; margin-top: 0.25rem; }
+  .meta-empty { color: #999; font-style: italic; }
   .data-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; font-size: 0.9rem; }
   .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: center; }
   .data-table th { background: #f5f5f5; }
