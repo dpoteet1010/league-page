@@ -11,11 +11,6 @@ import { legacyLosersBrackets } from '$lib/utils/helperFunctions/legacyLosersBra
 
 const LEGACY_YEARS = ['2023', '2024'];
 
-/**
- * Fetches the raw bracket arrays for a season — legacy local file or live Sleeper API.
- * @param {string|number} leagueId
- * @returns {Promise<{ winnersBracket: Array, losersBracket: Array, debug: string[] }>}
- */
 export async function getLeaguePlayoffs(leagueId) {
 	const debug = [];
 	const idStr = leagueId?.toString();
@@ -48,12 +43,16 @@ export async function getLeaguePlayoffs(leagueId) {
 /**
  * Resolves raw bracket arrays into final placements.
  *
- * Both winners_bracket and losers_bracket use the SAME convention: a match
- * with `p` decided means the winner finishes rank `p`, the loser finishes
- * rank `p + 1`. losers_bracket simply continues the placement numbering
- * where winners_bracket leaves off (e.g. winners_bracket resolves 1st-6th,
- * losers_bracket resolves 7th-12th) — it is NOT counted backward from
- * numRosters.
+ * Winners bracket: a match with `p` decided means winner finishes rank `p`,
+ * loser finishes rank `p + 1` (p:1 -> 1st/2nd, p:3 -> 3rd/4th, etc.)
+ *
+ * Losers bracket (toilet bowl): uses the SAME local p-numbering (p:1, p:3,
+ * p:5...) but it's relative to ITS OWN bracket, not the league overall.
+ * To get absolute placement, it's offset by however many teams made the
+ * winners bracket — e.g. in a 12-team league with a 6-team playoff field,
+ * the losers bracket's own "p:1" game decides 7th/8th place
+ * (offset 6 + p:1 = 7th), not 1st/2nd. The winner of the ENTIRE losers
+ * bracket therefore finishes 7th, not 1st.
  *
  * @param {Array} winnersBracket
  * @param {Array} losersBracket
@@ -70,20 +69,23 @@ export function resolvePlayoffPlacements(winnersBracket, losersBracket, numRoste
 		placementsByRosterId[rosterId] = place;
 	};
 
-	const applyFromBracket = (bracket, label) => {
+	const applyFromBracket = (bracket, label, offset) => {
 		(bracket || []).forEach((match) => {
 			if (match?.p == null) return; // not a placement game, just a bracket-advancement game
 			if (match.w == null || match.l == null) {
 				debug.push(`${label} match m=${match.m} has p=${match.p} but isn't decided yet (missing w/l) — skipping.`);
 				return;
 			}
-			applyPlacement(match.w, match.p);
-			applyPlacement(match.l, match.p + 1);
+			applyPlacement(match.w, offset + match.p);
+			applyPlacement(match.l, offset + match.p + 1);
 		});
 	};
 
-	applyFromBracket(winnersBracket, 'Winners');
-	applyFromBracket(losersBracket, 'Losers');
+	const winnersTeamCount = getRosterIdsInBracket(winnersBracket).size;
+	debug.push(`Winners bracket has ${winnersTeamCount} teams — losers bracket placements offset by ${winnersTeamCount}.`);
+
+	applyFromBracket(winnersBracket, 'Winners', 0);
+	applyFromBracket(losersBracket, 'Losers', winnersTeamCount);
 
 	const resolvedPlaces = Object.values(placementsByRosterId);
 	const maxPlace = resolvedPlaces.length ? Math.max(...resolvedPlaces) : null;
@@ -110,9 +112,7 @@ export function resolvePlayoffPlacements(winnersBracket, losersBracket, numRoste
 /**
  * Returns the set of roster_ids that appear anywhere in a raw bracket array
  * (as t1, t2, w, or l — ignoring {w: matchId}/{l: matchId} placeholder
- * references). Used to determine which rosters actually made the playoffs
- * (winnersBracket) vs. which were in the toilet bowl (losersBracket), so
- * playoff stats can be limited to winners-bracket games only.
+ * references).
  */
 export function getRosterIdsInBracket(bracket) {
 	const ids = new Set();
