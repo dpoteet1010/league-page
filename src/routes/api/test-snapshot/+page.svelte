@@ -20,7 +20,7 @@
 
   let showRawStandings = false;
   let showRawBrackets = false;
-  let weekFilter = 'all'; // 'all' | 'regular' | 'playoffs'
+  let weekFilter = 'all'; // 'all' | 'regular' | 'playoffs' | 'winners' | 'losers'
 
   $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
     .sort((a, b) => Number(b) - Number(a))
@@ -126,6 +126,8 @@
   $: filteredWeeklyResults = weeklyResults.filter((r) => {
     if (weekFilter === 'regular') return !r.isPlayoffs;
     if (weekFilter === 'playoffs') return r.isPlayoffs;
+    if (weekFilter === 'winners') return r.bracket === 'winners';
+    if (weekFilter === 'losers') return r.bracket === 'losers';
     return true;
   });
 
@@ -189,7 +191,7 @@
     </div>
 
     {#if placementsTable.length > 0}
-      <h3>Final Placements</h3>
+      <h3>Final Playoff Standings (Winners + Losers Bracket)</h3>
       <table class="data-table">
         <thead>
           <tr><th>Place</th><th>Team</th></tr>
@@ -211,7 +213,7 @@
         <tr>
           <th>Team</th>
           <th colspan="5">Regular Season</th>
-          <th colspan="3">Playoffs (weekly)</th>
+          <th colspan="3">Playoffs (Winners Bracket Only)</th>
           <th>Streak</th>
         </tr>
         <tr class="subhead">
@@ -244,12 +246,14 @@
       <select id="week-filter" bind:value={weekFilter}>
         <option value="all">All Weeks</option>
         <option value="regular">Regular Season Only</option>
-        <option value="playoffs">Playoffs Only</option>
+        <option value="playoffs">All Playoffs</option>
+        <option value="winners">Playoffs — Winners Bracket</option>
+        <option value="losers">Playoffs — Losers Bracket</option>
       </select>
     </div>
     <table class="data-table">
       <thead>
-        <tr><th>Week</th><th>Team</th><th>Opponent</th><th>PF</th><th>PA</th><th>Result</th><th>Playoffs?</th></tr>
+        <tr><th>Week</th><th>Team</th><th>Opponent</th><th>PF</th><th>PA</th><th>Result</th><th>Bracket</th></tr>
       </thead>
       <tbody>
         {#each filteredWeeklyResults as row}
@@ -260,7 +264,7 @@
             <td>{row.pointsFor.toFixed(2)}</td>
             <td>{row.pointsAgainst.toFixed(2)}</td>
             <td>{row.result}</td>
-            <td>{row.isPlayoffs ? 'Yes' : 'No'}</td>
+            <td>{row.bracket || (row.isPlayoffs ? 'unknown' : '—')}</td>
           </tr>
         {/each}
       </tbody>
