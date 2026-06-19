@@ -4,9 +4,7 @@
 // legacy local files) and resolves it into final placements WITHOUT
 // reconstructing the full bracket tree. Every match with a `p` field is a
 // placement game — its `w`/`l` already give us the final rank for those two
-// rosters directly, regardless of how byes shaped earlier rounds. That's
-// what makes this robust to byes (no tree-walking needed) and to
-// in-progress brackets (undecided matches are just skipped, not guessed at).
+// rosters directly.
 
 import { legacyWinnersBrackets } from '$lib/utils/helperFunctions/legacyWinnersBrackets.js';
 import { legacyLosersBrackets } from '$lib/utils/helperFunctions/legacyLosersBrackets.js';
@@ -19,87 +17,109 @@ const LEGACY_YEARS = ['2023', '2024'];
  * @returns {Promise<{ winnersBracket: Array, losersBracket: Array, debug: string[] }>}
  */
 export async function getLeaguePlayoffs(leagueId) {
-  const debug = [];
-  const idStr = leagueId?.toString();
+	const debug = [];
+	const idStr = leagueId?.toString();
 
-  if (LEGACY_YEARS.includes(idStr)) {
-    const winnersBracket = legacyWinnersBrackets?.[idStr] || [];
-    const losersBracket = legacyLosersBrackets?.[idStr] || [];
-    debug.push(`Loaded legacy brackets for ${idStr}: ${winnersBracket.length} winners matches, ${losersBracket.length} losers matches.`);
-    return { winnersBracket, losersBracket, debug };
-  }
+	if (LEGACY_YEARS.includes(idStr)) {
+		const winnersBracket = legacyWinnersBrackets?.[idStr] || [];
+		const losersBracket = legacyLosersBrackets?.[idStr] || [];
+		debug.push(`Loaded legacy brackets for ${idStr}: ${winnersBracket.length} winners matches, ${losersBracket.length} losers matches.`);
+		return { winnersBracket, losersBracket, debug };
+	}
 
-  try {
-    const [winnersRes, losersRes] = await Promise.all([
-      fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { compress: true }),
-      fetch(`https://api.sleeper.app/v1/league/${leagueId}/losers_bracket`, { compress: true })
-    ]);
+	try {
+		const [winnersRes, losersRes] = await Promise.all([
+			fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { compress: true }),
+			fetch(`https://api.sleeper.app/v1/league/${leagueId}/losers_bracket`, { compress: true })
+		]);
 
-    const winnersBracket = winnersRes.ok ? await winnersRes.json() : [];
-    const losersBracket = losersRes.ok ? await losersRes.json() : [];
+		const winnersBracket = winnersRes.ok ? await winnersRes.json() : [];
+		const losersBracket = losersRes.ok ? await losersRes.json() : [];
 
-    debug.push(`Fetched live brackets for league ${leagueId}: ${winnersBracket?.length || 0} winners matches, ${losersBracket?.length || 0} losers matches.`);
+		debug.push(`Fetched live brackets for league ${leagueId}: ${winnersBracket?.length || 0} winners matches, ${losersBracket?.length || 0} losers matches.`);
 
-    return { winnersBracket: winnersBracket || [], losersBracket: losersBracket || [], debug };
-  } catch (err) {
-    debug.push(`getLeaguePlayoffs fetch failed: ${err.message}`);
-    return { winnersBracket: [], losersBracket: [], debug };
-  }
+		return { winnersBracket: winnersBracket || [], losersBracket: losersBracket || [], debug };
+	} catch (err) {
+		debug.push(`getLeaguePlayoffs fetch failed: ${err.message}`);
+		return { winnersBracket: [], losersBracket: [], debug };
+	}
 }
 
 /**
  * Resolves raw bracket arrays into final placements.
  *
+ * Both winners_bracket and losers_bracket use the SAME convention: a match
+ * with `p` decided means the winner finishes rank `p`, the loser finishes
+ * rank `p + 1`. losers_bracket simply continues the placement numbering
+ * where winners_bracket leaves off (e.g. winners_bracket resolves 1st-6th,
+ * losers_bracket resolves 7th-12th) — it is NOT counted backward from
+ * numRosters.
+ *
  * @param {Array} winnersBracket
  * @param {Array} losersBracket
- * @param {number} numRosters - total teams in the league that season
+ * @param {number} numRosters - used only as a sanity cross-check in debug logs
  * @returns {{ placementsByRosterId: Object, championId: number|null, lastPlaceId: number|null, debug: string[] }}
  */
 export function resolvePlayoffPlacements(winnersBracket, losersBracket, numRosters) {
-  const debug = [];
-  const placementsByRosterId = {};
+	const debug = [];
+	const placementsByRosterId = {};
 
-  const applyPlacement = (rosterId, place) => {
-    if (rosterId == null || place == null) return;
-    if (placementsByRosterId[rosterId] != null) return; // don't let anything overwrite a confirmed placement
-    placementsByRosterId[rosterId] = place;
-  };
+	const applyPlacement = (rosterId, place) => {
+		if (rosterId == null || place == null) return;
+		if (placementsByRosterId[rosterId] != null) return; // don't let anything overwrite a confirmed placement
+		placementsByRosterId[rosterId] = place;
+	};
 
-  (winnersBracket || []).forEach((match) => {
-    if (match?.p == null) return; // not a placement game, just a bracket-advancement game
-    if (match.w == null || match.l == null) {
-      debug.push(`Winners match m=${match.m} has p=${match.p} but isn't decided yet (missing w/l) — skipping.`);
-      return;
-    }
-    applyPlacement(match.w, match.p);
-    applyPlacement(match.l, match.p + 1);
-  });
+	const applyFromBracket = (bracket, label) => {
+		(bracket || []).forEach((match) => {
+			if (match?.p == null) return; // not a placement game, just a bracket-advancement game
+			if (match.w == null || match.l == null) {
+				debug.push(`${label} match m=${match.m} has p=${match.p} but isn't decided yet (missing w/l) — skipping.`);
+				return;
+			}
+			applyPlacement(match.w, match.p);
+			applyPlacement(match.l, match.p + 1);
+		});
+	};
 
-  if (numRosters) {
-    (losersBracket || []).forEach((match) => {
-      if (match?.p == null) return;
-      if (match.w == null || match.l == null) {
-        debug.push(`Losers match m=${match.m} has p=${match.p} but isn't decided yet (missing w/l) — skipping.`);
-        return;
-      }
-      applyPlacement(match.l, numRosters - match.p + 1);
-      applyPlacement(match.w, numRosters - match.p);
-    });
-  } else {
-    debug.push('No numRosters provided — skipping losers bracket placement resolution.');
-  }
+	applyFromBracket(winnersBracket, 'Winners');
+	applyFromBracket(losersBracket, 'Losers');
 
-  const championEntry = Object.entries(placementsByRosterId).find(([, place]) => place === 1);
-  const lastPlaceEntry = numRosters
-    ? Object.entries(placementsByRosterId).find(([, place]) => place === numRosters)
-    : null;
+	const resolvedPlaces = Object.values(placementsByRosterId);
+	const maxPlace = resolvedPlaces.length ? Math.max(...resolvedPlaces) : null;
 
-  debug.push(`Resolved ${Object.keys(placementsByRosterId).length} placements out of ${numRosters || '?'} rosters.`);
+	if (numRosters && maxPlace != null && maxPlace !== numRosters) {
+		debug.push(`Warning: highest resolved placement is ${maxPlace}, but numRosters is ${numRosters} — some rosters may be missing a final placement.`);
+	}
 
-  return {
-    placementsByRosterId,
-    championId: championEntry ? Number(championEntry[0]) : null,
-    lastPlaceId: lastPlaceEntry ? Number(lastPlaceEntry[0]) : null,
-    debug
-  };
+	const championEntry = Object.entries(placementsByRosterId).find(([, place]) => place === 1);
+	const lastPlaceEntry = maxPlace != null
+		? Object.entries(placementsByRosterId).find(([, place]) => place === maxPlace)
+		: null;
+
+	debug.push(`Resolved ${resolvedPlaces.length} placements (highest place number found: ${maxPlace ?? 'none'}).`);
+
+	return {
+		placementsByRosterId,
+		championId: championEntry ? Number(championEntry[0]) : null,
+		lastPlaceId: lastPlaceEntry ? Number(lastPlaceEntry[0]) : null,
+		debug
+	};
+}
+
+/**
+ * Returns the set of roster_ids that appear anywhere in a raw bracket array
+ * (as t1, t2, w, or l — ignoring {w: matchId}/{l: matchId} placeholder
+ * references). Used to determine which rosters actually made the playoffs
+ * (winnersBracket) vs. which were in the toilet bowl (losersBracket), so
+ * playoff stats can be limited to winners-bracket games only.
+ */
+export function getRosterIdsInBracket(bracket) {
+	const ids = new Set();
+	(bracket || []).forEach((match) => {
+		[match?.t1, match?.t2, match?.w, match?.l].forEach((val) => {
+			if (typeof val === 'number') ids.add(val);
+		});
+	});
+	return ids;
 }
