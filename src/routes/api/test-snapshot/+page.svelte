@@ -6,6 +6,7 @@
   import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
   import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
   import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
+  import { getAllSeasonsHistory, getRivalry, getAllTimeTotals } from '$lib/utils/dataEngine/allTimeHistory.js';
   import { teamManagersStore, leagueData } from '$lib/stores';
 
   let selectedLeagueID = '';
@@ -17,10 +18,20 @@
   let podiums = { championId: null, lastPlaceId: null };
   let rawWinnersBracket = [];
   let rawLosersBracket = [];
+  let currentManagersForYear = {};
 
   let showRawStandings = false;
   let showRawBrackets = false;
   let weekFilter = 'all'; // 'all' | 'regular' | 'playoffs' | 'winners' | 'losers'
+
+  // All-time / rivalry state
+  let allTimeHistory = null;
+  let loadingAllTime = false;
+  let allTimeDebug = [];
+  let allTimeTotals = [];
+  let rivalryManagerA = '';
+  let rivalryManagerB = '';
+  let rivalryResult = null;
 
   $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
     .sort((a, b) => Number(b) - Number(a))
@@ -32,6 +43,13 @@
   $: champTeam = podiums.championId != null ? standings.find((s) => s.rosterId === Number(podiums.championId)) : null;
   $: loserTeam = podiums.lastPlaceId != null ? standings.find((s) => s.rosterId === Number(podiums.lastPlaceId)) : null;
   $: placementsTable = standings.filter((s) => s.finalPlacement != null).sort((a, b) => a.finalPlacement - b.finalPlacement);
+
+  $: rivalryOptions = standings
+    .map((team) => {
+      const managerId = currentManagersForYear[team.rosterId]?.managerId;
+      return managerId != null ? { managerId, label: team.name } : null;
+    })
+    .filter(Boolean);
 
   function resolveYear(currentLeagueID, allMetadata) {
     let year = allMetadata?.[currentLeagueID]?.season;
@@ -51,7 +69,8 @@
       out[rosterId] = {
         name: teamInfo?.team?.name || `Team ${rosterId}`,
         avatar: teamInfo?.team?.avatar || '',
-        managerNames
+        managerNames,
+        managerId: teamInfo?.managers?.[0] ?? null
       };
     });
     return out;
@@ -85,7 +104,6 @@
       ]);
 
       debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
-      debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
       debugLogs.push(...(matchupsData?.debug || []));
 
       const managersSnapshot = get(teamManagersStore) || {};
@@ -94,6 +112,7 @@
       debugLogs.push(`Resolved year for manager lookup: ${year}`);
 
       const managersForYear = buildManagersForYear(managersSnapshot, year);
+      currentManagersForYear = managersForYear;
       const numRosters = Object.keys(managersForYear).length;
       debugLogs.push(`Managers resolved for ${year}: ${numRosters}`);
 
@@ -123,6 +142,25 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function loadAllTimeHistory() {
+    loadingAllTime = true;
+    allTimeDebug = [];
+    try {
+      allTimeHistory = await getAllSeasonsHistory();
+      allTimeDebug = allTimeHistory.debug;
+      allTimeTotals = getAllTimeTotals(allTimeHistory.managers);
+    } catch (e) {
+      allTimeDebug = [`Critical error: ${e.message}`];
+    } finally {
+      loadingAllTime = false;
+    }
+  }
+
+  function computeRivalry() {
+    if (!allTimeHistory || !rivalryManagerA || !rivalryManagerB) return;
+    rivalryResult = getRivalry(allTimeHistory.weeklyResults, rivalryManagerA, rivalryManagerB);
   }
 
   $: filteredWeeklyResults = weeklyResults.filter((r) => {
@@ -242,6 +280,73 @@
       </tbody>
     </table>
 
+    <h3>All-Time History</h3>
+    <div class="control-row">
+      <button on:click={loadAllTimeHistory} disabled={loadingAllTime}>
+        {loadingAllTime ? 'Loading every season...' : (allTimeHistory ? 'Reload All-Time History' : 'Load All-Time History')}
+      </button>
+    </div>
+
+    {#if allTimeTotals.length > 0}
+      <table class="data-table">
+        <thead>
+          <tr><th>Manager</th><th>Seasons</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>Championships</th><th>Last Place</th></tr>
+        </thead>
+        <tbody>
+          {#each allTimeTotals as m}
+            <tr>
+              <td>{m.displayName}</td>
+              <td>{m.seasonsPlayed}</td>
+              <td>{m.regularSeason.wins}</td>
+              <td>{m.regularSeason.losses}</td>
+              <td>{m.regularSeason.ties}</td>
+              <td>{m.regularSeason.fptsFor.toFixed(2)}</td>
+              <td>{m.championships}</td>
+              <td>{m.lastPlaceFinishes}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+
+    {#if allTimeHistory}
+      <h3>Rivalry Lookup</h3>
+      <div class="control-row">
+        <select bind:value={rivalryManagerA}>
+          <option value="">Team A...</option>
+          {#each rivalryOptions as opt}<option value={opt.managerId}>{opt.label}</option>{/each}
+        </select>
+        <select bind:value={rivalryManagerB}>
+          <option value="">Team B...</option>
+          {#each rivalryOptions as opt}<option value={opt.managerId}>{opt.label}</option>{/each}
+        </select>
+        <button on:click={computeRivalry} disabled={!rivalryManagerA || !rivalryManagerB}>Show Rivalry</button>
+      </div>
+
+      {#if rivalryResult}
+        <div class="podium-card rivalry">
+          <p><strong>All-time record:</strong> {rivalryResult.record.wins}-{rivalryResult.record.losses}-{rivalryResult.record.ties} ({rivalryResult.gamesPlayed} games)</p>
+          <p><strong>Points:</strong> {rivalryResult.record.pointsFor.toFixed(2)} – {rivalryResult.record.pointsAgainst.toFixed(2)}</p>
+          <p><strong>Current streak:</strong> {rivalryResult.streak.type ? `${rivalryResult.streak.type}${rivalryResult.streak.count}` : '—'}</p>
+          {#if rivalryResult.biggestBlowout}
+            <p><strong>Biggest margin:</strong> {rivalryResult.biggestBlowout.year} Week {rivalryResult.biggestBlowout.week} ({rivalryResult.biggestBlowout.margin.toFixed(2)} pts)</p>
+          {/if}
+          {#if rivalryResult.closestGame}
+            <p><strong>Closest game:</strong> {rivalryResult.closestGame.year} Week {rivalryResult.closestGame.week} ({rivalryResult.closestGame.margin.toFixed(2)} pts)</p>
+          {/if}
+        </div>
+      {:else if rivalryManagerA && rivalryManagerB}
+        <div class="meta-empty">Click "Show Rivalry" to compute.</div>
+      {/if}
+
+      {#if allTimeDebug.length > 0}
+        <div class="debug-terminal">
+          <h4>All-Time Debug Logs</h4>
+          <ul>{#each allTimeDebug as log}<li><code>{log}</code></li>{/each}</ul>
+        </div>
+      {/if}
+    {/if}
+
     <h3>Weekly Results (raw engine output)</h3>
     <div class="control-row">
       <label for="week-filter">Filter:</label>
@@ -301,13 +406,16 @@
   .control-row { margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
   select, button { padding: 0.5rem 1rem; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; }
   button { cursor: pointer; background: #f5f5f5; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
   .manager-tag { font-size: 0.8em; color: #888; font-weight: normal; }
   .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
-  .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
   .podium-card.gold { border-left-color: #ffd700; background: #fffdf3; }
   .podium-card.poop { border-left-color: #8b5a2b; background: #fbf7f3; }
+  .podium-card.rivalry { border-left-color: #4a90d9; background: #f3f8fd; }
   .podium-card h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
+  .podium-card p { margin: 0.3rem 0; }
   .meta-title { font-size: 1.4rem; font-weight: 700; color: #222; }
   .meta-sub { font-size: 0.95rem; color: #666; margin-top: 0.25rem; }
   .meta-empty { color: #999; font-style: italic; }
