@@ -14,7 +14,6 @@ import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
 import { getSpecificYearMatchups } from './allMatchups.js';
 import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
-import { getLeaguePlayoffs } from './allPlayoffs.js';
 
 function resolveYear(currentLeagueID, allMetadata) {
 	let year = allMetadata?.[currentLeagueID]?.season;
