@@ -1,11 +1,8 @@
 // allTransactions.js
 //
-// Fetches every trade/waiver transaction across the league's full history
-// (live Sleeper API chain + legacy local data) and digests them into a
-// clean, uniform shape — independent of any UI store/localStorage caching,
-// so it runs standalone the same way the rest of the data engine does.
-// Totals are keyed by manager user_id, not roster_id, so they merge
-// correctly across seasons.
+// Fetches every trade/waiver transaction across the league's full history.
+// Does NOT grade them here — grading functions live in transactionGrading.js
+// and are called from the UI/data pipeline after playerResults are available.
 
 import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
 import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
@@ -14,11 +11,6 @@ import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
 import { legacyTransactions as legacyTransactionData } from '$lib/utils/helperFunctions/legacyTransactions.js';
 
-/**
- * Walks the live Sleeper league chain (via previous_league_id), fetches
- * every week's transactions for each league instance found, and merges in
- * the legacy local transaction data.
- */
 async function combThroughTransactions(week, startingLeagueID) {
 	const debug = [];
 	week = week > 0 ? week : 1;
@@ -177,12 +169,6 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	return { digestedTransaction, season, success: true };
 };
 
-/**
- * Fantasy seasons run Sept-Jan, so a transaction's calendar-year `season`
- * (derived from its timestamp) can be one ahead of the actual fantasy
- * season it belongs to. Walks back to find a season key that actually
- * exists in teamManagersMap (matches the proven logic from your UI code).
- */
 function resolveSeasonKey(season, teamManagersMap) {
 	let seasonToUse = season;
 	if (!teamManagersMap[seasonToUse]) {
@@ -192,12 +178,6 @@ function resolveSeasonKey(season, teamManagersMap) {
 	return teamManagersMap[seasonToUse] ? seasonToUse : null;
 }
 
-/**
- * Digests raw transactions into a clean list (always included, even if a
- * season can't be resolved), plus manager-keyed totals — season-by-season
- * and all-time — of trade/waiver counts. Each trade transaction also gets
- * a `managerIds` array attached, so rivalry trade history is a simple filter.
- */
 async function digestTransactions({ transactionsData, currentSeason }) {
 	const debug = [];
 	const transactions = [];
@@ -245,15 +225,11 @@ async function digestTransactions({ transactionsData, currentSeason }) {
 		digestedTransaction.managerIds = managerIds;
 	}
 
-	debug.push(`Digested ${transactions.length} transactions (${skippedCount} had no resolvable season — included in the list but excluded from totals).`);
+	debug.push(`Digested ${transactions.length} transactions (${skippedCount} had no resolvable season).`);
 
 	return { transactions, totals, debug };
 }
 
-/**
- * Top-level entry point: fetches and digests every transaction in league history.
- * @returns {Promise<{ transactions: Array, totals: Object, debug: string[] }>}
- */
 export async function getTransactionHistory(startingLeagueID = mainLeagueID) {
 	const debug = [];
 
@@ -273,7 +249,6 @@ export async function getTransactionHistory(startingLeagueID = mainLeagueID) {
 	return { transactions, totals, debug };
 }
 
-/** All-time trade/waiver totals per manager, joined with display names. */
 export function getAllTimeTransactionTotals(totals, managersSnapshot) {
 	return Object.entries(totals.allTime || {})
 		.map(([managerId, counts]) => ({
@@ -286,7 +261,6 @@ export function getAllTimeTransactionTotals(totals, managersSnapshot) {
 		.sort((a, b) => b.total - a.total);
 }
 
-/** One season's trade/waiver totals per manager, joined with display names. */
 export function getSeasonTransactionTotals(totals, seasonKey, managersSnapshot) {
 	const seasonData = totals.seasons?.[String(seasonKey)] || {};
 	return Object.values(seasonData)
@@ -300,7 +274,6 @@ export function getSeasonTransactionTotals(totals, seasonKey, managersSnapshot) 
 		.sort((a, b) => b.total - a.total);
 }
 
-/** Every trade between two specific managers, across all of league history. */
 export function getTradeHistory(transactions, managerIdA, managerIdB) {
 	return transactions
 		.filter((tx) => tx.type === 'trade' && tx.managerIds?.includes(managerIdA) && tx.managerIds?.includes(managerIdB))
