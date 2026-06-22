@@ -80,6 +80,7 @@ export async function getAllSeasonsHistory() {
 	const managersSnapshot = get(teamManagersStore) || {};
 
 	const allWeeklyResults = [];
+	const allPlayerResults = [];
 	const seasonOutputs = [];
 	const managers = {};
 
@@ -128,6 +129,12 @@ export async function getAllSeasonsHistory() {
 			allWeeklyResults.push({ ...row, year: resolvedYear, managerId, opponentManagerId });
 		});
 
+		result.playerResults.forEach((pr) => {
+			const managerId = rosterToManagerId[pr.rosterId];
+			if (managerId == null) return;
+			allPlayerResults.push({ ...pr, managerId, year: resolvedYear });
+		});
+
 		result.standings.forEach((team) => {
 			const managerId = rosterToManagerId[team.rosterId];
 			if (managerId == null) return;
@@ -151,9 +158,9 @@ export async function getAllSeasonsHistory() {
 		seasonOutputs.push({ year: resolvedYear, leagueId: id, ...result });
 	}
 
-	debug.push(`Combined ${allWeeklyResults.length} weekly result rows across ${seasonOutputs.length} seasons.`);
+	debug.push(`Combined ${allWeeklyResults.length} weekly result rows and ${allPlayerResults.length} player-week rows across ${seasonOutputs.length} seasons.`);
 
-	return { seasons: seasonOutputs, weeklyResults: allWeeklyResults, managers, debug };
+	return { seasons: seasonOutputs, weeklyResults: allWeeklyResults, playerResults: allPlayerResults, managers, debug };
 }
 
 /**
