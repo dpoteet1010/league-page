@@ -28,22 +28,27 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 		}
 
 		const matchupWeeks = [];
+		const playerResultsList = [];
 		const debug = [];
+
 		Object.entries(yearMatchups).forEach(([weekNum, inputMatchups]) => {
-			const processed = processMatchups(inputMatchups, parseInt(weekNum));
+			const weekNumber = parseInt(weekNum);
+			const processed = processMatchups(inputMatchups, weekNumber);
 			if (processed) {
 				matchupWeeks.push({
 					matchups: processed.matchups,
 					week: processed.week
 				});
+				playerResultsList.push(...processed.playerResults);
 				if (processed.byeRosterIds.length) {
-					debug.push(`Week ${processed.week}: bye for roster(s) ${processed.byeRosterIds.join(', ')} (excluded from matchups, not paired with anyone).`);
+					debug.push(`Week ${processed.week}: bye for roster(s) ${processed.byeRosterIds.join(', ')}.`);
 				}
 			}
 		});
 
 		const legacySeasonData = {
 			matchupWeeks,
+			playerResults: playerResultsList,
 			leagueID: yearStr,
 			year: yearStr,
 			week: 14,
@@ -95,21 +100,25 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	});
 
 	const matchupWeeks = [];
+	const playerResultsList = [];
 	const debug = [];
+
 	for (let i = 1; i <= matchupsData.length; i++) {
 		const weekData = matchupsData[i - 1];
 		if (!weekData) continue;
 		const processed = processMatchups(weekData, i);
 		if (processed) {
 			matchupWeeks.push({ matchups: processed.matchups, week: processed.week });
+			playerResultsList.push(...processed.playerResults);
 			if (processed.byeRosterIds.length) {
-				debug.push(`Week ${processed.week}: bye for roster(s) ${processed.byeRosterIds.join(', ')} (excluded from matchups, not paired with anyone).`);
+				debug.push(`Week ${processed.week}: bye for roster(s) ${processed.byeRosterIds.join(', ')}.`);
 			}
 		}
 	}
 
 	const seasonData = {
 		matchupWeeks,
+		playerResults: playerResultsList,
 		leagueID: queryLeagueID,
 		year,
 		week,
@@ -125,15 +134,14 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	return seasonData;
 };
 
-// FIXED: skip entries with a null/missing matchup_id instead of grouping
-// them together. A null matchup_id means "no opponent this week" (a bye)
-// — previously, since object keys coerce to strings, two unrelated bye
-// teams both landed in the same `matchups[null]` bucket and got treated
-// as if they'd played each other.
+// FIXED: Extract per-player points in addition to team totals.
+// players_points is a dict keyed by player_id with point values.
+// starters is an array of player_ids that were in the starting lineup.
 const processMatchups = (inputMatchups, week) => {
 	if (!inputMatchups || inputMatchups.length === 0) return false;
 	const matchups = {};
 	const byeRosterIds = [];
+	const playerResults = [];
 
 	for (const match of inputMatchups) {
 		if (match.matchup_id == null) {
@@ -149,6 +157,22 @@ const processMatchups = (inputMatchups, week) => {
 			starters: match.starters,
 			points: match.points,
 		});
+
+		// Extract per-player results
+		const playersPoints = match.players_points || {};
+		const starters = match.starters || [];
+		for (const playerId in playersPoints) {
+			const pointsTotal = Number(playersPoints[playerId] || 0);
+			const isStarter = starters.includes(playerId);
+			playerResults.push({
+				week,
+				rosterId: match.roster_id,
+				playerId,
+				pointsTotal,
+				pointsStarted: isStarter ? pointsTotal : 0
+			});
+		}
 	}
-	return { matchups, week, byeRosterIds };
+
+	return { matchups, week, byeRosterIds, playerResults };
 };
