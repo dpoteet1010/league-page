@@ -120,11 +120,18 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const date = digestDate(timestamp);
 	const season = new Date(timestamp).getFullYear();
 
+	// FIXED: `leg` is the NFL week this transaction occurred in.
+	// It's present on every Sleeper transaction (confirmed in legacy data too).
+	// Grading uses this instead of timestamp to find player-weeks from this
+	// point forward, since playerResults rows have week+year but no timestamp.
+	const leg = transaction.leg || 1;
+
 	let digestedTransaction = {
 		id: transaction.transaction_id,
 		date,
 		timestamp,
 		season,
+		leg,  // <-- the week number this transaction occurred in
 		type: transaction.type === 'trade' ? 'trade' : 'waiver',
 		rosters: transactionRosters,
 		moves: []
@@ -276,6 +283,10 @@ export function getSeasonTransactionTotals(totals, seasonKey, managersSnapshot) 
 
 export function getTradeHistory(transactions, managerIdA, managerIdB) {
 	return transactions
-		.filter((tx) => tx.type === 'trade' && tx.managerIds?.includes(managerIdA) && tx.managerIds?.includes(managerIdB))
+		.filter((tx) =>
+			tx.type === 'trade' &&
+			tx.managerIds?.includes(managerIdA) &&
+			tx.managerIds?.includes(managerIdB)
+		)
 		.sort((a, b) => b.timestamp - a.timestamp);
 }
