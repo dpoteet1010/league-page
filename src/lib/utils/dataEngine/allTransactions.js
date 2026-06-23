@@ -1,9 +1,3 @@
-// allTransactions.js
-//
-// Fetches every trade/waiver transaction across the league's full history.
-// Does NOT grade them here — grading functions live in transactionGrading.js
-// and are called from the UI/data pipeline after playerResults are available.
-
 import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
 import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
 import { getNflState } from '$lib/utils/helperFunctions/nflState.js';
@@ -61,7 +55,6 @@ async function combThroughTransactions(week, startingLeagueID) {
 	for (const chunk of transactionsDataJson) {
 		transactionsData = transactionsData.concat(chunk);
 	}
-
 	debug.push(`Fetched ${transactionsData.length} live transactions.`);
 
 	let legacyCount = 0;
@@ -83,7 +76,7 @@ async function combThroughTransactions(week, startingLeagueID) {
 
 const digestDate = (tStamp) => {
 	const a = new Date(tStamp);
-	const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 	const year = a.getFullYear();
 	const month = months[a.getMonth()];
 	const date = a.getDate();
@@ -119,11 +112,6 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	const timestamp = transaction.status_updated;
 	const date = digestDate(timestamp);
 	const season = new Date(timestamp).getFullYear();
-
-	// FIXED: `leg` is the NFL week this transaction occurred in.
-	// It's present on every Sleeper transaction (confirmed in legacy data too).
-	// Grading uses this instead of timestamp to find player-weeks from this
-	// point forward, since playerResults rows have week+year but no timestamp.
 	const leg = transaction.leg || 1;
 
 	let digestedTransaction = {
@@ -131,7 +119,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 		date,
 		timestamp,
 		season,
-		leg,  // <-- the week number this transaction occurred in
+		leg,
 		type: transaction.type === 'trade' ? 'trade' : 'waiver',
 		rosters: transactionRosters,
 		moves: []
@@ -154,7 +142,6 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 	for (const player in drops) {
 		if (handled.includes(player)) continue;
 		if (!player) continue;
-
 		const move = new Array(transactionRosters.length).fill(null);
 		if (transactionRosters.includes(drops[player])) {
 			move[transactionRosters.indexOf(drops[player])] = { type: 'Dropped', player };
@@ -185,6 +172,200 @@ function resolveSeasonKey(season, teamManagersMap) {
 	return teamManagersMap[seasonToUse] ? seasonToUse : null;
 }
 
+// ── Composite trade detection ────────────────────────────────────────────────
+
+/**
+ * Extracts a simple { received, sent } map from a digested transaction's
+ * moves array. received[playerId] = rosterThatGotIt, sent[playerId] = rosterThatSentIt.
+ */
+function extractMovements(tx) {
+	const received = {};
+	const sent = {};
+
+	(tx.moves || []).forEach((move) => {
+		if (!Array.isArray(move)) return;
+		let tradedPlayerId = null;
+		let receivingIdx = -1;
+		let sendingIdx = -1;
+
+		move.forEach((side, idx) => {
+			if (side && typeof side === 'object' && side.type === 'trade' && side.player) {
+				tradedPlayerId = String(side.player);
+				receivingIdx = idx;
+			} else if (side === 'origin') {
+				sendingIdx = idx;
+			}
+		});
+
+		if (tradedPlayerId && receivingIdx >= 0 && tx.rosters[receivingIdx] != null) {
+			received[tradedPlayerId] = tx.rosters[receivingIdx];
+		}
+		if (tradedPlayerId && sendingIdx >= 0 && tx.rosters[sendingIdx] != null) {
+			sent[tradedPlayerId] = tx.rosters[sendingIdx];
+		}
+	});
+
+	return { received, sent };
+}
+
+/**
+ * Returns players that passed through a roster — received in one trade and
+ * sent out in another trade by the SAME roster within the same week.
+ */
+function findPassThrough(movements1, movements2) {
+	const passThrough = [];
+
+	// Player received by roster R in trade1, sent by same roster R in trade2
+	Object.entries(movements1.received).forEach(([playerId, roster]) => {
+		if (movements2.sent[playerId] === roster) {
+			passThrough.push({ playerId, throughRoster: roster });
+		}
+	});
+
+	// Reverse: received in trade2, sent in trade1
+	Object.entries(movements2.received).forEach(([playerId, roster]) => {
+		if (movements1.sent[playerId] === roster) {
+			passThrough.push({ playerId, throughRoster: roster });
+		}
+	});
+
+	return passThrough;
+}
+
+/**
+ * Builds a composite trade object from a group of connected constituent trades.
+ * Net movements cancel out pass-through players so each team's true position
+ * change is correctly represented.
+ */
+function buildCompositeTrade(group) {
+	const allReceived = {};  // rosterId → [playerIds]
+	const allSent = {};      // rosterId → [playerIds]
+	const managerIdsByRoster = {};
+	const allRosterIds = new Set();
+
+	group.forEach((tx) => {
+		const movements = extractMovements(tx);
+		(tx.rosters || []).forEach((r, idx) => {
+			allRosterIds.add(r);
+			if (tx.managerIds?.[idx]) managerIdsByRoster[r] = tx.managerIds[idx];
+		});
+
+		Object.entries(movements.received).forEach(([playerId, roster]) => {
+			if (!allReceived[roster]) allReceived[roster] = [];
+			if (!allReceived[roster].includes(playerId)) allReceived[roster].push(playerId);
+		});
+
+		Object.entries(movements.sent).forEach(([playerId, roster]) => {
+			if (!allSent[roster]) allSent[roster] = [];
+			if (!allSent[roster].includes(playerId)) allSent[roster].push(playerId);
+		});
+	});
+
+	const teams = [];
+	allRosterIds.forEach((roster) => {
+		const received = allReceived[roster] || [];
+		const sent = allSent[roster] || [];
+		// Pass-through players appear in both — cancel them out
+		const netReceived = received.filter((p) => !sent.includes(p));
+		const netSent = sent.filter((p) => !received.includes(p));
+		teams.push({
+			roster,
+			managerId: managerIdsByRoster[roster] || null,
+			received,
+			sent,
+			netReceived,
+			netSent
+		});
+	});
+
+	const hasDraftPicks = group.some((tx) =>
+		(tx.moves || []).some((move) =>
+			Array.isArray(move) && move.some((side) =>
+				side && typeof side === 'object' && side.type === 'Received Pick'
+			)
+		)
+	);
+
+	const firstTx = group[0];
+	return {
+		id: 'composite_' + group.map((tx) => tx.id).join('_'),
+		type: 'trade',
+		isComposite: true,
+		constituentTradeIds: group.map((tx) => tx.id),
+		seasonKey: firstTx.seasonKey,
+		season: firstTx.season,
+		leg: firstTx.leg,
+		date: firstTx.date,
+		timestamp: firstTx.timestamp,
+		managerIds: [...allRosterIds].map((r) => managerIdsByRoster[r]).filter(Boolean),
+		teams,
+		hasDraftPicks,
+		moves: []  // composite trades use teams array, not moves
+	};
+}
+
+/**
+ * Detects multi-team trades by finding trades within the same week where
+ * a player was received by a roster in one trade and sent by that same
+ * roster in another trade. Uses union-find to handle chains of 3+ teams.
+ */
+function detectAndMergeCompositeTrades(transactions) {
+	const composites = [];
+	const compositeTradeIds = new Set();
+
+	// Group trades by season + week
+	const tradesByKey = {};
+	transactions.forEach((tx) => {
+		if (tx.type !== 'trade') return;
+		const key = `${tx.seasonKey || tx.season}-${tx.leg}`;
+		if (!tradesByKey[key]) tradesByKey[key] = [];
+		tradesByKey[key].push(tx);
+	});
+
+	Object.values(tradesByKey).forEach((weekTrades) => {
+		if (weekTrades.length < 2) return;
+
+		const n = weekTrades.length;
+		const movementsArr = weekTrades.map((tx) => extractMovements(tx));
+
+		// Union-Find
+		const parent = Array.from({ length: n }, (_, i) => i);
+		const find = (x) => { if (parent[x] !== x) parent[x] = find(parent[x]); return parent[x]; };
+		const union = (x, y) => { parent[find(x)] = find(y); };
+
+		let hasAnyPassThrough = false;
+		for (let i = 0; i < n; i++) {
+			for (let j = i + 1; j < n; j++) {
+				if (findPassThrough(movementsArr[i], movementsArr[j]).length > 0) {
+					union(i, j);
+					hasAnyPassThrough = true;
+				}
+			}
+		}
+
+		if (!hasAnyPassThrough) return;
+
+		// Group by connected component
+		const components = {};
+		weekTrades.forEach((tx, idx) => {
+			const root = find(idx);
+			if (!components[root]) components[root] = [];
+			components[root].push(tx);
+		});
+
+		Object.values(components).forEach((group) => {
+			if (group.length < 2) return;
+			const composite = buildCompositeTrade(group);
+			composites.push(composite);
+			group.forEach((tx) => compositeTradeIds.add(tx.id));
+		});
+	});
+
+	return { composites, compositeTradeIds };
+}
+
+// ── Main digest ──────────────────────────────────────────────────────────────
+
 async function digestTransactions({ transactionsData, currentSeason }) {
 	const debug = [];
 	const transactions = [];
@@ -204,10 +385,7 @@ async function digestTransactions({ transactionsData, currentSeason }) {
 
 		transactions.push(digestedTransaction);
 
-		if (seasonKey == null) {
-			skippedCount++;
-			continue;
-		}
+		if (seasonKey == null) { skippedCount++; continue; }
 
 		const yearMap = leagueTeamManagers.teamManagersMap[seasonKey] || {};
 		const managerIds = [];
@@ -234,8 +412,26 @@ async function digestTransactions({ transactionsData, currentSeason }) {
 
 	debug.push(`Digested ${transactions.length} transactions (${skippedCount} had no resolvable season).`);
 
+	// ── Detect and merge composite (multi-team) trades ──────────────────────
+	const { composites, compositeTradeIds } = detectAndMergeCompositeTrades(transactions);
+
+	// Mark constituent trades so UI can hide them (shown inside composite card)
+	transactions.forEach((tx) => {
+		if (compositeTradeIds.has(tx.id)) {
+			tx.isPartOfComposite = true;
+			const parent = composites.find((c) => c.constituentTradeIds.includes(tx.id));
+			if (parent) tx.compositeId = parent.id;
+		}
+	});
+
+	// Append composite trade objects to the list
+	composites.forEach((c) => transactions.push(c));
+	debug.push(`Detected ${composites.length} composite multi-team trade(s) across ${compositeTradeIds.size} constituent trades.`);
+
 	return { transactions, totals, debug };
 }
+
+// ── Public API ───────────────────────────────────────────────────────────────
 
 export async function getTransactionHistory(startingLeagueID = mainLeagueID) {
 	const debug = [];
@@ -285,6 +481,7 @@ export function getTradeHistory(transactions, managerIdA, managerIdB) {
 	return transactions
 		.filter((tx) =>
 			tx.type === 'trade' &&
+			!tx.isPartOfComposite &&
 			tx.managerIds?.includes(managerIdA) &&
 			tx.managerIds?.includes(managerIdB)
 		)
