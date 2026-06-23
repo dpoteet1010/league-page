@@ -8,10 +8,10 @@
   import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
   import { getAllSeasonsHistory, getRivalry, getAllTimeTotals } from '$lib/utils/dataEngine/allTimeHistory.js';
   import { getTransactionHistory, getAllTimeTransactionTotals, getSeasonTransactionTotals, getTradeHistory } from '$lib/utils/dataEngine/allTransactions.js';
-  import { gradeTradeByPAR, gradeWaiverByPAR } from '$lib/utils/dataEngine/parGrading.js';
+  import { gradeTradeByPAR, gradeWaiverByPAR, gradeCompositeTrade } from '$lib/utils/dataEngine/parGrading.js';
   import { teamManagersStore, leagueData } from '$lib/stores';
 
-  // ── Season view ───────────────────────────────────────────────────────────
+  // ── Season view ────────────────────────────────────────────────────────────
   let selectedLeagueID = '';
   let loading = false;
   let debugLogs = [];
@@ -25,18 +25,18 @@
   let showRawBrackets = false;
   let weekFilter = 'all';
 
-  // ── All-time / PAR ────────────────────────────────────────────────────────
+  // ── All-time / PAR ─────────────────────────────────────────────────────────
   let allTimeHistory = null;
   let loadingAllTime = false;
   let allTimeDebug = [];
   let allTimeTotals = [];
 
-  // ── Rivalry ───────────────────────────────────────────────────────────────
+  // ── Rivalry ────────────────────────────────────────────────────────────────
   let rivalryManagerA = '';
   let rivalryManagerB = '';
   let rivalryResult = null;
 
-  // ── Transactions ──────────────────────────────────────────────────────────
+  // ── Transactions ───────────────────────────────────────────────────────────
   let transactionHistory = null;
   let loadingTransactions = false;
   let transactionDebug = [];
@@ -47,9 +47,9 @@
   let rivalryTradeHistory = [];
   let txFilter = 'all';
   let showTransactionDebug = false;
-  let expandedTx = new Set(); // track which transaction rows are expanded
+  let expandedTx = new Set();
 
-  // ── Reactive: season picker ───────────────────────────────────────────────
+  // ── Reactive: season picker ────────────────────────────────────────────────
   $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
     .sort((a, b) => Number(b) - Number(a))
     .map((year) => {
@@ -57,8 +57,8 @@
       return { year, id: id || year };
     });
 
-  $: champTeam    = podiums.championId  != null ? standings.find((s) => s.rosterId === Number(podiums.championId))  : null;
-  $: loserTeam    = podiums.lastPlaceId != null ? standings.find((s) => s.rosterId === Number(podiums.lastPlaceId)) : null;
+  $: champTeam       = podiums.championId  != null ? standings.find((s) => s.rosterId === Number(podiums.championId))  : null;
+  $: loserTeam       = podiums.lastPlaceId != null ? standings.find((s) => s.rosterId === Number(podiums.lastPlaceId)) : null;
   $: placementsTable = standings.filter((s) => s.finalPlacement != null).sort((a, b) => a.finalPlacement - b.finalPlacement);
 
   $: rivalryOptions = standings
@@ -76,11 +76,13 @@
     return true;
   });
 
-  $: filteredTransactions = gradedTransactions.filter((tx) => {
-    if (txFilter === 'trade')  return tx.type === 'trade';
-    if (txFilter === 'waiver') return tx.type === 'waiver';
-    return true;
-  });
+  $: filteredTransactions = gradedTransactions
+    .filter((tx) => !tx.isPartOfComposite)
+    .filter((tx) => {
+      if (txFilter === 'trade')  return tx.type === 'trade';
+      if (txFilter === 'waiver') return tx.type === 'waiver';
+      return true;
+    });
 
   $: if (transactionHistory && selectedTransactionSeason) {
     const snap = get(teamManagersStore) || {};
@@ -89,17 +91,20 @@
 
   $: if (rivalryResult && transactionHistory && rivalryManagerA && rivalryManagerB) {
     rivalryTradeHistory = getTradeHistory(transactionHistory.transactions, rivalryManagerA, rivalryManagerB)
+      .filter((tx) => !tx.isPartOfComposite)
       .map((tx) => {
-        if (tx.type !== 'trade' || !allTimeHistory) return tx;
-        const parTables   = allTimeHistory.parTablesBySeason?.[String(tx.seasonKey || tx.season)];
-        const playerResults = allTimeHistory.playerResults || [];
-        const allPlayersData = allTimeHistory.allPlayersData || {};
-        const managerNames = (tx.managerIds || []).map((id) => managerDisplayName(id));
+        const parTables     = allTimeHistory?.parTablesBySeason?.[String(tx.seasonKey || tx.season)];
+        const playerResults = allTimeHistory?.playerResults || [];
+        const allPlayersData = allTimeHistory?.allPlayersData || {};
+        const managerNames  = (tx.managerIds || []).map((id) => managerDisplayName(id));
+        if (tx.isComposite) {
+          return { ...tx, grade: gradeCompositeTrade(tx, parTables, playerResults, allPlayersData) };
+        }
         return { ...tx, grade: gradeTradeByPAR(tx, parTables, playerResults, allPlayersData, managerNames) };
       });
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function resolveYear(currentLeagueID, allMetadata) {
     let year = allMetadata?.[currentLeagueID]?.season;
     if (!year && !isNaN(currentLeagueID)) year = currentLeagueID.toString();
@@ -114,10 +119,10 @@
         ?.map((mID) => managersSnapshot.users?.[mID]?.display_name || 'Unknown')
         .join(' & ') || 'Unknown Manager';
       out[rosterId] = {
-        name:         teamInfo?.team?.name || `Team ${rosterId}`,
-        avatar:       teamInfo?.team?.avatar || '',
+        name:      teamInfo?.team?.name || `Team ${rosterId}`,
+        avatar:    teamInfo?.team?.avatar || '',
         managerNames,
-        managerId:    teamInfo?.managers?.[0] ?? null
+        managerId: teamInfo?.managers?.[0] ?? null
       };
     });
     return out;
@@ -134,28 +139,23 @@
     return snap?.users?.[managerId]?.display_name || `Manager ${managerId}`;
   }
 
-  function fp(val) {
-    return typeof val === 'number' ? val.toFixed(1) : '—';
-  }
+  function fp(val) { return typeof val === 'number' ? val.toFixed(1) : '—'; }
 
   function gradeEmoji(label) {
-    const map = { elite: '🔥', strong: '✅', solid: '👍', neutral: '➖', poor: '❌' };
-    return map[label] || '?';
+    return { elite: '🔥', strong: '✅', solid: '👍', neutral: '➖', poor: '❌' }[label] || '?';
   }
 
   function tradeGradeEmoji(grade) {
-    const map = { lopsided: '💥', clear: '✅', close: '⚖️', even: '🤝' };
-    return map[grade] || '?';
+    return { lopsided: '💥', clear: '✅', close: '⚖️', even: '🤝' }[grade] || '?';
   }
 
   function toggleTx(id) {
     const next = new Set(expandedTx);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     expandedTx = next;
   }
 
-  // ── Season loader ─────────────────────────────────────────────────────────
+  // ── Season loader ──────────────────────────────────────────────────────────
   async function loadSeasonData(leagueId) {
     if (!leagueId) return;
     loading = true;
@@ -168,30 +168,24 @@
 
     try {
       const [matchupsData] = await Promise.all([
-        getSpecificYearMatchups(leagueId).catch((err) => {
-          debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`);
-          return null;
-        }),
-        getLeagueData(leagueId).catch((err) => {
-          debugLogs.push(`getLeagueData note: ${err.message}`);
-          return null;
-        })
+        getSpecificYearMatchups(leagueId).catch((err) => { debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`); return null; }),
+        getLeagueData(leagueId).catch((err) => { debugLogs.push(`getLeagueData note: ${err.message}`); return null; })
       ]);
 
       debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
       debugLogs.push(...(matchupsData?.debug || []));
 
       const managersSnapshot = get(teamManagersStore) || {};
-      const allMetadata      = get(leagueData) || {};
-      const year             = resolveYear(leagueId, allMetadata);
-      debugLogs.push(`Resolved year for manager lookup: ${year}`);
+      const allMetadata = get(leagueData) || {};
+      const year = resolveYear(leagueId, allMetadata);
+      debugLogs.push(`Resolved year: ${year}`);
 
       const managersForYear = buildManagersForYear(managersSnapshot, year);
       currentManagersForYear = managersForYear;
       const numRosters = Object.keys(managersForYear).length;
-      debugLogs.push(`Managers resolved for ${year}: ${numRosters}`);
+      debugLogs.push(`Managers resolved: ${numRosters}`);
 
-      if (!matchupsData) { debugLogs.push('No matchupsData — cannot run getLeagueState.'); return; }
+      if (!matchupsData) { debugLogs.push('No matchupsData.'); return; }
 
       const playoffData = await getLeaguePlayoffs(leagueId);
       rawWinnersBracket = playoffData.winnersBracket;
@@ -210,13 +204,13 @@
       debugLogs.push(...result.debug);
     } catch (e) {
       console.error('Critical error:', e);
-      debugLogs.push(`Catch block crash: ${e.message}`);
+      debugLogs.push(`Crash: ${e.message}`);
     } finally {
       loading = false;
     }
   }
 
-  // ── All-time history loader ───────────────────────────────────────────────
+  // ── All-time history loader ────────────────────────────────────────────────
   async function loadAllTimeHistory() {
     loadingAllTime = true;
     allTimeDebug = [];
@@ -231,33 +225,35 @@
     }
   }
 
-  // ── Transaction loader ────────────────────────────────────────────────────
+  // ── Transaction loader ─────────────────────────────────────────────────────
   async function loadTransactionHistory() {
     loadingTransactions = true;
-    transactionDebug    = [];
-    gradedTransactions  = [];
+    transactionDebug   = [];
+    gradedTransactions = [];
 
     try {
       if (!allTimeHistory) {
         transactionDebug.push('Loading all-time history for PAR grading...');
         allTimeHistory = await getAllSeasonsHistory();
         allTimeTotals  = getAllTimeTotals(allTimeHistory.managers);
-        transactionDebug.push(`All-time history loaded. PAR tables built for ${Object.keys(allTimeHistory.parTablesBySeason || {}).length} seasons.`);
+        transactionDebug.push(`PAR tables built for ${Object.keys(allTimeHistory.parTablesBySeason || {}).length} seasons.`);
       }
 
       const txResult = await getTransactionHistory();
       transactionHistory = txResult;
       transactionDebug.push(...txResult.debug);
 
-      const playerResults  = allTimeHistory.playerResults  || [];
-      const allPlayersData = allTimeHistory.allPlayersData || {};
+      const playerResults     = allTimeHistory.playerResults  || [];
+      const allPlayersData    = allTimeHistory.allPlayersData || {};
       const parTablesBySeason = allTimeHistory.parTablesBySeason || {};
 
       gradedTransactions = txResult.transactions.map((tx) => {
         const parTables    = parTablesBySeason[String(tx.seasonKey || tx.season)];
         const managerNames = (tx.managerIds || []).map((id) => managerDisplayName(id));
 
-        if (tx.type === 'trade') {
+        if (tx.isComposite) {
+          return { ...tx, grade: gradeCompositeTrade(tx, parTables, playerResults, allPlayersData) };
+        } else if (tx.type === 'trade') {
           return { ...tx, grade: gradeTradeByPAR(tx, parTables, playerResults, allPlayersData, managerNames) };
         } else if (tx.type === 'waiver') {
           return { ...tx, grade: gradeWaiverByPAR(tx, parTables, playerResults, allPlayersData) };
@@ -271,25 +267,26 @@
       const availableSeasons = Object.keys(txResult.totals.seasons || {}).sort((a, b) => Number(b) - Number(a));
       if (availableSeasons.length > 0) {
         selectedTransactionSeason = availableSeasons[0];
-        seasonTransactionTotals   = getSeasonTransactionTotals(txResult.totals, selectedTransactionSeason, snap);
+        seasonTransactionTotals = getSeasonTransactionTotals(txResult.totals, selectedTransactionSeason, snap);
       }
 
-      transactionDebug.push(`Graded ${gradedTransactions.length} transactions using PAR.`);
+      const compositeCount = gradedTransactions.filter((tx) => tx.isComposite).length;
+      transactionDebug.push(`Graded ${gradedTransactions.length} transactions (${compositeCount} composite multi-team trades).`);
     } catch (e) {
       console.error('Critical error loading transactions:', e);
-      transactionDebug.push(`Catch block crash: ${e.message}`);
+      transactionDebug.push(`Crash: ${e.message}`);
     } finally {
       loadingTransactions = false;
     }
   }
 
-  // ── Rivalry ───────────────────────────────────────────────────────────────
+  // ── Rivalry ────────────────────────────────────────────────────────────────
   function computeRivalry() {
     if (!allTimeHistory || !rivalryManagerA || !rivalryManagerB) return;
     rivalryResult = getRivalry(allTimeHistory.weeklyResults, rivalryManagerA, rivalryManagerB);
   }
 
-  // ── Mount ─────────────────────────────────────────────────────────────────
+  // ── Mount ──────────────────────────────────────────────────────────────────
   onMount(async () => {
     loading = true;
     const managers = await getLeagueTeamManagers().catch((err) => {
@@ -298,13 +295,13 @@
     });
     const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
     if (years.length > 0) {
-      const firstYear  = years[0];
+      const firstYear   = years[0];
       const allMetadata = get(leagueData) || {};
-      const idMatch    = Object.keys(allMetadata).find((k) => allMetadata[k]?.season == firstYear);
-      selectedLeagueID = idMatch || firstYear;
+      const idMatch     = Object.keys(allMetadata).find((k) => allMetadata[k]?.season == firstYear);
+      selectedLeagueID  = idMatch || firstYear;
       await loadSeasonData(selectedLeagueID);
     } else {
-      debugLogs = [...debugLogs, 'getLeagueTeamManagers returned no years.'];
+      debugLogs = [...debugLogs, 'No years found in teamManagersStore.'];
       loading = false;
     }
   });
@@ -313,7 +310,7 @@
 <main class="container">
   <h2>League State Validation Panel</h2>
 
-  <!-- ── Season selector ──────────────────────────────────────────────────── -->
+  <!-- ── Season selector ────────────────────────────────────────────────────── -->
   {#if seasons.length > 0}
     <div class="control-row">
       <label for="season-select"><strong>Select target season:</strong></label>
@@ -328,7 +325,7 @@
     <div class="status-msg">Crunching matchups...</div>
   {:else}
 
-    <!-- ── Podiums ─────────────────────────────────────────────────────────── -->
+    <!-- ── Podiums ──────────────────────────────────────────────────────────── -->
     <div class="podium-grid">
       <div class="podium-card gold">
         <h3>🏆 League Champion</h3>
@@ -346,7 +343,7 @@
       </div>
     </div>
 
-    <!-- ── Final playoff standings ────────────────────────────────────────── -->
+    <!-- ── Final playoff standings ─────────────────────────────────────────── -->
     {#if placementsTable.length > 0}
       <h3>Final Playoff Standings</h3>
       <table class="data-table">
@@ -362,7 +359,7 @@
       </table>
     {/if}
 
-    <!-- ── Season standings ───────────────────────────────────────────────── -->
+    <!-- ── Season standings ────────────────────────────────────────────────── -->
     <h3>Standings</h3>
     <table class="data-table">
       <thead>
@@ -396,14 +393,13 @@
       </tbody>
     </table>
 
-    <!-- ── All-time history ───────────────────────────────────────────────── -->
+    <!-- ── All-time history ────────────────────────────────────────────────── -->
     <h3>All-Time History</h3>
     <div class="control-row">
       <button on:click={loadAllTimeHistory} disabled={loadingAllTime}>
         {loadingAllTime ? 'Loading every season...' : (allTimeHistory ? 'Reload All-Time History' : 'Load All-Time History')}
       </button>
     </div>
-
     {#if allTimeTotals.length > 0}
       <table class="data-table">
         <thead>
@@ -426,7 +422,7 @@
       </table>
     {/if}
 
-    <!-- ── Rivalry lookup ─────────────────────────────────────────────────── -->
+    <!-- ── Rivalry lookup ──────────────────────────────────────────────────── -->
     {#if allTimeHistory}
       <h3>Rivalry Lookup</h3>
       <div class="control-row">
@@ -461,28 +457,62 @@
             <div class="trade-card">
               <div class="trade-header">
                 <span class="trade-date">{trade.date} — Season {trade.seasonKey || trade.season}</span>
-                {#if g}
+                {#if trade.isComposite}
+                  <span class="composite-badge">🔀 {trade.teams?.length}-Team Trade</span>
+                {/if}
+                {#if g && !trade.isComposite}
                   <span class="trade-grade-badge grade-{g.narrative?.grade}">
                     {tradeGradeEmoji(g.narrative?.grade)} {g.narrative?.grade?.toUpperCase()}
                   </span>
                 {/if}
+                {#if g?.hasDraftPicks}
+                  <span class="draft-pick-badge">📋 Includes Draft Picks</span>
+                {/if}
               </div>
-              {#if g?.narrative?.summary}
+
+              {#if !trade.isComposite && g?.narrative?.summary}
                 <p class="trade-narrative">{g.narrative.summary}</p>
               {/if}
-              {#if g}
+
+              {#if !trade.isComposite && g}
                 <div class="trade-sides">
                   {#each trade.rosters as roster, idx}
                     {@const side = idx === 0 ? g.side0 : g.side1}
                     {@const isWinner = g.winner === idx}
                     <div class="trade-side {isWinner ? 'winner' : ''}">
-                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(trade.managerIds?.[idx])}</div>
-                      <div class="side-par">PAR: {fp(side?.parTotal)} | Raw: {fp(side?.rawTotal)}</div>
+                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(trade.managerIds?.[idx])} received:</div>
+                      <div class="side-totals">PAR: <strong>{fp(side?.parTotal)}</strong> | Raw: {fp(side?.rawTotal)}</div>
                       {#each (side?.players || []) as p}
                         <div class="player-row">
+                          <span class="player-pos-tag">{p.position}</span>
                           <span class="player-name">{p.name}</span>
-                          <span class="player-pos">{p.position}</span>
-                          <span class="player-stats">{fp(p.totalPts)} pts ({fp(p.par)} PAR, {p.weeksStarted}/{p.weeks} wks)</span>
+                          <span class="player-stat-detail">
+                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
+                            {p.weeksStarted}/{p.weeks} wks
+                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adjusted</span>{/if}
+                          </span>
+                        </div>
+                      {/each}
+                    </div>
+                  {/each}
+                </div>
+
+              {:else if trade.isComposite && g}
+                <!-- Composite trade breakdown -->
+                <div class="composite-teams">
+                  {#each g.teamGrades as teamGrade}
+                    {@const isWinner = g.winnerRoster === teamGrade.roster}
+                    <div class="trade-side {isWinner ? 'winner' : ''}">
+                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(teamGrade.managerId)} received (net):</div>
+                      <div class="side-totals">PAR: <strong>{fp(teamGrade.parTotal)}</strong> | Raw: {fp(teamGrade.rawTotal)}</div>
+                      {#each (teamGrade.players || []) as p}
+                        <div class="player-row">
+                          <span class="player-pos-tag">{p.position}</span>
+                          <span class="player-name">{p.name}</span>
+                          <span class="player-stat-detail">
+                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
+                            {p.weeksStarted}/{p.weeks} wks
+                          </span>
                         </div>
                       {/each}
                     </div>
@@ -494,7 +524,7 @@
         {:else if transactionHistory}
           <p class="meta-empty">No trades found between these two managers.</p>
         {:else}
-          <p class="meta-empty">Load transaction history to see trades between these managers.</p>
+          <p class="meta-empty">Load transaction history to see trades.</p>
         {/if}
       {:else if rivalryManagerA && rivalryManagerB}
         <div class="meta-empty">Click "Show Rivalry" to compute.</div>
@@ -508,7 +538,7 @@
       {/if}
     {/if}
 
-    <!-- ── Transaction history ────────────────────────────────────────────── -->
+    <!-- ── Transaction history ─────────────────────────────────────────────── -->
     <h3>Transaction History</h3>
     <div class="control-row">
       <button on:click={loadTransactionHistory} disabled={loadingTransactions}>
@@ -517,7 +547,7 @@
     </div>
 
     {#if loadingTransactions}
-      <div class="status-msg">Fetching and grading transactions with PAR...</div>
+      <div class="status-msg">Fetching and grading with PAR...</div>
     {:else if transactionHistory}
 
       <h4>All-Time Transaction Totals</h4>
@@ -525,12 +555,7 @@
         <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
         <tbody>
           {#each allTimeTransactionTotals as m}
-            <tr>
-              <td>{m.displayName}</td>
-              <td>{m.trades}</td>
-              <td>{m.waivers}</td>
-              <td>{m.total}</td>
-            </tr>
+            <tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>
           {/each}
         </tbody>
       </table>
@@ -552,21 +577,14 @@
           <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
           <tbody>
             {#each seasonTransactionTotals as m}
-              <tr>
-                <td>{m.displayName}</td>
-                <td>{m.trades}</td>
-                <td>{m.waivers}</td>
-                <td>{m.total}</td>
-              </tr>
+              <tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>
             {/each}
           </tbody>
         </table>
       {/if}
 
-      <!-- Full graded transaction list -->
       <h4>All Transactions (PAR Graded)</h4>
       <div class="control-row">
-        <label>Filter:</label>
         <select bind:value={txFilter}>
           <option value="all">All</option>
           <option value="trade">Trades Only</option>
@@ -577,52 +595,93 @@
       {#each filteredTransactions as tx}
         {@const g = tx.grade}
         {@const isExpanded = expandedTx.has(tx.id)}
-        <div class="tx-card {tx.type}">
-          <!-- Summary row — always visible -->
+        <div class="tx-card {tx.type} {tx.isComposite ? 'composite' : ''}">
+
+          <!-- Summary row -->
           <div class="tx-summary" on:click={() => toggleTx(tx.id)} role="button" tabindex="0"
             on:keydown={(e) => e.key === 'Enter' && toggleTx(tx.id)}>
             <div class="tx-meta">
-              <span class="tx-type-badge {tx.type}">{tx.type}</span>
+              {#if tx.isComposite}
+                <span class="tx-type-badge composite">🔀 {tx.teams?.length}-Team Trade</span>
+              {:else}
+                <span class="tx-type-badge {tx.type}">{tx.type}</span>
+              {/if}
               <span class="tx-date">{tx.date}</span>
-              <span class="tx-season">Season {tx.seasonKey || tx.season}</span>
+              <span class="tx-season">S{tx.seasonKey || tx.season} Wk{tx.leg}</span>
+              {#if g?.hasDraftPicks}
+                <span class="draft-pick-badge">📋 Picks</span>
+              {/if}
             </div>
             <div class="tx-managers">
-              {#if tx.managerIds?.length}
+              {#if tx.isComposite}
+                {(tx.teams || []).map((t) => managerDisplayName(t.managerId)).join(' → ')}
+              {:else if tx.managerIds?.length}
                 {tx.managerIds.map((id) => managerDisplayName(id)).join(' ↔ ')}
               {:else}—{/if}
             </div>
 
-            {#if tx.type === 'trade' && g}
+            {#if tx.isComposite && g}
+              <div class="tx-grade">
+                <span class="par-summary">
+                  {(g.ranked || []).map((t) => `${managerDisplayName(t.managerId)}: ${fp(t.parTotal)}`).join(' | ')} PAR
+                </span>
+              </div>
+            {:else if tx.type === 'trade' && g}
               <div class="tx-grade">
                 <span class="trade-grade-badge grade-{g.narrative?.grade}">
                   {tradeGradeEmoji(g.narrative?.grade)} {g.narrative?.grade}
                 </span>
                 <span class="par-summary">
-                  {managerDisplayName(tx.managerIds?.[0])}: {fp(g.side0?.parTotal)} PAR |
+                  {managerDisplayName(tx.managerIds?.[0])}: {fp(g.side0?.parTotal)} |
                   {managerDisplayName(tx.managerIds?.[1])}: {fp(g.side1?.parTotal)} PAR
                 </span>
               </div>
             {:else if tx.type === 'waiver' && g}
               <div class="tx-grade">
-                <span class="waiver-grade-badge grade-{g.gradeLabel}">
-                  {gradeEmoji(g.gradeLabel)} {g.gradeLabel}
-                </span>
-                <span class="par-summary">
-                  {g.name} ({g.position}) — {fp(g.par)} PAR / {fp(g.totalPts)} pts
-                </span>
+                <span class="waiver-grade-badge grade-{g.gradeLabel}">{gradeEmoji(g.gradeLabel)} {g.gradeLabel}</span>
+                <span class="par-summary">{g.name} ({g.position}) — {fp(g.par)} PAR</span>
               </div>
             {/if}
 
             <span class="expand-toggle">{isExpanded ? '▲' : '▼'}</span>
           </div>
 
-          <!-- Detail panel — visible when expanded -->
+          <!-- Detail panel -->
           {#if isExpanded}
             <div class="tx-detail">
-              {#if tx.type === 'trade' && g}
-                {#if g.narrative?.summary}
-                  <p class="narrative-text">{g.narrative.summary}</p>
-                {/if}
+              {#if tx.isComposite && g}
+                <!-- Composite trade detail -->
+                <p class="narrative-text">
+                  Multi-team trade involving {tx.teams?.length} managers.
+                  {#if g.hasDraftPicks}Grade reflects player value only — draft picks excluded.{/if}
+                </p>
+                <div class="composite-teams">
+                  {#each g.teamGrades as teamGrade}
+                    {@const isWinner = g.winnerRoster === teamGrade.roster}
+                    <div class="trade-side {isWinner ? 'winner' : ''}">
+                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(teamGrade.managerId)} received (net):</div>
+                      <div class="side-totals">PAR: <strong>{fp(teamGrade.parTotal)}</strong> | Raw: {fp(teamGrade.rawTotal)} / {fp(teamGrade.rawStarted)} started</div>
+                      {#each (teamGrade.players || []) as p}
+                        <div class="player-row">
+                          <span class="player-pos-tag">{p.position}</span>
+                          <span class="player-name">{p.name}</span>
+                          <span class="player-stat-detail">
+                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
+                            {p.weeksStarted}/{p.weeks} wks | rep: {fp(p.baselineValue)}
+                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
+                          </span>
+                        </div>
+                      {/each}
+                    </div>
+                  {/each}
+                </div>
+                <!-- Show constituent trades for transparency -->
+                <div class="constituent-note">
+                  Constituent trade IDs: {tx.constituentTradeIds?.join(', ')}
+                </div>
+
+              {:else if tx.type === 'trade' && g}
+                <p class="narrative-text">{g.narrative?.summary}</p>
                 <div class="trade-sides">
                   {#each tx.rosters as roster, idx}
                     {@const side = idx === 0 ? g.side0 : g.side1}
@@ -638,10 +697,9 @@
                           <span class="player-pos-tag">{p.position}</span>
                           <span class="player-name">{p.name}</span>
                           <span class="player-stat-detail">
-                            {fp(p.par)} PAR |
-                            {fp(p.totalPts)} total / {fp(p.startedPts)} started |
-                            {p.weeksStarted}/{p.weeks} wks |
-                            Rep. level: {fp(p.replacementLevel)}
+                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
+                            {p.weeksStarted}/{p.weeks} wks | baseline: {fp(p.baselineValue)}
+                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adjusted</span>{/if}
                           </span>
                         </div>
                       {/each}
@@ -652,8 +710,7 @@
                   <div class="flags">
                     {#each g.narrative.flags as flag}
                       <span class="flag flag-{flag.type}">
-                        {flag.type === 'injury-suspected' ? '🚑 Injury suspected' : '📋 Underutilized'}:
-                        {flag.name}
+                        {flag.type === 'injury-suspected' ? '🚑 Injury suspected' : '📋 Underutilized'}: {flag.name}
                       </span>
                     {/each}
                   </div>
@@ -666,10 +723,9 @@
                     <span class="player-pos-tag">{g.position}</span>
                     <span class="player-name">Added: {g.name}</span>
                     <span class="player-stat-detail">
-                      {fp(g.par)} PAR |
-                      {fp(g.totalPts)} total / {fp(g.startedPts)} started |
-                      {g.weeksStarted}/{g.weeks} wks |
-                      Rep. level: {fp(g.replacementLevel)}
+                      {fp(g.par)} PAR | {fp(g.totalPts)} total / {fp(g.startedPts)} started |
+                      {g.weeksStarted}/{g.weeks} wks | baseline: {fp(g.baselineValue)}
+                      {#if g.baselineSource === 'personal'}<span class="baseline-tag">roster-adjusted</span>{/if}
                     </span>
                   </div>
                   {#if g.droppedName}
@@ -698,8 +754,8 @@
       {/if}
     {/if}
 
-    <!-- ── Weekly results ─────────────────────────────────────────────────── -->
-    <h3>Weekly Results (raw engine output)</h3>
+    <!-- ── Weekly results ──────────────────────────────────────────────────── -->
+    <h3>Weekly Results</h3>
     <div class="control-row">
       <select bind:value={weekFilter}>
         <option value="all">All Weeks</option>
@@ -728,17 +784,12 @@
       </tbody>
     </table>
 
-    <!-- ── Raw JSON toggles ───────────────────────────────────────────────── -->
     <div class="control-row">
       <button on:click={() => (showRawStandings = !showRawStandings)}>{showRawStandings ? 'Hide' : 'Show'} Raw Standings JSON</button>
       <button on:click={() => (showRawBrackets  = !showRawBrackets) }>{showRawBrackets  ? 'Hide' : 'Show'} Raw Bracket JSON</button>
     </div>
-    {#if showRawStandings}
-      <pre class="raw-json">{JSON.stringify(standings, null, 2)}</pre>
-    {/if}
-    {#if showRawBrackets}
-      <pre class="raw-json">{JSON.stringify({ winnersBracket: rawWinnersBracket, losersBracket: rawLosersBracket }, null, 2)}</pre>
-    {/if}
+    {#if showRawStandings}<pre class="raw-json">{JSON.stringify(standings, null, 2)}</pre>{/if}
+    {#if showRawBrackets}<pre class="raw-json">{JSON.stringify({ winnersBracket: rawWinnersBracket, losersBracket: rawLosersBracket }, null, 2)}</pre>{/if}
 
     {#if debugLogs.length > 0}
       <div class="debug-terminal">
@@ -746,7 +797,6 @@
         <ul>{#each debugLogs as log}<li><code>{log}</code></li>{/each}</ul>
       </div>
     {/if}
-
   {/if}
 </main>
 
@@ -759,7 +809,7 @@
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
   .manager-tag { font-size: 0.8em; color: #888; }
   .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
-  .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
+  .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,.05); margin-bottom: 1.5rem; }
   .podium-card.gold    { border-left-color: #ffd700; background: #fffdf3; }
   .podium-card.poop    { border-left-color: #8b5a2b; background: #fbf7f3; }
   .podium-card.rivalry { border-left-color: #4a90d9; background: #f3f8fd; }
@@ -773,12 +823,12 @@
   .data-table td:first-child, .data-table th:first-child { text-align: left; }
   .subhead th { background: #ececec; font-weight: 600; }
 
-  /* Trade cards */
+  /* Trade cards (rivalry section) */
   .trade-card { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
-  .trade-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.75rem 1rem 0.5rem; background: #f9f9f9; border-bottom: 1px solid #eee; }
+  .trade-header { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; background: #f9f9f9; border-bottom: 1px solid #eee; }
   .trade-date { font-size: 0.85em; color: #666; }
   .trade-narrative { margin: 0.5rem 1rem; font-style: italic; color: #444; font-size: 0.9em; }
-  .trade-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
+  .trade-sides, .composite-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 1rem; }
   .trade-side { padding: 0.75rem; border-radius: 6px; background: #f5f5f5; border: 2px solid transparent; }
   .trade-side.winner { background: #f0fff4; border-color: #34d399; }
   .side-manager { font-weight: 700; margin-bottom: 0.35rem; }
@@ -786,8 +836,9 @@
 
   /* Transaction cards */
   .tx-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
-  .tx-card.trade  { border-left: 4px solid #2563eb; }
-  .tx-card.waiver { border-left: 4px solid #16a34a; }
+  .tx-card.trade   { border-left: 4px solid #2563eb; }
+  .tx-card.waiver  { border-left: 4px solid #16a34a; }
+  .tx-card.composite { border-left: 4px solid #7c3aed; }
   .tx-summary { padding: 0.75rem 1rem; cursor: pointer; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; background: #fafafa; }
   .tx-summary:hover { background: #f0f0f0; }
   .tx-meta    { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
@@ -799,13 +850,14 @@
   .narrative-text { font-style: italic; color: #444; margin: 0 0 0.75rem; font-size: 0.9em; }
 
   .tx-type-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; font-weight: 700; text-transform: uppercase; }
-  .tx-type-badge.trade  { background: #dbeafe; color: #1d4ed8; }
-  .tx-type-badge.waiver { background: #dcfce7; color: #15803d; }
-  .tx-date, .tx-season  { font-size: 0.82em; color: #666; }
+  .tx-type-badge.trade     { background: #dbeafe; color: #1d4ed8; }
+  .tx-type-badge.waiver    { background: #dcfce7; color: #15803d; }
+  .tx-type-badge.composite { background: #ede9fe; color: #6d28d9; }
+  .tx-date, .tx-season { font-size: 0.82em; color: #666; }
+  .composite-badge { background: #ede9fe; color: #6d28d9; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; }
+  .draft-pick-badge { background: #fef3c7; color: #92400e; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; }
 
-  .trade-grade-badge, .waiver-grade-badge {
-    padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; text-transform: capitalize;
-  }
+  .trade-grade-badge, .waiver-grade-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; text-transform: capitalize; }
   .grade-lopsided { background: #fef2f2; color: #dc2626; }
   .grade-clear    { background: #f0fdf4; color: #16a34a; }
   .grade-close    { background: #fffbeb; color: #d97706; }
@@ -816,17 +868,19 @@
   .grade-neutral  { background: #f3f4f6; color: #6b7280; }
   .grade-poor     { background: #fef2f2; color: #dc2626; }
 
-  .player-row { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.85em; margin-top: 0.3rem; }
+  .player-row { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.85em; margin-top: 0.3rem; flex-wrap: wrap; }
   .player-row.dropped { opacity: 0.5; }
   .player-pos-tag { background: #e5e7eb; border-radius: 3px; padding: 0 0.3rem; font-size: 0.75em; font-weight: 700; flex-shrink: 0; }
   .player-name { font-weight: 600; }
-  .player-stat-detail { color: #666; font-size: 0.9em; }
+  .player-stat-detail { color: #666; font-size: 0.85em; }
+  .baseline-tag { background: #ddd6fe; color: #5b21b6; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem; }
 
   .waiver-detail { margin-top: 0.5rem; }
   .flags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
   .flag { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; }
   .flag-injury-suspected { background: #fff7ed; color: #c2410c; }
   .flag-underutilized    { background: #faf5ff; color: #7e22ce; }
+  .constituent-note { font-size: 0.75em; color: #aaa; margin-top: 0.5rem; padding: 0 0.25rem; }
 
   .raw-json { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; margin-bottom: 1rem; max-height: 400px; }
   .debug-terminal { background: #1e1e1e; color: #00ff00; padding: 1rem; border-radius: 6px; font-family: monospace; margin-top: 1rem; margin-bottom: 2rem; }
