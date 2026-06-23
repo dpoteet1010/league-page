@@ -10,6 +10,7 @@
   import { getTransactionHistory, getAllTimeTransactionTotals, getSeasonTransactionTotals, getTradeHistory } from '$lib/utils/dataEngine/allTransactions.js';
   import { gradeTradeWinner, gradeWaiverPickup } from '$lib/utils/dataEngine/transactionGrading.js';
   import { teamManagersStore, leagueData } from '$lib/stores';
+  import { getAllPlayers, buildPlayerNameMap } from '$lib/utils/dataEngine/allPlayers.js';
 
   // ── Season selector ──────────────────────────────────────────────────────────
   let selectedLeagueID = '';
@@ -48,6 +49,7 @@
   let rivalryTradeHistory = [];
   let txFilter = 'all'; // 'all' | 'trade' | 'waiver'
   let showTransactionDebug = false;
+  let playerNameMap = {}; // { [playerId]: "Name (POS)" }
 
   // ── Reactive: season picker ──────────────────────────────────────────────────
   $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
@@ -56,6 +58,11 @@
       const matchedLeagueID = Object.keys($leagueData || {}).find((key) => $leagueData[key]?.season == year);
       return { year, id: matchedLeagueID || year };
     });
+
+function playerName(id) {
+  if (!id) return '?';
+  return playerNameMap[String(id)] || `Player ${id}`;
+}
 
   $: champTeam = podiums.championId != null ? standings.find((s) => s.rosterId === Number(podiums.championId)) : null;
   $: loserTeam = podiums.lastPlaceId != null ? standings.find((s) => s.rosterId === Number(podiums.lastPlaceId)) : null;
@@ -216,8 +223,11 @@
     transactionDebug = [];
     gradedTransactions = [];
     allTimeTransactionTotals = [];
+    // Fetch player names for display (cached after first call)
+    const allPlayersData = await getAllPlayers().catch(() => ({}));
+    playerNameMap = buildPlayerNameMap(allPlayersData);
+    transactionDebug.push(`Player name map loaded: ${Object.keys(playerNameMap).length} players.`);
     seasonTransactionTotals = [];
-
     try {
       // Need player results for grading — load all-time history first if not yet done
       if (!allTimeHistory) {
@@ -579,69 +589,108 @@
             <th>Season</th>
             <th>Type</th>
             <th>Managers</th>
-            <th>Total Pts (Primary)</th>
-            <th>Started Pts</th>
+            <th>Players</th>
+            <th>Pts (Total / Started)</th>
             <th>Winner / Grade</th>
           </tr>
         </thead>
         <tbody>
-          {#each filteredTransactions as tx}
-            {@const grade = tx.grade}
-            <tr>
-              <td>{tx.date}</td>
-              <td>{tx.seasonKey || tx.season}</td>
-              <td class="tx-type {tx.type}">{tx.type}</td>
-              <td>
-                {#if tx.managerIds?.length}
-                  {tx.managerIds.map(id => managerDisplayName(id)).join(' ↔ ')}
-                {:else}
-                  —
-                {/if}
-              </td>
-              <td>
-                {#if tx.type === 'trade' && grade}
-                  {formatPoints(grade.side0?.totalPts)} vs {formatPoints(grade.side1?.totalPts)}
-                {:else if tx.type === 'waiver' && grade}
-                  {formatPoints(grade.totalPts)}
-                {:else}
-                  —
-                {/if}
-              </td>
-              <td>
-                {#if tx.type === 'trade' && grade}
-                  {formatPoints(grade.side0?.startedPts)} vs {formatPoints(grade.side1?.startedPts)}
-                {:else if tx.type === 'waiver' && grade}
-                  {formatPoints(grade.startedPts)} ({grade.games} games started)
-                {:else}
-                  —
-                {/if}
-              </td>
-              <td>
-                {#if tx.type === 'trade' && grade}
-                  {#if grade.winner === 0}
-                    🏆 {managerDisplayName(tx.managerIds?.[0])}
-                  {:else if grade.winner === 1}
-                    🏆 {managerDisplayName(tx.managerIds?.[1])}
-                  {:else}
-                    Even
-                  {/if}
-                {:else if tx.type === 'waiver' && grade}
-                  {#if grade.totalPts > 50}
-                    ✅ Strong pickup
-                  {:else if grade.totalPts > 15}
-                    👍 Solid pickup
-                  {:else if grade.totalPts > 0}
-                    ➖ Minimal value
-                  {:else}
-                    ❌ No contribution
-                  {/if}
-                {:else}
-                  —
-                {/if}
-              </td>
-            </tr>
+  {#each filteredTransactions as tx}
+    {@const grade = tx.grade}
+    <tr class="tx-row">
+      <td>{tx.date}</td>
+      <td>{tx.seasonKey || tx.season}</td>
+      <td class="tx-type {tx.type}">{tx.type}</td>
+      <td>
+        {#if tx.managerIds?.length}
+          {tx.managerIds.map(id => managerDisplayName(id)).join(' ↔ ')}
+        {:else}
+          —
+        {/if}
+      </td>
+
+      <!-- Players involved -->
+      <td class="players-cell">
+        {#if tx.type === 'trade'}
+          {#each (tx.rosters || []) as roster, idx}
+            {@const managerId = tx.managerIds?.[idx]}
+            {@const breakdown = grade?.playerBreakdown?.[roster] || []}
+            <div class="trade-side">
+              <span class="side-label">{managerDisplayName(managerId)} received:</span>
+              {#if breakdown.length > 0}
+                <ul class="player-list">
+                  {#each breakdown as p}
+                    <li>{playerName(p.playerId)} — {p.totalPts.toFixed(1)} pts total / {p.startedPts.toFixed(1)} started ({p.weeks}wk)</li>
+                  {/each}
+                </ul>
+              {:else}
+                <!-- Fall back to reading moves directly if grade has no breakdown -->
+                <ul class="player-list">
+                  {#each (tx.moves || []) as move}
+                    {#if Array.isArray(move) && move[idx] && typeof move[idx] === 'object' && move[idx].type === 'trade'}
+                      <li>{playerName(move[idx].player)}</li>
+                    {/if}
+                  {/each}
+                </ul>
+              {/if}
+            </div>
           {/each}
-        </tbody>
+        {:else if tx.type === 'waiver'}
+          {#each (tx.moves || []) as move}
+            {#if Array.isArray(move)}
+              {#each move as side}
+                {#if side && typeof side === 'object' && side.type === 'Added' && side.player}
+                  <div><strong>Added:</strong> {playerName(side.player)}</div>
+                {/if}
+                {#if side && typeof side === 'object' && side.type === 'Dropped' && side.player}
+                  <div class="dropped"><strong>Dropped:</strong> {playerName(side.player)}</div>
+                {/if}
+              {/each}
+            {/if}
+          {/each}
+        {/if}
+      </td>
+
+      <!-- Graded totals -->
+      <td>
+        {#if tx.type === 'trade' && grade}
+          {#each (tx.rosters || []) as roster, idx}
+            <div>{managerDisplayName(tx.managerIds?.[idx])}: {formatPoints(idx === 0 ? grade.side0?.totalPts : grade.side1?.totalPts)} total / {formatPoints(idx === 0 ? grade.side0?.startedPts : grade.side1?.startedPts)} started</div>
+          {/each}
+        {:else if tx.type === 'waiver' && grade}
+          {formatPoints(grade.totalPts)} total / {formatPoints(grade.startedPts)} started ({grade.games} wks)
+        {:else}
+          —
+        {/if}
+      </td>
+
+      <!-- Winner / grade label -->
+      <td>
+        {#if tx.type === 'trade' && grade}
+          {#if grade.winner === 0}
+            🏆 {managerDisplayName(tx.managerIds?.[0])}
+          {:else if grade.winner === 1}
+            🏆 {managerDisplayName(tx.managerIds?.[1])}
+          {:else}
+            Even
+          {/if}
+        {:else if tx.type === 'waiver' && grade}
+          {#if grade.totalPts > 50}
+            ✅ Strong pickup
+          {:else if grade.totalPts > 15}
+            👍 Solid pickup
+          {:else if grade.totalPts > 0}
+            ➖ Minimal value
+          {:else}
+            ❌ No contribution
+          {/if}
+        {:else}
+          —
+        {/if}
+      </td>
+    </tr>
+  {/each}
+</tbody>
       </table>
 
       <!-- Transaction debug toggle -->
@@ -747,4 +796,12 @@
   .debug-terminal h4 { margin: 0 0 0.5rem 0; color: #fff; }
   .debug-terminal ul { margin: 0; padding-left: 1.2rem; }
   .debug-terminal li { margin-bottom: 0.25rem; }
+  .tx-row td { vertical-align: top; }
+  .players-cell { text-align: left; font-size: 0.85em; }
+  .trade-side { margin-bottom: 0.5rem; }
+  .trade-side:last-child { margin-bottom: 0; }
+  .side-label { font-weight: 600; display: block; }
+  .player-list { margin: 0.2rem 0 0 1rem; padding: 0; list-style: disc; }
+  .player-list li { margin-bottom: 0.1rem; }
+  .dropped { color: #999; font-size: 0.85em; }
 </style>
