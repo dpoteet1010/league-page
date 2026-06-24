@@ -7,6 +7,7 @@ import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
 import { getAllPlayers } from './allPlayers.js';
 import { buildSeasonPARTables } from './parGrading.js';
+import { buildSeasonPARTables, getLeagueRosterPositions } from './parGrading.js';
 
 const DEFAULT_ROSTER_POSITIONS = [
   'QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF',
@@ -147,7 +148,12 @@ export async function getAllSeasonsHistory() {
     seasonOutputs.push({
       year:             resolvedYear,
       leagueId:         id,
-      rosterPositions:  allMetadata?.[id]?.settings?.roster_positions || DEFAULT_ROSTER_POSITIONS,
+      // Use hardcoded legacy settings for 2023/2024 since those seasons
+      // predate Sleeper and won't have roster_positions in allMetadata.
+      // 2025+ pulls from the Sleeper API directly.
+      rosterPositions: getLeagueRosterPositions(resolvedYear) ||
+                 allMetadata?.[id]?.settings?.roster_positions ||
+                 DEFAULT_ROSTER_POSITIONS,
       numTeams:         numRosters,
       ...result
     });
