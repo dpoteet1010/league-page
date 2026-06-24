@@ -93,10 +93,10 @@
     rivalryTradeHistory = getTradeHistory(transactionHistory.transactions, rivalryManagerA, rivalryManagerB)
       .filter((tx) => !tx.isPartOfComposite)
       .map((tx) => {
-        const parTables     = allTimeHistory?.parTablesBySeason?.[String(tx.seasonKey || tx.season)];
-        const playerResults = allTimeHistory?.playerResults || [];
+        const parTables      = allTimeHistory?.parTablesBySeason?.[String(tx.seasonKey || tx.season)];
+        const playerResults  = allTimeHistory?.playerResults  || [];
         const allPlayersData = allTimeHistory?.allPlayersData || {};
-        const managerNames  = (tx.managerIds || []).map((id) => managerDisplayName(id));
+        const managerNames   = (tx.managerIds || []).map((id) => managerDisplayName(id));
         if (tx.isComposite) {
           return { ...tx, grade: gradeCompositeTrade(tx, parTables, playerResults, allPlayersData) };
         }
@@ -168,16 +168,22 @@
 
     try {
       const [matchupsData] = await Promise.all([
-        getSpecificYearMatchups(leagueId).catch((err) => { debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`); return null; }),
-        getLeagueData(leagueId).catch((err) => { debugLogs.push(`getLeagueData note: ${err.message}`); return null; })
+        getSpecificYearMatchups(leagueId).catch((err) => {
+          debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`);
+          return null;
+        }),
+        getLeagueData(leagueId).catch((err) => {
+          debugLogs.push(`getLeagueData note: ${err.message}`);
+          return null;
+        })
       ]);
 
       debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
       debugLogs.push(...(matchupsData?.debug || []));
 
       const managersSnapshot = get(teamManagersStore) || {};
-      const allMetadata = get(leagueData) || {};
-      const year = resolveYear(leagueId, allMetadata);
+      const allMetadata      = get(leagueData) || {};
+      const year             = resolveYear(leagueId, allMetadata);
       debugLogs.push(`Resolved year: ${year}`);
 
       const managersForYear = buildManagersForYear(managersSnapshot, year);
@@ -267,7 +273,7 @@
       const availableSeasons = Object.keys(txResult.totals.seasons || {}).sort((a, b) => Number(b) - Number(a));
       if (availableSeasons.length > 0) {
         selectedTransactionSeason = availableSeasons[0];
-        seasonTransactionTotals = getSeasonTransactionTotals(txResult.totals, selectedTransactionSeason, snap);
+        seasonTransactionTotals   = getSeasonTransactionTotals(txResult.totals, selectedTransactionSeason, snap);
       }
 
       const compositeCount = gradedTransactions.filter((tx) => tx.isComposite).length;
@@ -460,9 +466,9 @@
                 {#if trade.isComposite}
                   <span class="composite-badge">🔀 {trade.teams?.length}-Team Trade</span>
                 {/if}
-                {#if g && !trade.isComposite}
-                  <span class="trade-grade-badge grade-{g.narrative?.grade}">
-                    {tradeGradeEmoji(g.narrative?.grade)} {g.narrative?.grade?.toUpperCase()}
+                {#if !trade.isComposite && g?.narrative?.grade}
+                  <span class="trade-grade-badge grade-{g.narrative.grade}">
+                    {tradeGradeEmoji(g.narrative.grade)} {g.narrative.grade.toUpperCase()}
                   </span>
                 {/if}
                 {#if g?.hasDraftPicks}
@@ -487,9 +493,9 @@
                           <span class="player-pos-tag">{p.position}</span>
                           <span class="player-name">{p.name}</span>
                           <span class="player-stat-detail">
-                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
+                            {fp(p.par)} PAR | {fp(p.totalPts)} pts |
                             {p.weeksStarted}/{p.weeks} wks
-                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adjusted</span>{/if}
+                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
                           </span>
                         </div>
                       {/each}
@@ -498,7 +504,6 @@
                 </div>
 
               {:else if trade.isComposite && g}
-                <!-- Composite trade breakdown -->
                 <div class="composite-teams">
                   {#each g.teamGrades as teamGrade}
                     {@const isWinner = g.winnerRoster === teamGrade.roster}
@@ -509,10 +514,7 @@
                         <div class="player-row">
                           <span class="player-pos-tag">{p.position}</span>
                           <span class="player-name">{p.name}</span>
-                          <span class="player-stat-detail">
-                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
-                            {p.weeksStarted}/{p.weeks} wks
-                          </span>
+                          <span class="player-stat-detail">{fp(p.par)} PAR | {fp(p.totalPts)} pts | {p.weeksStarted}/{p.weeks} wks</span>
                         </div>
                       {/each}
                     </div>
@@ -550,6 +552,7 @@
       <div class="status-msg">Fetching and grading with PAR...</div>
     {:else if transactionHistory}
 
+      <!-- All-time counts -->
       <h4>All-Time Transaction Totals</h4>
       <table class="data-table">
         <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
@@ -560,6 +563,7 @@
         </tbody>
       </table>
 
+      <!-- Per-season counts -->
       <h4>Season Transaction Totals</h4>
       <div class="control-row">
         <select bind:value={selectedTransactionSeason}
@@ -567,7 +571,7 @@
             const snap = get(teamManagersStore) || {};
             seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
           }}>
-          {#each Object.keys(transactionHistory.totals.seasons || {}).sort((a,b)=>Number(b)-Number(a)) as yr}
+          {#each Object.keys(transactionHistory.totals.seasons || {}).sort((a,b) => Number(b)-Number(a)) as yr}
             <option value={yr}>{yr}</option>
           {/each}
         </select>
@@ -583,6 +587,7 @@
         </table>
       {/if}
 
+      <!-- Full graded transaction list -->
       <h4>All Transactions (PAR Graded)</h4>
       <div class="control-row">
         <select bind:value={txFilter}>
@@ -597,9 +602,10 @@
         {@const isExpanded = expandedTx.has(tx.id)}
         <div class="tx-card {tx.type} {tx.isComposite ? 'composite' : ''}">
 
-          <!-- Summary row -->
+          <!-- Summary row — always visible -->
           <div class="tx-summary" on:click={() => toggleTx(tx.id)} role="button" tabindex="0"
             on:keydown={(e) => e.key === 'Enter' && toggleTx(tx.id)}>
+
             <div class="tx-meta">
               {#if tx.isComposite}
                 <span class="tx-type-badge composite">🔀 {tx.teams?.length}-Team Trade</span>
@@ -608,10 +614,9 @@
               {/if}
               <span class="tx-date">{tx.date}</span>
               <span class="tx-season">S{tx.seasonKey || tx.season} Wk{tx.leg}</span>
-              {#if g?.hasDraftPicks}
-                <span class="draft-pick-badge">📋 Picks</span>
-              {/if}
+              {#if g?.hasDraftPicks}<span class="draft-pick-badge">📋 Picks</span>{/if}
             </div>
+
             <div class="tx-managers">
               {#if tx.isComposite}
                 {(tx.teams || []).map((t) => managerDisplayName(t.managerId)).join(' → ')}
@@ -620,6 +625,7 @@
               {:else}—{/if}
             </div>
 
+            <!-- Grade pill -->
             {#if tx.isComposite && g}
               <div class="tx-grade">
                 <span class="par-summary">
@@ -639,18 +645,21 @@
             {:else if tx.type === 'waiver' && g}
               <div class="tx-grade">
                 <span class="waiver-grade-badge grade-{g.gradeLabel}">{gradeEmoji(g.gradeLabel)} {g.gradeLabel}</span>
-                <span class="par-summary">{g.name} ({g.position}) — {fp(g.par)} PAR</span>
+                <span class="par-summary">
+                  {g.name} ({g.position}) — #{g.positionRank} of {g.positionPoolSize} available
+                  {#if g.flexRank && g.flexRank <= 3}· #{g.flexRank} FLEX{/if}
+                </span>
               </div>
             {/if}
 
             <span class="expand-toggle">{isExpanded ? '▲' : '▼'}</span>
           </div>
 
-          <!-- Detail panel -->
+          <!-- Detail panel — visible when expanded -->
           {#if isExpanded}
             <div class="tx-detail">
+
               {#if tx.isComposite && g}
-                <!-- Composite trade detail -->
                 <p class="narrative-text">
                   Multi-team trade involving {tx.teams?.length} managers.
                   {#if g.hasDraftPicks}Grade reflects player value only — draft picks excluded.{/if}
@@ -667,7 +676,7 @@
                           <span class="player-name">{p.name}</span>
                           <span class="player-stat-detail">
                             {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
-                            {p.weeksStarted}/{p.weeks} wks | rep: {fp(p.baselineValue)}
+                            {p.weeksStarted}/{p.weeks} wks | baseline: {fp(p.baselineValue)}
                             {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
                           </span>
                         </div>
@@ -675,10 +684,7 @@
                     </div>
                   {/each}
                 </div>
-                <!-- Show constituent trades for transparency -->
-                <div class="constituent-note">
-                  Constituent trade IDs: {tx.constituentTradeIds?.join(', ')}
-                </div>
+                <div class="constituent-note">Constituent trade IDs: {tx.constituentTradeIds?.join(', ')}</div>
 
               {:else if tx.type === 'trade' && g}
                 <p class="narrative-text">{g.narrative?.summary}</p>
@@ -699,7 +705,8 @@
                           <span class="player-stat-detail">
                             {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
                             {p.weeksStarted}/{p.weeks} wks | baseline: {fp(p.baselineValue)}
-                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adjusted</span>{/if}
+                            {#if p.marginalRank}<span class="marginal-tag">#{p.marginalRank} starter</span>{/if}
+                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
                           </span>
                         </div>
                       {/each}
@@ -723,19 +730,36 @@
                     <span class="player-pos-tag">{g.position}</span>
                     <span class="player-name">Added: {g.name}</span>
                     <span class="player-stat-detail">
-                      {fp(g.par)} PAR | {fp(g.totalPts)} total / {fp(g.startedPts)} started |
-                      {g.weeksStarted}/{g.weeks} wks | baseline: {fp(g.baselineValue)}
-                      {#if g.baselineSource === 'personal'}<span class="baseline-tag">roster-adjusted</span>{/if}
+                      #{g.positionRank} of {g.positionPoolSize} available {g.position}s |
+                      {fp(g.totalPts)} total / {fp(g.startedPts)} started |
+                      {g.weeksStarted}/{g.weeks} wks
+                      {#if g.isStream}<span class="stream-tag">stream</span>{/if}
                     </span>
                   </div>
+                  {#if g.flexRank}
+                    <div class="player-row">
+                      <span class="player-stat-detail">
+                        FLEX context: #{g.flexRank} of {g.flexPoolSize} available FLEX-eligible players
+                      </span>
+                    </div>
+                  {/if}
                   {#if g.droppedName}
                     <div class="player-row dropped">
                       <span class="player-pos-tag">—</span>
                       <span class="player-name">Dropped: {g.droppedName}</span>
                     </div>
                   {/if}
+                  {#if g.topMissed?.length > 0}
+                    <div class="missed-options">
+                      <span class="missed-label">Better options available:</span>
+                      {#each g.topMissed as alt}
+                        <span class="missed-player">{alt.name} ({fp(alt.pointsAfter)} pts)</span>
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
               {/if}
+
             </div>
           {/if}
         </div>
@@ -784,6 +808,7 @@
       </tbody>
     </table>
 
+    <!-- ── Raw JSON toggles ───────────────────────────────────────────────── -->
     <div class="control-row">
       <button on:click={() => (showRawStandings = !showRawStandings)}>{showRawStandings ? 'Hide' : 'Show'} Raw Standings JSON</button>
       <button on:click={() => (showRawBrackets  = !showRawBrackets) }>{showRawBrackets  ? 'Hide' : 'Show'} Raw Bracket JSON</button>
@@ -797,6 +822,7 @@
         <ul>{#each debugLogs as log}<li><code>{log}</code></li>{/each}</ul>
       </div>
     {/if}
+
   {/if}
 </main>
 
@@ -808,6 +834,8 @@
   button:disabled { opacity: 0.5; cursor: not-allowed; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
   .manager-tag { font-size: 0.8em; color: #888; }
+
+  /* Podiums */
   .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
   .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,.05); margin-bottom: 1.5rem; }
   .podium-card.gold    { border-left-color: #ffd700; background: #fffdf3; }
@@ -817,6 +845,8 @@
   .meta-title { font-size: 1.4rem; font-weight: 700; color: #222; }
   .meta-sub   { font-size: 0.95rem; color: #666; margin-top: 0.25rem; }
   .meta-empty { color: #999; font-style: italic; margin-bottom: 1rem; }
+
+  /* Data table */
   .data-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; font-size: 0.9rem; }
   .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: center; }
   .data-table th { background: #f5f5f5; }
@@ -836,28 +866,30 @@
 
   /* Transaction cards */
   .tx-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
-  .tx-card.trade   { border-left: 4px solid #2563eb; }
-  .tx-card.waiver  { border-left: 4px solid #16a34a; }
+  .tx-card.trade     { border-left: 4px solid #2563eb; }
+  .tx-card.waiver    { border-left: 4px solid #16a34a; }
   .tx-card.composite { border-left: 4px solid #7c3aed; }
   .tx-summary { padding: 0.75rem 1rem; cursor: pointer; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; background: #fafafa; }
   .tx-summary:hover { background: #f0f0f0; }
   .tx-meta    { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .tx-managers { font-size: 0.9em; color: #444; flex: 1; }
+  .tx-managers { font-size: 0.9em; color: #444; flex: 1; min-width: 150px; }
   .tx-grade   { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
   .par-summary { font-size: 0.85em; color: #555; }
-  .expand-toggle { margin-left: auto; color: #888; font-size: 0.8em; }
+  .expand-toggle { margin-left: auto; color: #888; font-size: 0.8em; flex-shrink: 0; }
   .tx-detail  { padding: 0.75rem 1rem 1rem; border-top: 1px solid #eee; }
   .narrative-text { font-style: italic; color: #444; margin: 0 0 0.75rem; font-size: 0.9em; }
 
+  /* Badges */
   .tx-type-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; font-weight: 700; text-transform: uppercase; }
   .tx-type-badge.trade     { background: #dbeafe; color: #1d4ed8; }
   .tx-type-badge.waiver    { background: #dcfce7; color: #15803d; }
   .tx-type-badge.composite { background: #ede9fe; color: #6d28d9; }
   .tx-date, .tx-season { font-size: 0.82em; color: #666; }
-  .composite-badge { background: #ede9fe; color: #6d28d9; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; }
-  .draft-pick-badge { background: #fef3c7; color: #92400e; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; }
-
+  .composite-badge   { background: #ede9fe; color: #6d28d9; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; }
+  .draft-pick-badge  { background: #fef3c7; color: #92400e; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; }
   .trade-grade-badge, .waiver-grade-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; text-transform: capitalize; }
+
+  /* Grade colors */
   .grade-lopsided { background: #fef2f2; color: #dc2626; }
   .grade-clear    { background: #f0fdf4; color: #16a34a; }
   .grade-close    { background: #fffbeb; color: #d97706; }
@@ -868,20 +900,32 @@
   .grade-neutral  { background: #f3f4f6; color: #6b7280; }
   .grade-poor     { background: #fef2f2; color: #dc2626; }
 
+  /* Player rows */
   .player-row { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.85em; margin-top: 0.3rem; flex-wrap: wrap; }
   .player-row.dropped { opacity: 0.5; }
   .player-pos-tag { background: #e5e7eb; border-radius: 3px; padding: 0 0.3rem; font-size: 0.75em; font-weight: 700; flex-shrink: 0; }
   .player-name { font-weight: 600; }
   .player-stat-detail { color: #666; font-size: 0.85em; }
-  .baseline-tag { background: #ddd6fe; color: #5b21b6; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem; }
 
+  /* Tags */
+  .baseline-tag { background: #ddd6fe; color: #5b21b6; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.2rem; }
+  .marginal-tag { background: #e0f2fe; color: #0369a1; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.2rem; }
+  .stream-tag   { background: #e0f2fe; color: #0369a1; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.2rem; }
+
+  /* Waiver detail */
   .waiver-detail { margin-top: 0.5rem; }
+  .missed-options { margin-top: 0.5rem; font-size: 0.82em; color: #666; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .missed-label   { font-weight: 600; color: #444; }
+  .missed-player  { background: #fef3c7; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 3px; }
+
+  /* Flags */
   .flags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
-  .flag { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; }
+  .flag  { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; }
   .flag-injury-suspected { background: #fff7ed; color: #c2410c; }
   .flag-underutilized    { background: #faf5ff; color: #7e22ce; }
-  .constituent-note { font-size: 0.75em; color: #aaa; margin-top: 0.5rem; padding: 0 0.25rem; }
+  .constituent-note { font-size: 0.75em; color: #aaa; margin-top: 0.5rem; }
 
+  /* JSON / debug */
   .raw-json { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; margin-bottom: 1rem; max-height: 400px; }
   .debug-terminal { background: #1e1e1e; color: #00ff00; padding: 1rem; border-radius: 6px; font-family: monospace; margin-top: 1rem; margin-bottom: 2rem; }
   .debug-terminal h4 { margin: 0 0 0.5rem 0; color: #fff; }
