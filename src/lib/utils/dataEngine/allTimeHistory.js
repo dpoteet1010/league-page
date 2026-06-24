@@ -6,7 +6,6 @@ import { getSpecificYearMatchups } from './allMatchups.js';
 import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
 import { getAllPlayers } from './allPlayers.js';
-import { buildSeasonPARTables } from './parGrading.js';
 import { buildSeasonPARTables, getLeagueRosterPositions } from './parGrading.js';
 
 const DEFAULT_ROSTER_POSITIONS = [
