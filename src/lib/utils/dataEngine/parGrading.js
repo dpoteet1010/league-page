@@ -1,37 +1,26 @@
 // parGrading.js
 //
-// TRADE GRADING: compares acquired player's actual points during hold weeks
-// against the marginal starter's (Nth-best pre-trade player at that position)
-// actual points during those SAME weeks. No projections.
+// Unified PAR (Points Above Replacement) grading for trades and waivers.
 //
-// WAIVER GRADING: compares pickup's actual points during hold weeks against
-// the worst starter's (replacement level player) actual points during those
-// same weeks. PAR > 0 = above replacement = pickup helped the team.
+// Replacement level = the (numTeams × dedicatedSlotsAtPosition)th best
+// player's full-season total at that position. FLEX is intentionally
+// excluded — only dedicated starter slots count.
+//
+// Baseline = (replacementSeasonTotal / 17) × weeksHeld
+//
+// This prorates replacement fairly for both long-term trade acquisitions
+// and short-term streams/waivers. A 2-week stream competes against 2 weeks
+// of replacement, not a full season.
+//
+// weeksHeld = actual weeks the player appeared on that roster in
+// playerResults after the transaction. Handles re-trades and drops
+// automatically since the data naturally stops when the player leaves.
 
-const LEGACY_ROSTER_POSITIONS = {
-  '2023': ['QB','RB','RB','WR','WR','TE','FLEX','K','DEF','BN','BN','BN','BN','BN','BN','BN'],
-  '2024': ['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN','BN','BN']
-};
+const TOTAL_SEASON_WEEKS = 17;
 
-export function getLeagueRosterPositions(year) {
-  return LEGACY_ROSTER_POSITIONS[String(year)] || null;
-}
-
-const DEFAULT_ROSTER_POSITIONS = [
-  'QB','RB','RB','WR','WR','TE','FLEX','K','DEF','BN','BN','BN','BN','BN','BN','BN'
-];
-
-const FLEX_ELIGIBLE = ['RB', 'WR', 'TE'];
-
-export function parseStarterSlots(rosterPositions) {
-  const slots = { QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0, K: 0, DEF: 0 };
-  (rosterPositions || DEFAULT_ROSTER_POSITIONS).forEach((pos) => {
-    const p = pos.toUpperCase();
-    if (p === 'SUPER_FLEX' || p === 'SUPERFLEX') slots.FLEX += 1;
-    else if (slots[p] !== undefined) slots[p] += 1;
-  });
-  return slots;
-}
+// Dedicated starter slots per position — same for all years.
+// FLEX slots are intentionally ignored for replacement calculations.
+const DEDICATED_SLOTS = { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
 
 export function normalizePosition(position, playerId) {
   if (!position) {
@@ -48,13 +37,28 @@ export function normalizePosition(position, playerId) {
   return null;
 }
 
+function playerName(info, playerId) {
+  return info?.full_name ||
+    (info ? `${info.first_name || ''} ${info.last_name || ''}`.trim() : null) ||
+    `Player ${playerId}`;
+}
+
 // ── Season PAR tables ────────────────────────────────────────────────────────
 
-export function buildSeasonPARTables(seasonPlayerResults, allPlayersData, rosterPositions, numTeams) {
+/**
+ * Builds replacement level data for one season.
+ *
+ * For each position, finds the (numTeams × dedicatedSlots)th best player
+ * by full-season points. That player is the "last guaranteed starter" —
+ * the bar any acquisition needs to clear to have added real value.
+ *
+ * FLEX is excluded. All years use the same dedicated slot counts.
+ */
+export function buildSeasonPARTables(seasonPlayerResults, allPlayersData, numTeams) {
   const debug = [];
-  const slots = parseStarterSlots(rosterPositions || DEFAULT_ROSTER_POSITIONS);
-  debug.push(`Starter slots: ${JSON.stringify(slots)}, numTeams: ${numTeams}`);
+  debug.push(`Building PAR tables — numTeams: ${numTeams}, dedicated slots: ${JSON.stringify(DEDICATED_SLOTS)}, FLEX: ignored`);
 
+  // Aggregate full-season totals per player
   const playerSeasonTotals = {};
   seasonPlayerResults.forEach((pr) => {
     const id = String(pr.playerId);
@@ -62,182 +66,104 @@ export function buildSeasonPARTables(seasonPlayerResults, allPlayersData, roster
     playerSeasonTotals[id] += pr.pointsTotal || 0;
   });
 
+  // Group by position and sort descending
   const playersByPosition = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
   Object.entries(playerSeasonTotals).forEach(([playerId, totalPts]) => {
     const pos = normalizePosition(allPlayersData[playerId]?.position, playerId);
     if (!pos || !playersByPosition[pos]) return;
-    playersByPosition[pos].push({ playerId, totalPts, position: pos });
+    playersByPosition[pos].push({ playerId, totalPts });
   });
   Object.values(playersByPosition).forEach((g) => g.sort((a, b) => b.totalPts - a.totalPts));
 
+  // Replacement level per position
   const replacementLevels = {};
-  const replacementPlayerIds = {};   // actual player at replacement boundary
-  const replacementPlayerNames = {}; // for display
+  const replacementPlayerIds = {};
+  const replacementPlayerNames = {};
 
-  ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].forEach((pos) => {
-    const starterCount = (slots[pos] || 0) * numTeams;
-    const repPlayer = playersByPosition[pos][starterCount];
-    replacementLevels[pos] = repPlayer ? repPlayer.totalPts : 0;
-    replacementPlayerIds[pos] = repPlayer ? repPlayer.playerId : null;
-    const repInfo = repPlayer ? allPlayersData[repPlayer.playerId] : null;
-    replacementPlayerNames[pos] = repInfo?.full_name ||
-      (repInfo ? `${repInfo.first_name || ''} ${repInfo.last_name || ''}`.trim() : null) ||
-      (repPlayer ? `Player ${repPlayer.playerId}` : '(none)');
-    debug.push(`${pos}: ${starterCount} starter slots, replacement = ${(replacementLevels[pos] || 0).toFixed(1)} pts (${replacementPlayerNames[pos]})`);
+  Object.entries(DEDICATED_SLOTS).forEach(([pos, slots]) => {
+    const starterCount = slots * numTeams;
+    // The player at index starterCount is the first one NOT guaranteed a start
+    const repEntry = playersByPosition[pos]?.[starterCount];
+    const repInfo  = repEntry ? allPlayersData[repEntry.playerId] : null;
+
+    replacementLevels[pos]       = repEntry ? repEntry.totalPts : 0;
+    replacementPlayerIds[pos]    = repEntry ? repEntry.playerId : null;
+    replacementPlayerNames[pos]  = repEntry ? playerName(repInfo, repEntry.playerId) : '(none)';
+
+    debug.push(
+      `${pos}: ${starterCount} starter slots total, ` +
+      `replacement = ${(replacementLevels[pos] || 0).toFixed(1)} pts ` +
+      `(${replacementPlayerNames[pos]})`
+    );
   });
 
-  if ((slots.FLEX || 0) > 0) {
-    const flexPool = [];
-    FLEX_ELIGIBLE.forEach((pos) => {
-      const dedicated = (slots[pos] || 0) * numTeams;
-      playersByPosition[pos].slice(dedicated).forEach((p) => flexPool.push(p));
-    });
-    flexPool.sort((a, b) => b.totalPts - a.totalPts);
-    const flexRepPlayer = flexPool[(slots.FLEX || 0) * numTeams];
-    replacementLevels.FLEX = flexRepPlayer ? flexRepPlayer.totalPts : 0;
-    debug.push(`FLEX replacement = ${(replacementLevels.FLEX || 0).toFixed(1)} pts`);
-    FLEX_ELIGIBLE.forEach((pos) => {
-      if (replacementLevels.FLEX < replacementLevels[pos]) {
-        replacementLevels[pos] = replacementLevels.FLEX;
-        debug.push(`${pos} replacement lowered to FLEX level`);
-      }
-    });
-  }
-
+  // Per-player PAR for reference (full-season, not prorated)
   const playerPAR = {};
   Object.entries(playerSeasonTotals).forEach(([playerId, totalPts]) => {
     const pos = normalizePosition(allPlayersData[playerId]?.position, playerId);
-    if (!pos) return;
-    const repLevel = replacementLevels[pos] ?? 0;
+    if (!pos || !replacementLevels[pos]) return;
     const info = allPlayersData[playerId];
     playerPAR[playerId] = {
-      position: pos, totalPts, replacementLevel: repLevel, par: totalPts - repLevel,
-      name: info?.full_name || (info ? `${info.first_name || ''} ${info.last_name || ''}`.trim() : null) || `Player ${playerId}`
+      position: pos,
+      totalPts,
+      replacementLevel: replacementLevels[pos],
+      par: totalPts - replacementLevels[pos],
+      name: playerName(info, playerId)
     };
   });
 
   debug.push(`Built PAR entries for ${Object.keys(playerPAR).length} players.`);
-  return { replacementLevels, replacementPlayerIds, replacementPlayerNames, playerPAR, slots, numTeams, debug };
+  return {
+    replacementLevels,
+    replacementPlayerIds,
+    replacementPlayerNames,
+    playerPAR,
+    numTeams,
+    debug
+  };
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
- * Gets a player's actual points for specific week numbers, independent of
- * which roster they were on. Used for both trade and waiver baseline lookups.
+ * Computes the prorated replacement baseline for a given number of weeks held.
+ *
+ * replacementBaseline = (replacementSeasonTotal / 17) × weeksHeld
+ *
+ * This is the amount a freely-available replacement player would have been
+ * expected to contribute over the same number of weeks.
  */
-function getActualPointsForWeeks(playerResults, playerId, txYear, weekNums) {
-  if (!playerId || !weekNums || weekNums.length === 0) {
-    return { total: 0, byWeek: {} };
-  }
-  const weekSet = new Set(weekNums.map(Number));
-  const byWeek = {};
-  weekNums.forEach((w) => { byWeek[Number(w)] = 0; });
-
-  (playerResults || []).forEach((pr) => {
-    if (String(pr.playerId) !== String(playerId)) return;
-    if (Number(pr.year) !== Number(txYear)) return;
-    const w = Number(pr.week);
-    if (!weekSet.has(w)) return;
-    byWeek[w] = (byWeek[w] || 0) + (pr.pointsTotal || 0);
-  });
-
-  const total = Object.values(byWeek).reduce((s, v) => s + v, 0);
-  return { total, byWeek };
+function proratedBaseline(replacementSeasonTotal, weeksHeld) {
+  return (replacementSeasonTotal / TOTAL_SEASON_WEEKS) * weeksHeld;
 }
 
 /**
- * Identifies the marginal starter to use as trade baseline.
- *
- * Finds all players at this position on this roster in pre-trade weeks,
- * ranks them by total pre-trade points, and selects the Nth best
- * (N = dedicated starter slots). This is the last guaranteed starter —
- * the player who would have filled that position without the trade.
- *
- * Returns the player ID and full pre-trade context for UI display.
+ * Gets actual points scored by a player on a specific roster in a specific
+ * season, from a given week onward. Returns per-week breakdown for UI display.
  */
-function getMarginalStarterInfo(playerResults, roster, position, txYear, txWeek, parTables, allPlayersData) {
-  const dedicatedSlots = parTables.slots?.[position] || 1;
-  const weeksBeforeTrade = Number(txWeek) - 1;
-
-  // Fallback info using league replacement player
-  const leagueRepId = parTables.replacementPlayerIds?.[position];
-  const leagueRepName = parTables.replacementPlayerNames?.[position] || '(league replacement)';
-
-  if (weeksBeforeTrade < 1) {
-    return {
-      marginalPlayerId: leagueRepId,
-      marginalPlayerName: leagueRepName,
-      marginalRank: null,
-      marginalPreTradeTotal: null,
-      weeksBeforeTrade,
-      dedicatedSlots,
-      source: 'league (week 1 trade — no pre-trade data)',
-      allPlayersPreTrade: []
-    };
-  }
-
-  // Aggregate pre-trade totals per player at this position on this roster
-  const preTradeTotals = {};
-  playerResults
+function getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek) {
+  const rows = (playerResults || [])
     .filter((pr) =>
-      Number(pr.rosterId) === Number(roster) &&
-      Number(pr.year) === Number(txYear) &&
-      Number(pr.week) < Number(txWeek)
+      String(pr.playerId)  === String(playerId) &&
+      Number(pr.rosterId)  === Number(roster) &&
+      Number(pr.year)      === Number(txYear) &&
+      Number(pr.week)      >= Number(txWeek)
     )
-    .forEach((pr) => {
-      const pos = normalizePosition(allPlayersData[String(pr.playerId)]?.position, pr.playerId);
-      if (pos !== position) return;
-      const id = String(pr.playerId);
-      if (!preTradeTotals[id]) preTradeTotals[id] = 0;
-      preTradeTotals[id] += pr.pointsTotal || 0;
-    });
+    .sort((a, b) => a.week - b.week);
 
-  const sortedPlayers = Object.entries(preTradeTotals)
-    .sort(([, a], [, b]) => b - a)
-    .map(([pid, pts]) => {
-      const info = allPlayersData[pid];
-      return {
-        playerId: pid,
-        name: info?.full_name || (info ? `${info.first_name || ''} ${info.last_name || ''}`.trim() : null) || `Player ${pid}`,
-        preTradeTotal: pts
-      };
-    });
+  const totalPts   = rows.reduce((s, pr) => s + (pr.pointsTotal   || 0), 0);
+  const startedPts = rows.reduce((s, pr) => s + (pr.pointsStarted || 0), 0);
+  const weeksHeld  = rows.length;
+  const weeksStarted = rows.filter((pr) => pr.pointsStarted > 0).length;
 
-  if (sortedPlayers.length === 0) {
-    return {
-      marginalPlayerId: leagueRepId,
-      marginalPlayerName: leagueRepName,
-      marginalRank: null,
-      marginalPreTradeTotal: null,
-      weeksBeforeTrade,
-      dedicatedSlots,
-      source: 'league (no pre-trade players found at this position)',
-      allPlayersPreTrade: []
-    };
-  }
-
-  // Nth best player = marginal starter (last guaranteed starter slot)
-  const marginalIdx = Math.min(dedicatedSlots - 1, sortedPlayers.length - 1);
-  const marginal = sortedPlayers[marginalIdx];
-
-  return {
-    marginalPlayerId: marginal.playerId,
-    marginalPlayerName: marginal.name,
-    marginalRank: marginalIdx + 1,
-    marginalPreTradeTotal: marginal.preTradeTotal,
-    weeksBeforeTrade,
-    dedicatedSlots,
-    source: 'personal',
-    allPlayersPreTrade: sortedPlayers  // full list for UI validation
-  };
+  return { rows, totalPts, startedPts, weeksHeld, weeksStarted };
 }
 
 function buildTradeNarrative({ side0, side1, parDifference, winner, managerNames, hasDraftPicks }) {
   const flags = [];
   [...(side0.players || []), ...(side1.players || [])].forEach((p) => {
-    if (p.weeks <= 2 && p.totalPts < 10) flags.push({ type: 'injury-suspected', name: p.name });
-    else if (p.weeks > 2 && p.startedPct < 0.5) flags.push({ type: 'underutilized', name: p.name });
+    if (p.weeksHeld <= 2 && p.totalPts < 10) flags.push({ type: 'injury-suspected', name: p.name });
+    else if (p.weeksHeld > 2 && p.startedPct < 0.5) flags.push({ type: 'underutilized', name: p.name });
   });
 
   let grade;
@@ -253,7 +179,7 @@ function buildTradeNarrative({ side0, side1, parDifference, winner, managerNames
 
   let summary;
   switch (grade) {
-    case 'even':     summary = `Essentially a wash — both sides extracted similar value vs their marginal starters.`; break;
+    case 'even':     summary = `Essentially a wash — both sides extracted similar value above replacement.`; break;
     case 'lopsided': summary = `${winnerName} dominated — ${winnerPAR.toFixed(1)} PAR vs ${loserName}'s ${loserPAR.toFixed(1)}.`; break;
     case 'clear':    summary = `${winnerName} came out clearly ahead — ${winnerPAR.toFixed(1)} vs ${loserPAR.toFixed(1)} PAR.`; break;
     case 'close':    summary = `Close trade — ${winnerName} edged ${loserName} ${winnerPAR.toFixed(1)} to ${loserPAR.toFixed(1)} PAR.`; break;
@@ -268,14 +194,15 @@ function buildTradeNarrative({ side0, side1, parDifference, winner, managerNames
   return { grade, flags, summary };
 }
 
-const _fp = (val) => typeof val === 'number' ? val.toFixed(1) : '0.0';
-
 // ── Public grading functions ─────────────────────────────────────────────────
 
 /**
- * Grades a 2-team trade by comparing each acquired player's actual points
- * during their hold weeks against the marginal starter's actual points
- * during those same weeks. No projections used.
+ * Grades a 2-team trade using prorated PAR.
+ *
+ * For each acquired player:
+ *   weeksHeld = actual weeks on receiving roster after trade week
+ *   baseline  = (replacementSeasonTotal / 17) × weeksHeld
+ *   PAR       = playerActualPts − baseline
  */
 export function gradeTradeByPAR(trade, parTables, playerResults, allPlayersData, managerNames = []) {
   if (!trade.moves || !trade.rosters || trade.rosters.length !== 2) return null;
@@ -289,6 +216,7 @@ export function gradeTradeByPAR(trade, parTables, playerResults, allPlayersData,
     Array.isArray(move) && move.some((s) => s && typeof s === 'object' && s.type === 'Received Pick')
   );
 
+  // Extract which players each roster received
   const received = {};
   rosters.forEach((r) => (received[r] = []));
   trade.moves.forEach((move) => {
@@ -303,72 +231,54 @@ export function gradeTradeByPAR(trade, parTables, playerResults, allPlayersData,
   const gradeByRoster = {};
 
   rosters.forEach((roster) => {
-    const acquiredPlayers = received[roster] || [];
     let parTotal = 0, rawTotal = 0, rawStarted = 0;
     const players = [];
 
-    acquiredPlayers.forEach((playerId) => {
+    (received[roster] || []).forEach((playerId) => {
       const playerInfo = allPlayersData[String(playerId)];
       const position   = normalizePosition(playerInfo?.position, playerId);
 
-      // Actual hold weeks: weeks this player appeared on THIS roster after trade
-      const holdRows = (playerResults || []).filter((pr) =>
-        String(pr.playerId)  === String(playerId) &&
-        Number(pr.rosterId)  === Number(roster) &&
-        Number(pr.year)      === txYear &&
-        Number(pr.week)      >= txWeek
-      ).sort((a, b) => a.week - b.week);
+      // Actual hold data
+      const { rows, totalPts, startedPts, weeksHeld, weeksStarted } =
+        getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek);
 
-      const holdWeekNums    = holdRows.map((pr) => Number(pr.week));
-      const playerRawTotal  = holdRows.reduce((s, pr) => s + (pr.pointsTotal   || 0), 0);
-      const playerStarted   = holdRows.reduce((s, pr) => s + (pr.pointsStarted || 0), 0);
-      const weeksStarted    = holdRows.filter((pr) => pr.pointsStarted > 0).length;
+      // Replacement info
+      const repSeasonTotal = parTables.replacementLevels?.[position] ?? 0;
+      const repName        = parTables.replacementPlayerNames?.[position] ?? '(none)';
+      const repId          = parTables.replacementPlayerIds?.[position] ?? null;
+      const repPerWeek     = repSeasonTotal / TOTAL_SEASON_WEEKS;
+      const baseline       = proratedBaseline(repSeasonTotal, weeksHeld);
+      const par            = totalPts - baseline;
 
-      // Identify the marginal starter
-      const marginalInfo = getMarginalStarterInfo(
-        playerResults, roster, position, txYear, txWeek, parTables, allPlayersData
-      );
+      parTotal   += par;
+      rawTotal   += totalPts;
+      rawStarted += startedPts;
 
-      // Get marginal player's ACTUAL points during the SAME hold weeks
-      const { total: marginalActualPts, byWeek: marginalByWeek } =
-        getActualPointsForWeeks(playerResults, marginalInfo.marginalPlayerId, txYear, holdWeekNums);
-
-      const playerPAR = playerRawTotal - marginalActualPts;
-      parTotal   += playerPAR;
-      rawTotal   += playerRawTotal;
-      rawStarted += playerStarted;
-
-      // Per-week breakdown for validation
-      const weekBreakdown = holdWeekNums.map((week) => ({
-        week,
-        acquiredPts:  holdRows.find((r) => Number(r.week) === week)?.pointsTotal  || 0,
-        acquiredStarted: holdRows.find((r) => Number(r.week) === week)?.pointsStarted || 0,
-        marginalPts:  marginalByWeek[week] || 0,
-        weekPAR:      (holdRows.find((r) => Number(r.week) === week)?.pointsTotal || 0) - (marginalByWeek[week] || 0)
+      // Per-week breakdown: actual pts vs prorated replacement per week
+      const weekBreakdown = rows.map((row) => ({
+        week:          Number(row.week),
+        playerPts:     row.pointsTotal  || 0,
+        startedPts:    row.pointsStarted || 0,
+        repBaseline:   repPerWeek,  // constant per week = repSeasonTotal/17
+        weekPAR:       (row.pointsTotal || 0) - repPerWeek
       }));
 
       players.push({
         playerId,
-        name:                  parTables.playerPAR[String(playerId)]?.name || playerInfo?.full_name || `Player ${playerId}`,
-        position:              position || '?',
-        par:                   playerPAR,
-        totalPts:              playerRawTotal,
-        startedPts:            playerStarted,
-        weeks:                 holdRows.length,
+        name:             parTables.playerPAR[String(playerId)]?.name || playerName(playerInfo, playerId),
+        position:         position || '?',
+        par,
+        totalPts,
+        startedPts,
+        weeksHeld,
         weeksStarted,
-        startedPct:            holdRows.length > 0 ? weeksStarted / holdRows.length : 0,
-        holdWeekNums,
-        weekBreakdown,
-        // Full baseline info for UI validation
-        baselineTotal:         marginalActualPts,
-        baselineSource:        marginalInfo.source,
-        marginalPlayerId:      marginalInfo.marginalPlayerId,
-        marginalPlayerName:    marginalInfo.marginalPlayerName,
-        marginalRank:          marginalInfo.marginalRank,
-        marginalPreTradeTotal: marginalInfo.marginalPreTradeTotal,
-        dedicatedSlots:        marginalInfo.dedicatedSlots,
-        weeksBeforeTrade:      marginalInfo.weeksBeforeTrade,
-        allPlayersPreTrade:    marginalInfo.allPlayersPreTrade // full roster at position pre-trade
+        startedPct:       weeksHeld > 0 ? weeksStarted / weeksHeld : 0,
+        baseline,
+        repSeasonTotal,
+        repPerWeek,
+        repName,
+        repId,
+        weekBreakdown
       });
     });
 
@@ -390,21 +300,22 @@ export function gradeTradeByPAR(trade, parTables, playerResults, allPlayersData,
 }
 
 /**
- * Grades a waiver pickup by comparing its actual production during hold weeks
- * against the worst starter's (replacement level player) actual production
- * during those same weeks.
+ * Grades a waiver pickup using prorated PAR.
  *
- * PAR > 0  = pickup outperformed replacement = helped the team
- * PAR < 0  = pickup underperformed replacement = didn't help
- * PAR ≈ 0  = roughly break-even
+ * Same formula as trades:
+ *   weeksHeld = actual weeks on roster after pickup
+ *   baseline  = (replacementSeasonTotal / 17) × weeksHeld
+ *   PAR       = pickupActualPts − baseline
+ *
+ * Grades: Elite (>30) / Strong (>15) / Solid (>5) / Breakeven (-5 to 5) / Poor (<-5)
  */
 export function gradeWaiverByPAR(waiver, parTables, playerResults, allPlayersData) {
   if (!waiver.moves || !waiver.rosters?.[0]) return null;
   if (!parTables) return null;
 
-  const roster  = waiver.rosters[0];
-  const txYear  = Number(waiver.seasonKey || waiver.season);
-  const txWeek  = Number(waiver.leg || 1);
+  const roster = waiver.rosters[0];
+  const txYear = Number(waiver.seasonKey || waiver.season);
+  const txWeek = Number(waiver.leg || 1);
 
   let playerId = null, droppedId = null;
   waiver.moves.forEach((move) => {
@@ -421,82 +332,64 @@ export function gradeWaiverByPAR(waiver, parTables, playerResults, allPlayersDat
   const playerInfo = allPlayersData[String(playerId)];
   const position   = normalizePosition(playerInfo?.position, playerId);
 
-  // Actual hold weeks on this roster
-  const pickupRows = (playerResults || []).filter((pr) =>
-    String(pr.playerId)  === String(playerId) &&
-    Number(pr.rosterId)  === Number(roster) &&
-    Number(pr.year)      === txYear &&
-    Number(pr.week)      >= txWeek
-  ).sort((a, b) => a.week - b.week);
+  const { rows, totalPts, startedPts, weeksHeld, weeksStarted } =
+    getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek);
 
-  const holdWeekNums  = pickupRows.map((pr) => Number(pr.week));
-  const totalPts      = pickupRows.reduce((s, pr) => s + (pr.pointsTotal   || 0), 0);
-  const startedPts    = pickupRows.reduce((s, pr) => s + (pr.pointsStarted || 0), 0);
-  const weeksHeld     = pickupRows.length;
-  const weeksStarted  = pickupRows.filter((pr) => pr.pointsStarted > 0).length;
-  const isStream      = weeksHeld <= 2;
+  const repSeasonTotal = parTables.replacementLevels?.[position] ?? 0;
+  const repName        = parTables.replacementPlayerNames?.[position] ?? '(none)';
+  const repId          = parTables.replacementPlayerIds?.[position] ?? null;
+  const repPerWeek     = repSeasonTotal / TOTAL_SEASON_WEEKS;
+  const baseline       = proratedBaseline(repSeasonTotal, weeksHeld);
+  const par            = totalPts - baseline;
+  const isStream       = weeksHeld <= 2;
 
-  // Replacement level player — the Nth best at this position across the league
-  const replacementPlayerId   = parTables.replacementPlayerIds?.[position];
-  const replacementPlayerName = parTables.replacementPlayerNames?.[position] || '(none)';
-  const replacementSeasonPts  = parTables.replacementLevels?.[position] || 0;
-
-  // Get replacement player's ACTUAL points during the SAME hold weeks
-  const { total: replacementActualPts, byWeek: replacementByWeek } =
-    getActualPointsForWeeks(playerResults, replacementPlayerId, txYear, holdWeekNums);
-
-  const par = totalPts - replacementActualPts;
-
-  // Per-week breakdown for validation
-  const weekBreakdown = holdWeekNums.map((week) => ({
-    week,
-    pickupPts:      pickupRows.find((r) => Number(r.week) === week)?.pointsTotal  || 0,
-    pickupStarted:  pickupRows.find((r) => Number(r.week) === week)?.pointsStarted || 0,
-    replacementPts: replacementByWeek[week] || 0,
-    weekPAR:        (pickupRows.find((r) => Number(r.week) === week)?.pointsTotal || 0) - (replacementByWeek[week] || 0)
+  const weekBreakdown = rows.map((row) => ({
+    week:        Number(row.week),
+    playerPts:   row.pointsTotal  || 0,
+    startedPts:  row.pointsStarted || 0,
+    repBaseline: repPerWeek,
+    weekPAR:     (row.pointsTotal || 0) - repPerWeek
   }));
 
-  // Grade based on PAR vs replacement
   let gradeLabel, gradeSummary;
   if (par > 30) {
     gradeLabel   = 'elite';
-    gradeSummary = `Elite pickup — scored ${_fp(totalPts)} vs replacement's ${_fp(replacementActualPts)} over ${weeksHeld} week(s) (+${_fp(par)} PAR).`;
+    gradeSummary = `Elite pickup — ${totalPts.toFixed(1)} pts vs ${baseline.toFixed(1)} replacement baseline over ${weeksHeld} wk(s) (+${par.toFixed(1)} PAR).`;
   } else if (par > 15) {
     gradeLabel   = 'strong';
-    gradeSummary = `Strong pickup — clearly above replacement level over ${weeksHeld} week(s) (+${_fp(par)} PAR).`;
+    gradeSummary = `Strong pickup — clearly above replacement over ${weeksHeld} wk(s) (+${par.toFixed(1)} PAR).`;
   } else if (par > 5) {
     gradeLabel   = 'solid';
-    gradeSummary = `Solid pickup — modestly above replacement (+${_fp(par)} PAR over ${weeksHeld} week(s)).`;
+    gradeSummary = `Solid pickup — modestly above replacement over ${weeksHeld} wk(s) (+${par.toFixed(1)} PAR).`;
   } else if (par >= -5) {
     gradeLabel   = 'breakeven';
-    gradeSummary = `Break-even — roughly replacement level (${_fp(par)} PAR over ${weeksHeld} week(s)).`;
+    gradeSummary = `Break-even — roughly replacement level over ${weeksHeld} wk(s) (${par.toFixed(1)} PAR).`;
   } else {
     gradeLabel   = 'poor';
-    gradeSummary = `Below replacement — the replacement player outscored this pickup by ${_fp(Math.abs(par))} pts.`;
+    gradeSummary = `Below replacement — underperformed by ${Math.abs(par).toFixed(1)} pts vs replacement over ${weeksHeld} wk(s).`;
   }
 
-  if (isStream) gradeSummary += ` (Streamed — held ${weeksHeld} week(s) only.)`;
+  if (isStream) gradeSummary += ` Streamed (held ${weeksHeld} wk(s) only).`;
 
   const droppedInfo = droppedId ? allPlayersData[String(droppedId)] : null;
 
   return {
     playerId,
-    name:                  parTables.playerPAR[String(playerId)]?.name || playerInfo?.full_name || `Player ${playerId}`,
-    position:              position || '?',
+    name:          parTables.playerPAR[String(playerId)]?.name || playerName(playerInfo, playerId),
+    position:      position || '?',
     par,
     totalPts,
     startedPts,
-    weeks:                 weeksHeld,
+    weeksHeld,
     weeksStarted,
-    startedPct:            weeksHeld > 0 ? weeksStarted / weeksHeld : 0,
+    startedPct:    weeksHeld > 0 ? weeksStarted / weeksHeld : 0,
     isStream,
-    holdWeekNums,
+    baseline,
+    repSeasonTotal,
+    repPerWeek,
+    repName,
+    repId,
     weekBreakdown,
-    // Replacement info for validation
-    replacementPlayerId,
-    replacementPlayerName,
-    replacementSeasonPts,  // their full-season total (for context)
-    replacementActualPts,  // what they actually scored during hold weeks
     gradeLabel,
     gradeSummary,
     droppedId,
@@ -506,6 +399,9 @@ export function gradeWaiverByPAR(waiver, parTables, playerResults, allPlayersDat
   };
 }
 
+/**
+ * Grades a composite (multi-team) trade using the same prorated PAR formula.
+ */
 export function gradeCompositeTrade(compositeTrade, parTables, playerResults, allPlayersData) {
   if (!compositeTrade.isComposite || !parTables || !compositeTrade.teams) return null;
 
@@ -518,54 +414,44 @@ export function gradeCompositeTrade(compositeTrade, parTables, playerResults, al
     const players = [];
 
     (netReceived || []).forEach((playerId) => {
-      const playerInfo  = allPlayersData[String(playerId)];
-      const position    = normalizePosition(playerInfo?.position, playerId);
-      const marginalInfo = getMarginalStarterInfo(
-        playerResults, roster, position, txYear, txWeek, parTables, allPlayersData
-      );
+      const playerInfo = allPlayersData[String(playerId)];
+      const position   = normalizePosition(playerInfo?.position, playerId);
 
-      const holdRows = (playerResults || []).filter((pr) =>
-        String(pr.playerId) === String(playerId) &&
-        Number(pr.rosterId) === Number(roster) &&
-        Number(pr.year)     === txYear &&
-        Number(pr.week)     >= txWeek
-      ).sort((a, b) => a.week - b.week);
+      const { rows, totalPts, startedPts, weeksHeld, weeksStarted } =
+        getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek);
 
-      const holdWeekNums   = holdRows.map((pr) => Number(pr.week));
-      const playerTotal    = holdRows.reduce((s, pr) => s + (pr.pointsTotal   || 0), 0);
-      const playerStarted  = holdRows.reduce((s, pr) => s + (pr.pointsStarted || 0), 0);
-      const weeksStarted   = holdRows.filter((pr) => pr.pointsStarted > 0).length;
+      const repSeasonTotal = parTables.replacementLevels?.[position] ?? 0;
+      const repName        = parTables.replacementPlayerNames?.[position] ?? '(none)';
+      const repPerWeek     = repSeasonTotal / TOTAL_SEASON_WEEKS;
+      const baseline       = proratedBaseline(repSeasonTotal, weeksHeld);
+      const par            = totalPts - baseline;
 
-      const { total: marginalActualPts, byWeek: marginalByWeek } =
-        getActualPointsForWeeks(playerResults, marginalInfo.marginalPlayerId, txYear, holdWeekNums);
+      parTotal   += par;
+      rawTotal   += totalPts;
+      rawStarted += startedPts;
 
-      const playerPAR = playerTotal - marginalActualPts;
-      parTotal   += playerPAR;
-      rawTotal   += playerTotal;
-      rawStarted += playerStarted;
-
-      const weekBreakdown = holdWeekNums.map((week) => ({
-        week,
-        acquiredPts:  holdRows.find((r) => Number(r.week) === week)?.pointsTotal || 0,
-        marginalPts:  marginalByWeek[week] || 0,
-        weekPAR:      (holdRows.find((r) => Number(r.week) === week)?.pointsTotal || 0) - (marginalByWeek[week] || 0)
+      const weekBreakdown = rows.map((row) => ({
+        week:        Number(row.week),
+        playerPts:   row.pointsTotal  || 0,
+        startedPts:  row.pointsStarted || 0,
+        repBaseline: repPerWeek,
+        weekPAR:     (row.pointsTotal || 0) - repPerWeek
       }));
 
       players.push({
         playerId,
-        name:               parTables.playerPAR[String(playerId)]?.name || playerInfo?.full_name || `Player ${playerId}`,
-        position:           position || '?',
-        par:                playerPAR,
-        totalPts:           playerTotal,
-        startedPts:         playerStarted,
-        weeks:              holdRows.length,
+        name:          parTables.playerPAR[String(playerId)]?.name || playerName(playerInfo, playerId),
+        position:      position || '?',
+        par,
+        totalPts,
+        startedPts,
+        weeksHeld,
         weeksStarted,
-        holdWeekNums,
-        weekBreakdown,
-        baselineTotal:      marginalActualPts,
-        marginalPlayerName: marginalInfo.marginalPlayerName,
-        marginalRank:       marginalInfo.marginalRank,
-        baselineSource:     marginalInfo.source
+        baseline,
+        repSeasonTotal,
+        repPerWeek,
+        repName,
+        weekBreakdown
       });
     });
 
@@ -575,5 +461,8 @@ export function gradeCompositeTrade(compositeTrade, parTables, playerResults, al
   const ranked       = [...teamGrades].sort((a, b) => b.parTotal - a.parTotal);
   const winnerRoster = ranked[0]?.parTotal !== ranked[1]?.parTotal ? ranked[0]?.roster : null;
 
-  return { teamGrades, ranked, winnerRoster, isComposite: true, hasDraftPicks: compositeTrade.hasDraftPicks, txYear, txWeek };
+  return {
+    teamGrades, ranked, winnerRoster,
+    isComposite: true, hasDraftPicks: compositeTrade.hasDraftPicks, txYear, txWeek
+  };
 }
