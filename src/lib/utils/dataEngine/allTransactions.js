@@ -22,6 +22,7 @@ async function combThroughTransactions(week, startingLeagueID) {
     if (!currentSeason) currentSeason = leagueDataRes.season;
     currentLeagueID = leagueDataRes.previous_league_id;
   }
+
   debug.push(`Walked live league chain: ${leagueIDs.length} season(s) — ${leagueIDs.join(', ') || 'none'}`);
 
   const transactionPromises = [];
@@ -40,14 +41,19 @@ async function combThroughTransactions(week, startingLeagueID) {
     return [];
   })) || [];
 
-  const transactionDataPromises = transactionRess.filter((res) => res && res.ok).map((res) => res.json());
+  const transactionDataPromises = transactionRess
+    .filter((res) => res && res.ok)
+    .map((res) => res.json());
+
   const transactionsDataJson = (await waitForAll(...transactionDataPromises).catch((err) => {
     debug.push(`Transaction JSON parse failed: ${err.message}`);
     return [];
   })) || [];
 
   let transactionsData = [];
-  for (const chunk of transactionsDataJson) transactionsData = transactionsData.concat(chunk);
+  for (const chunk of transactionsDataJson) {
+    transactionsData = transactionsData.concat(chunk);
+  }
   debug.push(`Fetched ${transactionsData.length} live transactions.`);
 
   let legacyCount = 0;
@@ -63,6 +69,7 @@ async function combThroughTransactions(week, startingLeagueID) {
     }
   }
   debug.push(`Merged ${legacyCount} legacy transactions.`);
+
   return { transactionsData, currentSeason, debug };
 }
 
@@ -81,6 +88,7 @@ const handleAdds = (rosters, adds, drops, player, transactionType, bid) => {
   const move = new Array(rosters.length).fill(null);
   const addedTo = adds[player];
   const droppedFrom = drops?.[player];
+
   if (transactionType === 'trade' && droppedFrom !== undefined) {
     move[rosters.indexOf(addedTo)] = { type: 'trade', player };
     move[rosters.indexOf(droppedFrom)] = 'origin';
@@ -97,7 +105,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
   if (transaction.status === 'failed') return { success: false };
   if (!transaction.roster_ids || transaction.roster_ids.length === 0) return { success: false };
 
-  // Filter blank waivers — failed claims that slipped through with no actual adds
+  // Filter blank waivers — no actual adds means failed claim that slipped through
   const isWaiver = transaction.type !== 'trade';
   const hasAdds = transaction.adds && Object.keys(transaction.adds).length > 0;
   if (isWaiver && !hasAdds) return { success: false };
@@ -108,16 +116,16 @@ const digestTransaction = ({ transaction, currentSeason }) => {
   const date = digestDate(timestamp);
   const season = new Date(timestamp).getFullYear();
   const leg = transaction.leg || 1;
-  // seq: sequence number within the leg — used to order waivers processed
-  // in the same week. Lower seq = processed first = picked player earlier.
-  const seq = transaction.settings?.seq ?? null;
 
   const digestedTransaction = {
     id: transaction.transaction_id,
-    date, timestamp, season, leg,
+    date,
+    timestamp,
+    season,
+    leg,
     type: transaction.type === 'trade' ? 'trade' : 'waiver',
     rosters: transactionRosters,
-    moves: [],
+    moves: []
   };
 
   if (season !== currentSeason) digestedTransaction.previousOwners = true;
@@ -132,6 +140,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
     handled.push(player);
     digestedTransaction.moves.push(handleAdds(transactionRosters, adds, drops, player, transaction.type, bid));
   }
+
   for (const player in drops) {
     if (handled.includes(player) || !player) continue;
     const move = new Array(transactionRosters.length).fill(null);
@@ -140,6 +149,7 @@ const digestTransaction = ({ transaction, currentSeason }) => {
       digestedTransaction.moves.push(move);
     }
   }
+
   for (const pick of draftPicks) {
     const move = new Array(transactionRosters.length).fill(null);
     if (pick.previous_owner_id !== undefined && transactionRosters.includes(pick.previous_owner_id)) {
@@ -168,9 +178,13 @@ function resolveSeasonKey(season, teamManagersMap) {
 function extractMovements(tx) {
   const received = {};
   const sent = {};
+
   (tx.moves || []).forEach((move) => {
     if (!Array.isArray(move)) return;
-    let tradedPlayerId = null, receivingIdx = -1, sendingIdx = -1;
+    let tradedPlayerId = null;
+    let receivingIdx = -1;
+    let sendingIdx = -1;
+
     move.forEach((side, idx) => {
       if (side && typeof side === 'object' && side.type === 'trade' && side.player) {
         tradedPlayerId = String(side.player);
@@ -179,6 +193,7 @@ function extractMovements(tx) {
         sendingIdx = idx;
       }
     });
+
     if (tradedPlayerId && receivingIdx >= 0 && tx.rosters[receivingIdx] != null) {
       received[tradedPlayerId] = tx.rosters[receivingIdx];
     }
@@ -186,45 +201,48 @@ function extractMovements(tx) {
       sent[tradedPlayerId] = tx.rosters[sendingIdx];
     }
   });
+
   return { received, sent };
 }
 
 /**
- * FIX #1: verify pass-through by checking if the player actually played
- * for the intermediate team in the trade week. If they played → the two
- * trades are genuinely separate (player fully transferred before 2nd trade).
- * If they didn't play → true pass-through → composite trade.
+ * Checks if a player actually played for a team in a given week.
+ * If they played, the two trades are genuinely separate.
+ * If they didn't play (no playerResults row), it's a true pass-through.
  */
-function isValidPassThrough(playerId, throughRoster, tradeTx, playerResults) {
-  if (!playerResults || playerResults.length === 0) return true; // no data → assume pass-through
+function playerPlayedForTeam(playerId, roster, txYear, txWeek, playerResults) {
+  if (!playerResults || playerResults.length === 0) return false;
 
-  const txYear = Number(tradeTx.seasonKey || tradeTx.season);
-  const txWeek = Number(tradeTx.leg || 1);
-
-  const playedForTeam = playerResults.some((pr) =>
+  return playerResults.some((pr) =>
     String(pr.playerId) === String(playerId) &&
-    Number(pr.rosterId) === Number(throughRoster) &&
-    Number(pr.year) === txYear &&
-    Number(pr.week) === txWeek
+    Number(pr.rosterId) === Number(roster) &&
+    Number(pr.year)     === Number(txYear) &&
+    Number(pr.week)     === Number(txWeek)
   );
-
-  // If they played for the team → NOT a pass-through → separate trades
-  return !playedForTeam;
 }
 
 function findPassThrough(tx1, movements1, tx2, movements2, playerResults) {
   const passThrough = [];
+  const txYear = Number(tx2.seasonKey || tx2.season);
+  const txWeek = Number(tx2.leg || 1);
 
   Object.entries(movements1.received).forEach(([playerId, roster]) => {
-    if (movements2.sent[playerId] === roster &&
-        isValidPassThrough(playerId, roster, tx2, playerResults)) {
-      passThrough.push({ playerId, throughRoster: roster });
+    if (movements2.sent[playerId] === roster) {
+      // Only a pass-through if the player didn't actually play for that team
+      if (!playerPlayedForTeam(playerId, roster, txYear, txWeek, playerResults)) {
+        passThrough.push({ playerId, throughRoster: roster });
+      }
     }
   });
+
+  const txYear2 = Number(tx1.seasonKey || tx1.season);
+  const txWeek2 = Number(tx1.leg || 1);
+
   Object.entries(movements2.received).forEach(([playerId, roster]) => {
-    if (movements1.sent[playerId] === roster &&
-        isValidPassThrough(playerId, roster, tx1, playerResults)) {
-      passThrough.push({ playerId, throughRoster: roster });
+    if (movements1.sent[playerId] === roster) {
+      if (!playerPlayedForTeam(playerId, roster, txYear2, txWeek2, playerResults)) {
+        passThrough.push({ playerId, throughRoster: roster });
+      }
     }
   });
 
@@ -239,14 +257,17 @@ function buildCompositeTrade(group) {
 
   group.forEach((tx) => {
     const movements = extractMovements(tx);
+
     (tx.rosters || []).forEach((r, idx) => {
       allRosterIds.add(r);
       if (tx.managerIds?.[idx]) managerIdsByRoster[r] = tx.managerIds[idx];
     });
+
     Object.entries(movements.received).forEach(([playerId, roster]) => {
       if (!allReceived[roster]) allReceived[roster] = [];
       if (!allReceived[roster].includes(playerId)) allReceived[roster].push(playerId);
     });
+
     Object.entries(movements.sent).forEach(([playerId, roster]) => {
       if (!allSent[roster]) allSent[roster] = [];
       if (!allSent[roster].includes(playerId)) allSent[roster].push(playerId);
@@ -269,7 +290,9 @@ function buildCompositeTrade(group) {
 
   const hasDraftPicks = group.some((tx) =>
     (tx.moves || []).some((move) =>
-      Array.isArray(move) && move.some((s) => s && typeof s === 'object' && s.type === 'Received Pick')
+      Array.isArray(move) && move.some((s) =>
+        s && typeof s === 'object' && s.type === 'Received Pick'
+      )
     )
   );
 
@@ -291,10 +314,11 @@ function buildCompositeTrade(group) {
   };
 }
 
-function detectAndMergeCompositeTrades(transactions, playerResults = []) {
+function detectAndMergeCompositeTrades(transactions, playerResults) {
   const composites = [];
   const compositeTradeIds = new Set();
 
+  // Group trades by season + week
   const tradesByKey = {};
   transactions.forEach((tx) => {
     if (tx.type !== 'trade') return;
@@ -305,24 +329,36 @@ function detectAndMergeCompositeTrades(transactions, playerResults = []) {
 
   Object.values(tradesByKey).forEach((weekTrades) => {
     if (weekTrades.length < 2) return;
+
     const n = weekTrades.length;
     const movementsArr = weekTrades.map((tx) => extractMovements(tx));
 
+    // Union-Find to group connected trades
     const parent = Array.from({ length: n }, (_, i) => i);
-    const find = (x) => { if (parent[x] !== x) parent[x] = find(parent[x]); return parent[x]; };
+    const find = (x) => {
+      if (parent[x] !== x) parent[x] = find(parent[x]);
+      return parent[x];
+    };
     const union = (x, y) => { parent[find(x)] = find(y); };
 
     let hasAnyPassThrough = false;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        if (findPassThrough(weekTrades[i], movementsArr[i], weekTrades[j], movementsArr[j], playerResults).length > 0) {
+        const pt = findPassThrough(
+          weekTrades[i], movementsArr[i],
+          weekTrades[j], movementsArr[j],
+          playerResults
+        );
+        if (pt.length > 0) {
           union(i, j);
           hasAnyPassThrough = true;
         }
       }
     }
+
     if (!hasAnyPassThrough) return;
 
+    // Group by connected component
     const components = {};
     weekTrades.forEach((tx, idx) => {
       const root = find(idx);
@@ -341,34 +377,9 @@ function detectAndMergeCompositeTrades(transactions, playerResults = []) {
   return { composites, compositeTradeIds };
 }
 
-  Object.values(groups).forEach((group) => {
-    // Sort by seq ascending — seq is the official Sleeper processing order.
-    // Fall back to timestamp if seq is unavailable.
-    group.sort((a, b) => {
-      const seqA = a.seq ?? Infinity;
-      const seqB = b.seq ?? Infinity;
-      if (seqA !== seqB) return seqA - seqB;
-      return (a.timestamp || 0) - (b.timestamp || 0);
-    });
-
-    const claimedSoFar = new Set();
-    group.forEach((tx) => {
-      tx.claimedEarlierThisWeek = [...claimedSoFar];
-      (tx.moves || []).forEach((move) => {
-        if (!Array.isArray(move)) return;
-        move.forEach((side) => {
-          if (side && typeof side === 'object' && side.type === 'Added' && side.player) {
-            claimedSoFar.add(String(side.player));
-          }
-        });
-      });
-    });
-  });
-}
-
 // ── Main digest ──────────────────────────────────────────────────────────────
 
-async function digestTransactions({ transactionsData, currentSeason, playerResults = [] }) {
+async function digestTransactions({ transactionsData, currentSeason, playerResults }) {
   const debug = [];
   const transactions = [];
   const totals = { allTime: {}, seasons: {} };
@@ -385,7 +396,10 @@ async function digestTransactions({ transactionsData, currentSeason, playerResul
     digestedTransaction.seasonKey = seasonKey != null ? String(seasonKey) : null;
     transactions.push(digestedTransaction);
 
-    if (seasonKey == null) { skippedCount++; continue; }
+    if (seasonKey == null) {
+      skippedCount++;
+      continue;
+    }
 
     const yearMap = leagueTeamManagers.teamManagersMap[seasonKey] || {};
     const managerIds = [];
@@ -399,20 +413,26 @@ async function digestTransactions({ transactionsData, currentSeason, playerResul
       if (!totals.allTime[managerId]) totals.allTime[managerId] = { trade: 0, waiver: 0 };
       totals.allTime[managerId][type] = (totals.allTime[managerId][type] || 0) + 1;
 
-      if (!totals.seasons[digestedTransaction.seasonKey]) totals.seasons[digestedTransaction.seasonKey] = {};
+      if (!totals.seasons[digestedTransaction.seasonKey]) {
+        totals.seasons[digestedTransaction.seasonKey] = {};
+      }
       if (!totals.seasons[digestedTransaction.seasonKey][managerId]) {
         totals.seasons[digestedTransaction.seasonKey][managerId] = { trade: 0, waiver: 0, managerId };
       }
       totals.seasons[digestedTransaction.seasonKey][managerId][type] =
         (totals.seasons[digestedTransaction.seasonKey][managerId][type] || 0) + 1;
     }
+
     digestedTransaction.managerIds = managerIds;
   }
 
   debug.push(`Digested ${transactions.length} transactions (${skippedCount} had no resolvable season).`);
 
-  addClaimedEarlierContext(transactions);
-  const { composites, compositeTradeIds } = detectAndMergeCompositeTrades(transactions, playerResults);
+  // Detect composite (multi-team) trades using playerResults for pass-through validation
+  const { composites, compositeTradeIds } = detectAndMergeCompositeTrades(
+    transactions,
+    playerResults || []
+  );
 
   transactions.forEach((tx) => {
     if (compositeTradeIds.has(tx.id)) {
@@ -421,6 +441,7 @@ async function digestTransactions({ transactionsData, currentSeason, playerResul
       if (parent) tx.compositeId = parent.id;
     }
   });
+
   composites.forEach((c) => transactions.push(c));
   debug.push(`Detected ${composites.length} composite multi-team trade(s) across ${compositeTradeIds.size} constituent trades.`);
 
@@ -431,6 +452,7 @@ async function digestTransactions({ transactionsData, currentSeason, playerResul
 
 export async function getTransactionHistory(startingLeagueID = mainLeagueID, playerResults = []) {
   const debug = [];
+
   const nflState = await getNflState().catch((err) => {
     debug.push(`getNflState failed: ${err.message}`);
     return null;
@@ -438,11 +460,15 @@ export async function getTransactionHistory(startingLeagueID = mainLeagueID, pla
   let week = 18;
   if (nflState?.season_type === 'regular') week = nflState.week;
 
-  const { transactionsData, currentSeason, debug: combDebug } = await combThroughTransactions(week, startingLeagueID);
+  const { transactionsData, currentSeason, debug: combDebug } = await combThroughTransactions(
+    week, startingLeagueID
+  );
   debug.push(...combDebug);
 
   const { transactions, totals, debug: digestDebug } = await digestTransactions({
-    transactionsData, currentSeason, playerResults
+    transactionsData,
+    currentSeason,
+    playerResults
   });
   debug.push(...digestDebug);
 
@@ -454,9 +480,9 @@ export function getAllTimeTransactionTotals(totals, managersSnapshot) {
     .map(([managerId, counts]) => ({
       managerId,
       displayName: managersSnapshot?.users?.[managerId]?.display_name || 'Unknown',
-      trades: counts.trade || 0,
+      trades:  counts.trade  || 0,
       waivers: counts.waiver || 0,
-      total: (counts.trade || 0) + (counts.waiver || 0)
+      total:   (counts.trade || 0) + (counts.waiver || 0)
     }))
     .sort((a, b) => b.total - a.total);
 }
@@ -465,11 +491,11 @@ export function getSeasonTransactionTotals(totals, seasonKey, managersSnapshot) 
   const seasonData = totals.seasons?.[String(seasonKey)] || {};
   return Object.values(seasonData)
     .map((entry) => ({
-      managerId: entry.managerId,
+      managerId:   entry.managerId,
       displayName: managersSnapshot?.users?.[entry.managerId]?.display_name || 'Unknown',
-      trades: entry.trade || 0,
-      waivers: entry.waiver || 0,
-      total: (entry.trade || 0) + (entry.waiver || 0)
+      trades:      entry.trade  || 0,
+      waivers:     entry.waiver || 0,
+      total:       (entry.trade || 0) + (entry.waiver || 0)
     }))
     .sort((a, b) => b.total - a.total);
 }
