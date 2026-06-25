@@ -1,42 +1,13 @@
 <script>
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecificYearMatchups } from '$lib/utils/dataEngine/allMatchups.js';
-  import { getLeaguePlayoffs } from '$lib/utils/dataEngine/allPlayoffs.js';
   import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
-  import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-  import { getLeagueState } from '$lib/utils/dataEngine/leagueState.js';
-  import { getAllSeasonsHistory, getRivalry, getAllTimeTotals } from '$lib/utils/dataEngine/allTimeHistory.js';
-  import { getTransactionHistory, getAllTimeTransactionTotals, getSeasonTransactionTotals, getTradeHistory } from '$lib/utils/dataEngine/allTransactions.js';
+  import { getAllSeasonsHistory, getAllTimeTotals } from '$lib/utils/dataEngine/allTimeHistory.js';
+  import { getTransactionHistory, getAllTimeTransactionTotals, getSeasonTransactionTotals } from '$lib/utils/dataEngine/allTransactions.js';
   import { gradeTradeByPAR, gradeWaiverByPAR, gradeCompositeTrade } from '$lib/utils/dataEngine/parGrading.js';
-  import { teamManagersStore, leagueData } from '$lib/stores';
+  import { teamManagersStore } from '$lib/stores';
 
-  // ── Season view ────────────────────────────────────────────────────────────
-  let selectedLeagueID = '';
-  let loading = false;
-  let debugLogs = [];
-  let standings = [];
-  let weeklyResults = [];
-  let podiums = { championId: null, lastPlaceId: null };
-  let rawWinnersBracket = [];
-  let rawLosersBracket = [];
-  let currentManagersForYear = {};
-  let showRawStandings = false;
-  let showRawBrackets = false;
-  let weekFilter = 'all';
-
-  // ── All-time / PAR ─────────────────────────────────────────────────────────
   let allTimeHistory = null;
-  let loadingAllTime = false;
-  let allTimeDebug = [];
-  let allTimeTotals = [];
-
-  // ── Rivalry ────────────────────────────────────────────────────────────────
-  let rivalryManagerA = '';
-  let rivalryManagerB = '';
-  let rivalryResult = null;
-
-  // ── Transactions ───────────────────────────────────────────────────────────
   let transactionHistory = null;
   let loadingTransactions = false;
   let transactionDebug = [];
@@ -44,37 +15,10 @@
   let allTimeTransactionTotals = [];
   let selectedTransactionSeason = '';
   let seasonTransactionTotals = [];
-  let rivalryTradeHistory = [];
   let txFilter = 'all';
   let showTransactionDebug = false;
   let expandedTx = new Set();
-
-  // ── Reactive: season picker ────────────────────────────────────────────────
-  $: seasons = Object.keys($teamManagersStore?.teamManagersMap || {})
-    .sort((a, b) => Number(b) - Number(a))
-    .map((year) => {
-      const id = Object.keys($leagueData || {}).find((k) => $leagueData[k]?.season == year);
-      return { year, id: id || year };
-    });
-
-  $: champTeam       = podiums.championId  != null ? standings.find((s) => s.rosterId === Number(podiums.championId))  : null;
-  $: loserTeam       = podiums.lastPlaceId != null ? standings.find((s) => s.rosterId === Number(podiums.lastPlaceId)) : null;
-  $: placementsTable = standings.filter((s) => s.finalPlacement != null).sort((a, b) => a.finalPlacement - b.finalPlacement);
-
-  $: rivalryOptions = standings
-    .map((team) => {
-      const managerId = currentManagersForYear[team.rosterId]?.managerId;
-      return managerId != null ? { managerId, label: team.name } : null;
-    })
-    .filter(Boolean);
-
-  $: filteredWeeklyResults = weeklyResults.filter((r) => {
-    if (weekFilter === 'regular')  return !r.isPlayoffs;
-    if (weekFilter === 'playoffs') return  r.isPlayoffs;
-    if (weekFilter === 'winners')  return  r.bracket === 'winners';
-    if (weekFilter === 'losers')   return  r.bracket === 'losers';
-    return true;
-  });
+  let showValidationGuide = true;
 
   $: filteredTransactions = gradedTransactions
     .filter((tx) => !tx.isPartOfComposite)
@@ -89,64 +33,20 @@
     seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
   }
 
-  $: if (rivalryResult && transactionHistory && rivalryManagerA && rivalryManagerB) {
-    rivalryTradeHistory = getTradeHistory(transactionHistory.transactions, rivalryManagerA, rivalryManagerB)
-      .filter((tx) => !tx.isPartOfComposite)
-      .map((tx) => {
-        const parTables      = allTimeHistory?.parTablesBySeason?.[String(tx.seasonKey || tx.season)];
-        const playerResults  = allTimeHistory?.playerResults  || [];
-        const allPlayersData = allTimeHistory?.allPlayersData || {};
-        const managerNames   = (tx.managerIds || []).map((id) => managerDisplayName(id));
-        if (tx.isComposite) {
-          return { ...tx, grade: gradeCompositeTrade(tx, parTables, playerResults, allPlayersData) };
-        }
-        return { ...tx, grade: gradeTradeByPAR(tx, parTables, playerResults, allPlayersData, managerNames) };
-      });
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function resolveYear(currentLeagueID, allMetadata) {
-    let year = allMetadata?.[currentLeagueID]?.season;
-    if (!year && !isNaN(currentLeagueID)) year = currentLeagueID.toString();
-    return year;
-  }
-
-  function buildManagersForYear(managersSnapshot, year) {
-    const yearMap = managersSnapshot?.teamManagersMap?.[year] || {};
-    const out = {};
-    Object.entries(yearMap).forEach(([rosterId, teamInfo]) => {
-      const managerNames = teamInfo?.managers
-        ?.map((mID) => managersSnapshot.users?.[mID]?.display_name || 'Unknown')
-        .join(' & ') || 'Unknown Manager';
-      out[rosterId] = {
-        name:      teamInfo?.team?.name || `Team ${rosterId}`,
-        avatar:    teamInfo?.team?.avatar || '',
-        managerNames,
-        managerId: teamInfo?.managers?.[0] ?? null
-      };
-    });
-    return out;
-  }
-
-  function nameForRoster(rosterId) {
-    const found = standings.find((s) => s.rosterId === Number(rosterId));
-    return found ? found.name : `Team ${rosterId}`;
-  }
-
   function managerDisplayName(managerId) {
     if (!managerId) return '?';
     const snap = get(teamManagersStore) || {};
     return snap?.users?.[managerId]?.display_name || `Manager ${managerId}`;
   }
 
-  function fp(val) { return typeof val === 'number' ? val.toFixed(1) : '—'; }
-
-  function gradeEmoji(label) {
-    return { elite: '🔥', strong: '✅', solid: '👍', neutral: '➖', poor: '❌' }[label] || '?';
-  }
+  function fp(val, d = 1) { return typeof val === 'number' ? val.toFixed(d) : '—'; }
+  function parClass(val) { return typeof val === 'number' ? (val >= 0 ? 'positive' : 'negative') : ''; }
 
   function tradeGradeEmoji(grade) {
     return { lopsided: '💥', clear: '✅', close: '⚖️', even: '🤝' }[grade] || '?';
+  }
+  function waiverGradeEmoji(label) {
+    return { elite: '🔥', strong: '✅', solid: '👍', breakeven: '➖', poor: '❌' }[label] || '?';
   }
 
   function toggleTx(id) {
@@ -155,108 +55,39 @@
     expandedTx = next;
   }
 
-  // ── Season loader ──────────────────────────────────────────────────────────
-  async function loadSeasonData(leagueId) {
-    if (!leagueId) return;
-    loading = true;
-    debugLogs = [];
-    standings = [];
-    weeklyResults = [];
-    podiums = { championId: null, lastPlaceId: null };
-    rawWinnersBracket = [];
-    rawLosersBracket = [];
-
-    try {
-      const [matchupsData] = await Promise.all([
-        getSpecificYearMatchups(leagueId).catch((err) => {
-          debugLogs.push(`getSpecificYearMatchups failed: ${err.message}`);
-          return null;
-        }),
-        getLeagueData(leagueId).catch((err) => {
-          debugLogs.push(`getLeagueData note: ${err.message}`);
-          return null;
-        })
-      ]);
-
-      debugLogs.push(`matchupWeeks count: ${matchupsData?.matchupWeeks?.length ?? 'N/A'}`);
-      debugLogs.push(...(matchupsData?.debug || []));
-
-      const managersSnapshot = get(teamManagersStore) || {};
-      const allMetadata      = get(leagueData) || {};
-      const year             = resolveYear(leagueId, allMetadata);
-      debugLogs.push(`Resolved year: ${year}`);
-
-      const managersForYear = buildManagersForYear(managersSnapshot, year);
-      currentManagersForYear = managersForYear;
-      const numRosters = Object.keys(managersForYear).length;
-      debugLogs.push(`Managers resolved: ${numRosters}`);
-
-      if (!matchupsData) { debugLogs.push('No matchupsData.'); return; }
-
-      const playoffData = await getLeaguePlayoffs(leagueId);
-      rawWinnersBracket = playoffData.winnersBracket;
-      rawLosersBracket  = playoffData.losersBracket;
-      debugLogs.push(...playoffData.debug);
-
-      const result = getLeagueState(matchupsData, managersForYear, allMetadata?.[leagueId] || null, {
-        winnersBracket: playoffData.winnersBracket,
-        losersBracket:  playoffData.losersBracket,
-        numRosters
-      });
-
-      standings     = result.standings;
-      weeklyResults = result.weeklyResults;
-      podiums       = result.podiums;
-      debugLogs.push(...result.debug);
-    } catch (e) {
-      console.error('Critical error:', e);
-      debugLogs.push(`Crash: ${e.message}`);
-    } finally {
-      loading = false;
-    }
-  }
-
-  // ── All-time history loader ────────────────────────────────────────────────
-  async function loadAllTimeHistory() {
-    loadingAllTime = true;
-    allTimeDebug = [];
-    try {
-      allTimeHistory = await getAllSeasonsHistory();
-      allTimeDebug   = allTimeHistory.debug;
-      allTimeTotals  = getAllTimeTotals(allTimeHistory.managers);
-    } catch (e) {
-      allTimeDebug = [`Critical error: ${e.message}`];
-    } finally {
-      loadingAllTime = false;
-    }
-  }
-
-  // ── Transaction loader ─────────────────────────────────────────────────────
   async function loadTransactionHistory() {
     loadingTransactions = true;
-    transactionDebug   = [];
+    transactionDebug = [];
     gradedTransactions = [];
 
     try {
       if (!allTimeHistory) {
-        transactionDebug.push('Loading all-time history for PAR grading...');
+        transactionDebug.push('Loading all-time history for PAR data...');
+        await getLeagueTeamManagers();
         allTimeHistory = await getAllSeasonsHistory();
-        allTimeTotals  = getAllTimeTotals(allTimeHistory.managers);
-        transactionDebug.push(`PAR tables built for ${Object.keys(allTimeHistory.parTablesBySeason || {}).length} seasons.`);
+        const seasonCount = Object.keys(allTimeHistory.parTablesBySeason || {}).length;
+        transactionDebug.push(`Loaded ${seasonCount} seasons. Player results: ${allTimeHistory.playerResults?.length ?? 0} rows.`);
+
+        // Log replacement players for each season so you can validate
+        Object.entries(allTimeHistory.parTablesBySeason || {}).forEach(([year, tables]) => {
+          transactionDebug.push(`[${year}] Replacement levels:`);
+          Object.entries(tables.replacementPlayerNames || {}).forEach(([pos, name]) => {
+            transactionDebug.push(`  ${pos}: ${name} (${fp(tables.replacementLevels[pos])} season pts)`);
+          });
+        });
       }
 
-      const txResult = await getTransactionHistory();
+      const playerResults = allTimeHistory.playerResults || [];
+      const txResult = await getTransactionHistory(undefined, playerResults);
       transactionHistory = txResult;
       transactionDebug.push(...txResult.debug);
 
-      const playerResults     = allTimeHistory.playerResults  || [];
       const allPlayersData    = allTimeHistory.allPlayersData || {};
       const parTablesBySeason = allTimeHistory.parTablesBySeason || {};
 
       gradedTransactions = txResult.transactions.map((tx) => {
         const parTables    = parTablesBySeason[String(tx.seasonKey || tx.season)];
         const managerNames = (tx.managerIds || []).map((id) => managerDisplayName(id));
-
         if (tx.isComposite) {
           return { ...tx, grade: gradeCompositeTrade(tx, parTables, playerResults, allPlayersData) };
         } else if (tx.type === 'trade') {
@@ -269,600 +100,452 @@
 
       const snap = get(teamManagersStore) || {};
       allTimeTransactionTotals = getAllTimeTransactionTotals(txResult.totals, snap);
-
       const availableSeasons = Object.keys(txResult.totals.seasons || {}).sort((a, b) => Number(b) - Number(a));
       if (availableSeasons.length > 0) {
         selectedTransactionSeason = availableSeasons[0];
-        seasonTransactionTotals   = getSeasonTransactionTotals(txResult.totals, selectedTransactionSeason, snap);
+        seasonTransactionTotals = getSeasonTransactionTotals(txResult.totals, selectedTransactionSeason, snap);
       }
 
       const compositeCount = gradedTransactions.filter((tx) => tx.isComposite).length;
-      transactionDebug.push(`Graded ${gradedTransactions.length} transactions (${compositeCount} composite multi-team trades).`);
+      transactionDebug.push(`Graded ${gradedTransactions.length} transactions total (${compositeCount} composite).`);
     } catch (e) {
-      console.error('Critical error loading transactions:', e);
+      console.error('Critical error:', e);
       transactionDebug.push(`Crash: ${e.message}`);
     } finally {
       loadingTransactions = false;
     }
   }
 
-  // ── Rivalry ────────────────────────────────────────────────────────────────
-  function computeRivalry() {
-    if (!allTimeHistory || !rivalryManagerA || !rivalryManagerB) return;
-    rivalryResult = getRivalry(allTimeHistory.weeklyResults, rivalryManagerA, rivalryManagerB);
-  }
-
-  // ── Mount ──────────────────────────────────────────────────────────────────
   onMount(async () => {
-    loading = true;
-    const managers = await getLeagueTeamManagers().catch((err) => {
-      debugLogs = [...debugLogs, `getLeagueTeamManagers failed: ${err.message}`];
-      return null;
+    await getLeagueTeamManagers().catch((err) => {
+      transactionDebug = [`getLeagueTeamManagers failed: ${err.message}`];
     });
-    const years = Object.keys(managers?.teamManagersMap || {}).sort((a, b) => Number(b) - Number(a));
-    if (years.length > 0) {
-      const firstYear   = years[0];
-      const allMetadata = get(leagueData) || {};
-      const idMatch     = Object.keys(allMetadata).find((k) => allMetadata[k]?.season == firstYear);
-      selectedLeagueID  = idMatch || firstYear;
-      await loadSeasonData(selectedLeagueID);
-    } else {
-      debugLogs = [...debugLogs, 'No years found in teamManagersStore.'];
-      loading = false;
-    }
   });
 </script>
 
 <main class="container">
-  <h2>League State Validation Panel</h2>
+  <h2>Transaction Analysis Panel</h2>
 
-  <!-- ── Season selector ────────────────────────────────────────────────────── -->
-  {#if seasons.length > 0}
-    <div class="control-row">
-      <label for="season-select"><strong>Select target season:</strong></label>
-      <select id="season-select" bind:value={selectedLeagueID}
-        on:change={() => loadSeasonData(selectedLeagueID)} disabled={loading}>
-        {#each seasons as s}<option value={s.id}>{s.year}</option>{/each}
-      </select>
+  <!-- ── Validation guide ────────────────────────────────────────────────── -->
+  <div class="guide-toggle">
+    <button class="link-btn" on:click={() => (showValidationGuide = !showValidationGuide)}>
+      {showValidationGuide ? '▲ Hide' : '▼ Show'} Validation Guide
+    </button>
+  </div>
+  {#if showValidationGuide}
+    <div class="validation-guide">
+      <h4>How to validate trades</h4>
+      <ul>
+        <li><strong>Pre-trade roster at position</strong> — lists every player at that position on the roster before the trade. Verify the ★ marginal player is actually the Nth-best starter (not your star). For 2 RB slots → should be your 2nd-best RB.</li>
+        <li><strong>Week-by-week table</strong> — shows acquired player vs marginal player actual points each week. Cross-check 2-3 weeks against Sleeper.</li>
+        <li><strong>PAR = acquired total − marginal total</strong> during those same weeks. Positive = good acquisition.</li>
+        <li><strong>Red flags</strong>: marginal player looks like a star → slot count wrong. Any player shows 0 every week but played → playerResults gap.</li>
+      </ul>
+      <h4>How to validate waivers</h4>
+      <ul>
+        <li><strong>Replacement player</strong> — should be roughly the 12th-13th best player at that position across the league (borderline starter, not a star). Check the name in debug logs under "Replacement levels."</li>
+        <li><strong>Week-by-week table</strong> — pickup points vs replacement player points each week.</li>
+        <li><strong>PAR = pickup total − replacement total</strong> during hold weeks. Positive = above replacement = helped team.</li>
+        <li><strong>Season pts (context)</strong> — replacement player's full-season total, shown for reference only.</li>
+      </ul>
+      <h4>Grade thresholds</h4>
+      <p>Waivers: Elite (&gt;30 PAR) / Strong (&gt;15) / Solid (&gt;5) / Break-even (-5 to 5) / Poor (&lt;-5)</p>
+      <p>Trades: Lopsided (&gt;40 PAR diff) / Clear (&gt;20) / Close (≤20) / Even (tied)</p>
     </div>
   {/if}
 
-  {#if loading}
-    <div class="status-msg">Crunching matchups...</div>
-  {:else}
+  <!-- ── Load button ─────────────────────────────────────────────────────── -->
+  <div class="control-row">
+    <button on:click={loadTransactionHistory} disabled={loadingTransactions}>
+      {loadingTransactions ? 'Loading...' : (transactionHistory ? 'Reload Transactions' : 'Load Transaction History')}
+    </button>
+  </div>
 
-    <!-- ── Podiums ──────────────────────────────────────────────────────────── -->
-    <div class="podium-grid">
-      <div class="podium-card gold">
-        <h3>🏆 League Champion</h3>
-        {#if champTeam}
-          <div class="meta-title">{champTeam.name}</div>
-          <div class="meta-sub">Manager: {champTeam.managerNames || '—'}</div>
-        {:else}<div class="meta-empty">Unresolved — check logs below</div>{/if}
-      </div>
-      <div class="podium-card poop">
-        <h3>💩 Toilet Bowl Loser</h3>
-        {#if loserTeam}
-          <div class="meta-title">{loserTeam.name}</div>
-          <div class="meta-sub">Manager: {loserTeam.managerNames || '—'}</div>
-        {:else}<div class="meta-empty">Unresolved — check logs below</div>{/if}
-      </div>
-    </div>
+  {#if loadingTransactions}
+    <div class="status-msg">Loading and grading all transactions...</div>
+  {:else if transactionHistory}
 
-    <!-- ── Final playoff standings ─────────────────────────────────────────── -->
-    {#if placementsTable.length > 0}
-      <h3>Final Playoff Standings</h3>
-      <table class="data-table">
-        <thead><tr><th>Place</th><th>Team</th></tr></thead>
-        <tbody>
-          {#each placementsTable as team}
-            <tr>
-              <td>{team.finalPlacement}</td>
-              <td>{team.name} <span class="manager-tag">({team.managerNames})</span></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {/if}
-
-    <!-- ── Season standings ────────────────────────────────────────────────── -->
-    <h3>Standings</h3>
+    <!-- All-time counts -->
+    <h3>All-Time Transaction Totals</h3>
     <table class="data-table">
-      <thead>
-        <tr>
-          <th>Team</th>
-          <th colspan="5">Regular Season</th>
-          <th colspan="3">Playoffs (Winners Only)</th>
-          <th>Streak</th>
-        </tr>
-        <tr class="subhead">
-          <th></th>
-          <th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th>
-          <th>W</th><th>L</th><th>T</th><th></th>
-        </tr>
-      </thead>
+      <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
       <tbody>
-        {#each standings as team}
-          <tr>
-            <td>{team.name} <span class="manager-tag">({team.managerNames})</span></td>
-            <td>{team.regularSeason.wins}</td>
-            <td>{team.regularSeason.losses}</td>
-            <td>{team.regularSeason.ties}</td>
-            <td>{team.regularSeason.fptsFor.toFixed(2)}</td>
-            <td>{team.regularSeason.fptsAgainst.toFixed(2)}</td>
-            <td>{team.playoffs.wins}</td>
-            <td>{team.playoffs.losses}</td>
-            <td>{team.playoffs.ties}</td>
-            <td>{team.regularSeason.streak.type ? `${team.regularSeason.streak.type}${team.regularSeason.streak.count}` : '—'}</td>
-          </tr>
+        {#each allTimeTransactionTotals as m}
+          <tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>
         {/each}
       </tbody>
     </table>
 
-    <!-- ── All-time history ────────────────────────────────────────────────── -->
-    <h3>All-Time History</h3>
+    <!-- Per-season counts -->
+    <h3>Season Transaction Totals</h3>
     <div class="control-row">
-      <button on:click={loadAllTimeHistory} disabled={loadingAllTime}>
-        {loadingAllTime ? 'Loading every season...' : (allTimeHistory ? 'Reload All-Time History' : 'Load All-Time History')}
-      </button>
+      <select bind:value={selectedTransactionSeason}
+        on:change={() => {
+          const snap = get(teamManagersStore) || {};
+          seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
+        }}>
+        {#each Object.keys(transactionHistory.totals.seasons || {}).sort((a,b) => Number(b)-Number(a)) as yr}
+          <option value={yr}>{yr}</option>
+        {/each}
+      </select>
     </div>
-    {#if allTimeTotals.length > 0}
-      <table class="data-table">
-        <thead>
-          <tr><th>Manager</th><th>Seasons</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>🏆</th><th>💩</th></tr>
-        </thead>
-        <tbody>
-          {#each allTimeTotals as m}
-            <tr>
-              <td>{m.displayName}</td>
-              <td>{m.seasonsPlayed}</td>
-              <td>{m.regularSeason.wins}</td>
-              <td>{m.regularSeason.losses}</td>
-              <td>{m.regularSeason.ties}</td>
-              <td>{m.regularSeason.fptsFor.toFixed(2)}</td>
-              <td>{m.championships}</td>
-              <td>{m.lastPlaceFinishes}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {/if}
-
-    <!-- ── Rivalry lookup ──────────────────────────────────────────────────── -->
-    {#if allTimeHistory}
-      <h3>Rivalry Lookup</h3>
-      <div class="control-row">
-        <select bind:value={rivalryManagerA}>
-          <option value="">Team A...</option>
-          {#each rivalryOptions as opt}<option value={opt.managerId}>{opt.label}</option>{/each}
-        </select>
-        <select bind:value={rivalryManagerB}>
-          <option value="">Team B...</option>
-          {#each rivalryOptions as opt}<option value={opt.managerId}>{opt.label}</option>{/each}
-        </select>
-        <button on:click={computeRivalry} disabled={!rivalryManagerA || !rivalryManagerB}>Show Rivalry</button>
-      </div>
-
-      {#if rivalryResult}
-        <div class="podium-card rivalry">
-          <p><strong>Record:</strong> {rivalryResult.record.wins}-{rivalryResult.record.losses}-{rivalryResult.record.ties} ({rivalryResult.gamesPlayed} games)</p>
-          <p><strong>Points:</strong> {rivalryResult.record.pointsFor.toFixed(2)} – {rivalryResult.record.pointsAgainst.toFixed(2)}</p>
-          <p><strong>Streak:</strong> {rivalryResult.streak.type ? `${rivalryResult.streak.type}${rivalryResult.streak.count}` : '—'}</p>
-          {#if rivalryResult.biggestBlowout}
-            <p><strong>Biggest margin:</strong> {rivalryResult.biggestBlowout.year} Wk {rivalryResult.biggestBlowout.week} ({rivalryResult.biggestBlowout.margin.toFixed(2)} pts)</p>
-          {/if}
-          {#if rivalryResult.closestGame}
-            <p><strong>Closest game:</strong> {rivalryResult.closestGame.year} Wk {rivalryResult.closestGame.week} ({rivalryResult.closestGame.margin.toFixed(2)} pts)</p>
-          {/if}
-        </div>
-
-        {#if rivalryTradeHistory.length > 0}
-          <h4>Trade History Between These Managers</h4>
-          {#each rivalryTradeHistory as trade}
-            {@const g = trade.grade}
-            <div class="trade-card">
-              <div class="trade-header">
-                <span class="trade-date">{trade.date} — Season {trade.seasonKey || trade.season}</span>
-                {#if trade.isComposite}
-                  <span class="composite-badge">🔀 {trade.teams?.length}-Team Trade</span>
-                {/if}
-                {#if !trade.isComposite && g?.narrative?.grade}
-                  <span class="trade-grade-badge grade-{g.narrative.grade}">
-                    {tradeGradeEmoji(g.narrative.grade)} {g.narrative.grade.toUpperCase()}
-                  </span>
-                {/if}
-                {#if g?.hasDraftPicks}
-                  <span class="draft-pick-badge">📋 Includes Draft Picks</span>
-                {/if}
-              </div>
-
-              {#if !trade.isComposite && g?.narrative?.summary}
-                <p class="trade-narrative">{g.narrative.summary}</p>
-              {/if}
-
-              {#if !trade.isComposite && g}
-                <div class="trade-sides">
-                  {#each trade.rosters as roster, idx}
-                    {@const side = idx === 0 ? g.side0 : g.side1}
-                    {@const isWinner = g.winner === idx}
-                    <div class="trade-side {isWinner ? 'winner' : ''}">
-                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(trade.managerIds?.[idx])} received:</div>
-                      <div class="side-totals">PAR: <strong>{fp(side?.parTotal)}</strong> | Raw: {fp(side?.rawTotal)}</div>
-                      {#each (side?.players || []) as p}
-                        <div class="player-row">
-                          <span class="player-pos-tag">{p.position}</span>
-                          <span class="player-name">{p.name}</span>
-                          <span class="player-stat-detail">
-                            {fp(p.par)} PAR | {fp(p.totalPts)} pts |
-                            {p.weeksStarted}/{p.weeks} wks
-                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
-                          </span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/each}
-                </div>
-
-              {:else if trade.isComposite && g}
-                <div class="composite-teams">
-                  {#each g.teamGrades as teamGrade}
-                    {@const isWinner = g.winnerRoster === teamGrade.roster}
-                    <div class="trade-side {isWinner ? 'winner' : ''}">
-                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(teamGrade.managerId)} received (net):</div>
-                      <div class="side-totals">PAR: <strong>{fp(teamGrade.parTotal)}</strong> | Raw: {fp(teamGrade.rawTotal)}</div>
-                      {#each (teamGrade.players || []) as p}
-                        <div class="player-row">
-                          <span class="player-pos-tag">{p.position}</span>
-                          <span class="player-name">{p.name}</span>
-                          <span class="player-stat-detail">{fp(p.par)} PAR | {fp(p.totalPts)} pts | {p.weeksStarted}/{p.weeks} wks</span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/each}
-        {:else if transactionHistory}
-          <p class="meta-empty">No trades found between these two managers.</p>
-        {:else}
-          <p class="meta-empty">Load transaction history to see trades.</p>
-        {/if}
-      {:else if rivalryManagerA && rivalryManagerB}
-        <div class="meta-empty">Click "Show Rivalry" to compute.</div>
-      {/if}
-
-      {#if allTimeDebug.length > 0}
-        <div class="debug-terminal">
-          <h4>All-Time Debug Logs</h4>
-          <ul>{#each allTimeDebug as log}<li><code>{log}</code></li>{/each}</ul>
-        </div>
-      {/if}
-    {/if}
-
-    <!-- ── Transaction history ─────────────────────────────────────────────── -->
-    <h3>Transaction History</h3>
-    <div class="control-row">
-      <button on:click={loadTransactionHistory} disabled={loadingTransactions}>
-        {loadingTransactions ? 'Loading transactions...' : (transactionHistory ? 'Reload Transactions' : 'Load Transaction History')}
-      </button>
-    </div>
-
-    {#if loadingTransactions}
-      <div class="status-msg">Fetching and grading with PAR...</div>
-    {:else if transactionHistory}
-
-      <!-- All-time counts -->
-      <h4>All-Time Transaction Totals</h4>
+    {#if seasonTransactionTotals.length > 0}
       <table class="data-table">
         <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
         <tbody>
-          {#each allTimeTransactionTotals as m}
+          {#each seasonTransactionTotals as m}
             <tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>
           {/each}
         </tbody>
       </table>
-
-      <!-- Per-season counts -->
-      <h4>Season Transaction Totals</h4>
-      <div class="control-row">
-        <select bind:value={selectedTransactionSeason}
-          on:change={() => {
-            const snap = get(teamManagersStore) || {};
-            seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
-          }}>
-          {#each Object.keys(transactionHistory.totals.seasons || {}).sort((a,b) => Number(b)-Number(a)) as yr}
-            <option value={yr}>{yr}</option>
-          {/each}
-        </select>
-      </div>
-      {#if seasonTransactionTotals.length > 0}
-        <table class="data-table">
-          <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
-          <tbody>
-            {#each seasonTransactionTotals as m}
-              <tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>
-            {/each}
-          </tbody>
-        </table>
-      {/if}
-
-      <!-- Full graded transaction list -->
-      <h4>All Transactions (PAR Graded)</h4>
-      <div class="control-row">
-        <select bind:value={txFilter}>
-          <option value="all">All</option>
-          <option value="trade">Trades Only</option>
-          <option value="waiver">Waivers Only</option>
-        </select>
-      </div>
-
-      {#each filteredTransactions as tx}
-        {@const g = tx.grade}
-        {@const isExpanded = expandedTx.has(tx.id)}
-        <div class="tx-card {tx.type} {tx.isComposite ? 'composite' : ''}">
-
-          <!-- Summary row — always visible -->
-          <div class="tx-summary" on:click={() => toggleTx(tx.id)} role="button" tabindex="0"
-            on:keydown={(e) => e.key === 'Enter' && toggleTx(tx.id)}>
-
-            <div class="tx-meta">
-              {#if tx.isComposite}
-                <span class="tx-type-badge composite">🔀 {tx.teams?.length}-Team Trade</span>
-              {:else}
-                <span class="tx-type-badge {tx.type}">{tx.type}</span>
-              {/if}
-              <span class="tx-date">{tx.date}</span>
-              <span class="tx-season">S{tx.seasonKey || tx.season} Wk{tx.leg}</span>
-              {#if g?.hasDraftPicks}<span class="draft-pick-badge">📋 Picks</span>{/if}
-            </div>
-
-            <div class="tx-managers">
-              {#if tx.isComposite}
-                {(tx.teams || []).map((t) => managerDisplayName(t.managerId)).join(' → ')}
-              {:else if tx.managerIds?.length}
-                {tx.managerIds.map((id) => managerDisplayName(id)).join(' ↔ ')}
-              {:else}—{/if}
-            </div>
-
-            <!-- Grade pill -->
-            {#if tx.isComposite && g}
-              <div class="tx-grade">
-                <span class="par-summary">
-                  {(g.ranked || []).map((t) => `${managerDisplayName(t.managerId)}: ${fp(t.parTotal)}`).join(' | ')} PAR
-                </span>
-              </div>
-            {:else if tx.type === 'trade' && g}
-              <div class="tx-grade">
-                <span class="trade-grade-badge grade-{g.narrative?.grade}">
-                  {tradeGradeEmoji(g.narrative?.grade)} {g.narrative?.grade}
-                </span>
-                <span class="par-summary">
-                  {managerDisplayName(tx.managerIds?.[0])}: {fp(g.side0?.parTotal)} |
-                  {managerDisplayName(tx.managerIds?.[1])}: {fp(g.side1?.parTotal)} PAR
-                </span>
-              </div>
-            {:else if tx.type === 'waiver' && g}
-              <div class="tx-grade">
-                <span class="waiver-grade-badge grade-{g.gradeLabel}">{gradeEmoji(g.gradeLabel)} {g.gradeLabel}</span>
-                <span class="par-summary">
-                  {g.name} ({g.position}) — #{g.positionRank} of {g.positionPoolSize} available
-                  {#if g.flexRank && g.flexRank <= 3}· #{g.flexRank} FLEX{/if}
-                </span>
-              </div>
-            {/if}
-
-            <span class="expand-toggle">{isExpanded ? '▲' : '▼'}</span>
-          </div>
-
-          <!-- Detail panel — visible when expanded -->
-          {#if isExpanded}
-            <div class="tx-detail">
-
-              {#if tx.isComposite && g}
-                <p class="narrative-text">
-                  Multi-team trade involving {tx.teams?.length} managers.
-                  {#if g.hasDraftPicks}Grade reflects player value only — draft picks excluded.{/if}
-                </p>
-                <div class="composite-teams">
-                  {#each g.teamGrades as teamGrade}
-                    {@const isWinner = g.winnerRoster === teamGrade.roster}
-                    <div class="trade-side {isWinner ? 'winner' : ''}">
-                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(teamGrade.managerId)} received (net):</div>
-                      <div class="side-totals">PAR: <strong>{fp(teamGrade.parTotal)}</strong> | Raw: {fp(teamGrade.rawTotal)} / {fp(teamGrade.rawStarted)} started</div>
-                      {#each (teamGrade.players || []) as p}
-                        <div class="player-row">
-                          <span class="player-pos-tag">{p.position}</span>
-                          <span class="player-name">{p.name}</span>
-                          <span class="player-stat-detail">
-                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
-                            {p.weeksStarted}/{p.weeks} wks | baseline: {fp(p.baselineValue)}
-                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
-                          </span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/each}
-                </div>
-                <div class="constituent-note">Constituent trade IDs: {tx.constituentTradeIds?.join(', ')}</div>
-
-              {:else if tx.type === 'trade' && g}
-                <p class="narrative-text">{g.narrative?.summary}</p>
-                <div class="trade-sides">
-                  {#each tx.rosters as roster, idx}
-                    {@const side = idx === 0 ? g.side0 : g.side1}
-                    {@const isWinner = g.winner === idx}
-                    <div class="trade-side {isWinner ? 'winner' : ''}">
-                      <div class="side-manager">{isWinner ? '🏆 ' : ''}{managerDisplayName(tx.managerIds?.[idx])} received:</div>
-                      <div class="side-totals">
-                        PAR: <strong>{fp(side?.parTotal)}</strong> |
-                        Raw: {fp(side?.rawTotal)} total / {fp(side?.rawStarted)} started
-                      </div>
-                      {#each (side?.players || []) as p}
-                        <div class="player-row">
-                          <span class="player-pos-tag">{p.position}</span>
-                          <span class="player-name">{p.name}</span>
-                          <span class="player-stat-detail">
-                            {fp(p.par)} PAR | {fp(p.totalPts)} total / {fp(p.startedPts)} started |
-                            {p.weeksStarted}/{p.weeks} wks | baseline: {fp(p.baselineValue)}
-                            {#if p.marginalRank}<span class="marginal-tag">#{p.marginalRank} starter</span>{/if}
-                            {#if p.baselineSource === 'personal'}<span class="baseline-tag">roster-adj</span>{/if}
-                          </span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/each}
-                </div>
-                {#if g.narrative?.flags?.length > 0}
-                  <div class="flags">
-                    {#each g.narrative.flags as flag}
-                      <span class="flag flag-{flag.type}">
-                        {flag.type === 'injury-suspected' ? '🚑 Injury suspected' : '📋 Underutilized'}: {flag.name}
-                      </span>
-                    {/each}
-                  </div>
-                {/if}
-
-              {:else if tx.type === 'waiver' && g}
-                <p class="narrative-text">{g.gradeSummary}</p>
-                <div class="waiver-detail">
-                  <div class="player-row">
-                    <span class="player-pos-tag">{g.position}</span>
-                    <span class="player-name">Added: {g.name}</span>
-                    <span class="player-stat-detail">
-                      #{g.positionRank} of {g.positionPoolSize} available {g.position}s |
-                      {fp(g.totalPts)} total / {fp(g.startedPts)} started |
-                      {g.weeksStarted}/{g.weeks} wks
-                      {#if g.isStream}<span class="stream-tag">stream</span>{/if}
-                    </span>
-                  </div>
-                  {#if g.flexRank}
-                    <div class="player-row">
-                      <span class="player-stat-detail">
-                        FLEX context: #{g.flexRank} of {g.flexPoolSize} available FLEX-eligible players
-                      </span>
-                    </div>
-                  {/if}
-                  {#if g.droppedName}
-                    <div class="player-row dropped">
-                      <span class="player-pos-tag">—</span>
-                      <span class="player-name">Dropped: {g.droppedName}</span>
-                    </div>
-                  {/if}
-                  {#if g.topMissed?.length > 0}
-                    <div class="missed-options">
-                      <span class="missed-label">Better options available:</span>
-                      {#each g.topMissed as alt}
-                        <span class="missed-player">{alt.name} ({fp(alt.pointsAfter)} pts)</span>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/if}
-
-            </div>
-          {/if}
-        </div>
-      {/each}
-
-      <div class="control-row" style="margin-top:1rem;">
-        <button on:click={() => (showTransactionDebug = !showTransactionDebug)}>
-          {showTransactionDebug ? 'Hide' : 'Show'} Transaction Debug Logs
-        </button>
-      </div>
-      {#if showTransactionDebug && transactionDebug.length > 0}
-        <div class="debug-terminal">
-          <h4>Transaction Debug Logs</h4>
-          <ul>{#each transactionDebug as log}<li><code>{log}</code></li>{/each}</ul>
-        </div>
-      {/if}
     {/if}
 
-    <!-- ── Weekly results ──────────────────────────────────────────────────── -->
-    <h3>Weekly Results</h3>
+    <!-- Graded transactions -->
+    <h3>Transactions
+      <span class="count-badge">{filteredTransactions.length}</span>
+    </h3>
     <div class="control-row">
-      <select bind:value={weekFilter}>
-        <option value="all">All Weeks</option>
-        <option value="regular">Regular Season Only</option>
-        <option value="playoffs">All Playoffs</option>
-        <option value="winners">Playoffs — Winners Bracket</option>
-        <option value="losers">Playoffs — Losers Bracket</option>
+      <select bind:value={txFilter}>
+        <option value="all">All</option>
+        <option value="trade">Trades Only</option>
+        <option value="waiver">Waivers Only</option>
       </select>
     </div>
-    <table class="data-table">
-      <thead>
-        <tr><th>Week</th><th>Team</th><th>Opponent</th><th>PF</th><th>PA</th><th>Result</th><th>Bracket</th></tr>
-      </thead>
-      <tbody>
-        {#each filteredWeeklyResults as row}
-          <tr>
-            <td>{row.week}</td>
-            <td>{nameForRoster(row.rosterId)}</td>
-            <td>{nameForRoster(row.opponentRosterId)}</td>
-            <td>{row.pointsFor.toFixed(2)}</td>
-            <td>{row.pointsAgainst.toFixed(2)}</td>
-            <td>{row.result}</td>
-            <td>{row.bracket || (row.isPlayoffs ? 'unknown' : '—')}</td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
 
-    <!-- ── Raw JSON toggles ───────────────────────────────────────────────── -->
-    <div class="control-row">
-      <button on:click={() => (showRawStandings = !showRawStandings)}>{showRawStandings ? 'Hide' : 'Show'} Raw Standings JSON</button>
-      <button on:click={() => (showRawBrackets  = !showRawBrackets) }>{showRawBrackets  ? 'Hide' : 'Show'} Raw Bracket JSON</button>
+    {#each filteredTransactions as tx}
+      {@const g = tx.grade}
+      {@const isExpanded = expandedTx.has(tx.id)}
+
+      <div class="tx-card {tx.type} {tx.isComposite ? 'composite' : ''}">
+
+        <!-- Summary row — always visible -->
+        <div class="tx-summary" on:click={() => toggleTx(tx.id)} role="button" tabindex="0"
+          on:keydown={(e) => e.key === 'Enter' && toggleTx(tx.id)}>
+          <div class="tx-meta">
+            {#if tx.isComposite}
+              <span class="tx-type-badge composite">🔀 {tx.teams?.length}-Team</span>
+            {:else}
+              <span class="tx-type-badge {tx.type}">{tx.type}</span>
+            {/if}
+            <span class="tx-info">{tx.date} · S{tx.seasonKey || tx.season} Wk{tx.leg}</span>
+            {#if tx.seq != null}<span class="seq-badge">seq:{tx.seq}</span>{/if}
+            {#if g?.hasDraftPicks}<span class="pick-badge">📋 Picks</span>{/if}
+          </div>
+
+          <div class="tx-managers">
+            {#if tx.isComposite}
+              {(tx.teams || []).map((t) => managerDisplayName(t.managerId)).join(' → ')}
+            {:else if tx.managerIds?.length}
+              {tx.managerIds.map((id) => managerDisplayName(id)).join(' ↔ ')}
+            {:else}—{/if}
+          </div>
+
+          {#if tx.isComposite && g}
+            <span class="par-summary">{(g.ranked || []).map((t) => `${managerDisplayName(t.managerId)}: ${fp(t.parTotal)} PAR`).join(' | ')}</span>
+          {:else if tx.type === 'trade' && g}
+            <span class="trade-grade-badge grade-{g.narrative?.grade}">{tradeGradeEmoji(g.narrative?.grade)} {g.narrative?.grade}</span>
+            <span class="par-summary">
+              {managerDisplayName(tx.managerIds?.[0])}: {fp(g.side0?.parTotal)} | {managerDisplayName(tx.managerIds?.[1])}: {fp(g.side1?.parTotal)} PAR
+            </span>
+          {:else if tx.type === 'waiver' && g}
+            <span class="waiver-grade-badge grade-{g.gradeLabel}">{waiverGradeEmoji(g.gradeLabel)} {g.gradeLabel}</span>
+            <span class="par-summary">{g.name} ({g.position}) · {fp(g.par)} PAR · {g.weeks} wk(s)</span>
+          {/if}
+
+          <span class="expand-toggle">{isExpanded ? '▲' : '▼'}</span>
+        </div>
+
+        <!-- Expanded detail -->
+        {#if isExpanded}
+          <div class="tx-detail">
+
+            {#if tx.isComposite && g}
+              <p class="narrative-text">
+                Multi-team trade — net movements shown (pass-through players cancelled out).
+                {g.hasDraftPicks ? ' Includes draft picks — player value only.' : ''}
+              </p>
+              <div class="trade-sides">
+                {#each g.teamGrades as teamGrade}
+                  {@const isWinner = g.winnerRoster === teamGrade.roster}
+                  <div class="trade-side {isWinner ? 'winner' : ''}">
+                    <div class="side-header">{isWinner ? '🏆 ' : ''}{managerDisplayName(teamGrade.managerId)} received (net):</div>
+                    <div class="side-par">Total PAR: <span class="{parClass(teamGrade.parTotal)}">{fp(teamGrade.parTotal)}</span></div>
+                    {#each (teamGrade.players || []) as p}
+                      <div class="player-block">
+                        <div class="player-name-row">
+                          <span class="pos-tag">{p.position}</span>
+                          <strong>{p.name}</strong>
+                          <span class="{parClass(p.par)}">{fp(p.par)} PAR</span>
+                        </div>
+                        <div class="player-stats">
+                          {fp(p.totalPts)} total / {fp(p.startedPts)} started · {p.weeksStarted}/{p.weeks} wks
+                        </div>
+                        <div class="baseline-row">
+                          vs {p.marginalPlayerName}
+                          {#if p.marginalRank}<span class="rank-tag">#{p.marginalRank} starter</span>{/if}
+                          <span class="source-tag">{p.baselineSource}</span>:
+                          {fp(p.baselineTotal)} pts (baseline)
+                        </div>
+                        {#if p.weekBreakdown?.length > 0}
+                          <table class="week-table">
+                            <thead><tr><th>Wk</th><th>Acquired</th><th>Marginal</th><th>PAR</th></tr></thead>
+                            <tbody>
+                              {#each p.weekBreakdown as row}
+                                <tr>
+                                  <td>{row.week}</td>
+                                  <td>{fp(row.acquiredPts)}</td>
+                                  <td>{fp(row.marginalPts)}</td>
+                                  <td class="{parClass(row.weekPAR)}">{fp(row.weekPAR)}</td>
+                                </tr>
+                              {/each}
+                            </tbody>
+                          </table>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/each}
+              </div>
+              <div class="constituent-note">Constituent IDs: {tx.constituentTradeIds?.join(', ')}</div>
+
+            {:else if tx.type === 'trade' && g}
+              <p class="narrative-text">{g.narrative?.summary}</p>
+              <div class="trade-sides">
+                {#each tx.rosters as roster, idx}
+                  {@const side = idx === 0 ? g.side0 : g.side1}
+                  {@const isWinner = g.winner === idx}
+                  <div class="trade-side {isWinner ? 'winner' : ''}">
+                    <div class="side-header">{isWinner ? '🏆 ' : ''}{managerDisplayName(tx.managerIds?.[idx])} received:</div>
+                    <div class="side-par">
+                      Total PAR: <span class="{parClass(side?.parTotal)}">{fp(side?.parTotal)}</span>
+                      · Raw: {fp(side?.rawTotal)} total / {fp(side?.rawStarted)} started
+                    </div>
+
+                    {#each (side?.players || []) as p}
+                      <div class="player-block">
+                        <!-- Player outcome -->
+                        <div class="player-name-row">
+                          <span class="pos-tag">{p.position}</span>
+                          <strong>{p.name}</strong>
+                          <span class="{parClass(p.par)}">{fp(p.par)} PAR</span>
+                        </div>
+                        <div class="player-stats">
+                          {fp(p.totalPts)} total / {fp(p.startedPts)} started · {p.weeksStarted}/{p.weeks} wks ({(p.startedPct * 100).toFixed(0)}% start rate)
+                        </div>
+
+                        <!-- Baseline calculation -->
+                        <div class="baseline-section">
+                          <div class="baseline-header">📊 Baseline</div>
+                          <div class="baseline-row">
+                            <span class="bl-label">Compared against:</span>
+                            <strong>{p.marginalPlayerName}</strong>
+                            {#if p.marginalRank}
+                              <span class="rank-tag">#{p.marginalRank} of {p.dedicatedSlots} dedicated {p.position} starter(s)</span>
+                            {/if}
+                            <span class="source-tag">{p.baselineSource}</span>
+                          </div>
+                          {#if p.allPlayersPreTrade?.length > 0}
+                            <div class="pre-trade-roster">
+                              <span class="bl-label">Pre-trade {p.position} roster ({p.weeksBeforeTrade} wks of data):</span>
+                              {#each p.allPlayersPreTrade as player, i}
+                                <span class="roster-player {i === (p.marginalRank - 1) ? 'is-marginal' : ''}">
+                                  {i === (p.marginalRank - 1) ? '★ ' : ''}{player.name} ({fp(player.pts)} pts)
+                                </span>
+                              {/each}
+                            </div>
+                          {:else if p.weeksBeforeTrade === 0}
+                            <div class="baseline-row"><span class="bl-note">Week 1 trade — no pre-trade data, using league replacement</span></div>
+                          {/if}
+                          <div class="baseline-row">
+                            <span class="bl-label">Baseline total (actual points, same weeks):</span>
+                            <strong>{fp(p.baselineTotal)} pts</strong>
+                          </div>
+                          <div class="baseline-row formula">
+                            PAR: {fp(p.totalPts)} acquired − {fp(p.baselineTotal)} baseline = <strong class="{parClass(p.par)}">{fp(p.par)}</strong>
+                          </div>
+                        </div>
+
+                        <!-- Week-by-week table -->
+                        {#if p.weekBreakdown?.length > 0}
+                          <div class="week-breakdown">
+                            <div class="bl-label">Week-by-week (acquired vs marginal player):</div>
+                            <table class="week-table">
+                              <thead>
+                                <tr>
+                                  <th>Wk</th>
+                                  <th>{p.name.split(' ')[0]}</th>
+                                  <th>Started?</th>
+                                  <th>{p.marginalPlayerName.split(' ')[0]}</th>
+                                  <th>PAR</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {#each p.weekBreakdown as row}
+                                  <tr>
+                                    <td>{row.week}</td>
+                                    <td>{fp(row.acquiredPts)}</td>
+                                    <td>{row.acquiredStarted > 0 ? '✓' : '—'}</td>
+                                    <td>{fp(row.marginalPts)}</td>
+                                    <td class="{parClass(row.weekPAR)}">{fp(row.weekPAR)}</td>
+                                  </tr>
+                                {/each}
+                                <tr class="totals-row">
+                                  <td>Total</td>
+                                  <td>{fp(p.totalPts)}</td>
+                                  <td>—</td>
+                                  <td>{fp(p.baselineTotal)}</td>
+                                  <td class="{parClass(p.par)}">{fp(p.par)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        {:else}
+                          <div class="baseline-row"><span class="bl-note">⚠ No hold weeks found — player may not appear in playerResults for this roster/season</span></div>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/each}
+              </div>
+
+              {#if g.narrative?.flags?.length > 0}
+                <div class="flags">
+                  {#each g.narrative.flags as flag}
+                    <span class="flag flag-{flag.type}">
+                      {flag.type === 'injury-suspected' ? '🚑' : '📋'} {flag.type}: {flag.name}
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+
+            {:else if tx.type === 'waiver' && g}
+              <p class="narrative-text">{g.gradeSummary}</p>
+
+              <div class="waiver-layout">
+                <!-- Pickup info -->
+                <div class="waiver-section">
+                  <div class="section-label">📥 Pickup</div>
+                  <div class="player-name-row">
+                    <span class="pos-tag">{g.position}</span>
+                    <strong>{g.name}</strong>
+                    <span class="waiver-grade-badge grade-{g.gradeLabel}">{waiverGradeEmoji(g.gradeLabel)} {g.gradeLabel}</span>
+                  </div>
+                  <div class="player-stats">
+                    {fp(g.totalPts)} total / {fp(g.startedPts)} started · {g.weeksStarted}/{g.weeks} wks
+                    {#if g.isStream}<span class="stream-tag">stream</span>{/if}
+                  </div>
+                  {#if g.droppedName}
+                    <div class="dropped-row">Dropped: {g.droppedName}</div>
+                  {/if}
+                </div>
+
+                <!-- Replacement info -->
+                <div class="waiver-section">
+                  <div class="section-label">📊 Replacement Level</div>
+                  <div class="player-name-row">
+                    <span class="pos-tag">{g.position}</span>
+                    <strong>{g.replacementPlayerName}</strong>
+                    <span class="rank-tag">Nth best {g.position} across league</span>
+                  </div>
+                  <div class="player-stats">
+                    Full-season total (context): {fp(g.replacementSeasonPts)} pts
+                  </div>
+                  <div class="player-stats">
+                    During your hold weeks: <strong>{fp(g.replacementActualPts)} pts</strong>
+                  </div>
+                </div>
+
+                <!-- PAR -->
+                <div class="waiver-section">
+                  <div class="section-label">🎯 Result</div>
+                  <div class="formula">
+                    {fp(g.totalPts)} pickup − {fp(g.replacementActualPts)} replacement =
+                    <strong class="{parClass(g.par)}">{fp(g.par)} PAR</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Week-by-week -->
+              {#if g.weekBreakdown?.length > 0}
+                <div class="week-breakdown">
+                  <div class="bl-label">Week-by-week (pickup vs replacement player):</div>
+                  <table class="week-table">
+                    <thead>
+                      <tr>
+                        <th>Wk</th>
+                        <th>{g.name.split(' ')[0]}</th>
+                        <th>Started?</th>
+                        <th>{g.replacementPlayerName.split(' ')[0]}</th>
+                        <th>PAR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each g.weekBreakdown as row}
+                        <tr>
+                          <td>{row.week}</td>
+                          <td>{fp(row.pickupPts)}</td>
+                          <td>{row.pickupStarted > 0 ? '✓' : '—'}</td>
+                          <td>{fp(row.replacementPts)}</td>
+                          <td class="{parClass(row.weekPAR)}">{fp(row.weekPAR)}</td>
+                        </tr>
+                      {/each}
+                      <tr class="totals-row">
+                        <td>Total</td>
+                        <td>{fp(g.totalPts)}</td>
+                        <td>—</td>
+                        <td>{fp(g.replacementActualPts)}</td>
+                        <td class="{parClass(g.par)}">{fp(g.par)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              {:else}
+                <div class="baseline-row"><span class="bl-note">⚠ No hold weeks found in playerResults — check data completeness for this season</span></div>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/each}
+
+    <div class="control-row" style="margin-top:1rem;">
+      <button on:click={() => (showTransactionDebug = !showTransactionDebug)}>
+        {showTransactionDebug ? 'Hide' : 'Show'} Debug Logs
+      </button>
     </div>
-    {#if showRawStandings}<pre class="raw-json">{JSON.stringify(standings, null, 2)}</pre>{/if}
-    {#if showRawBrackets}<pre class="raw-json">{JSON.stringify({ winnersBracket: rawWinnersBracket, losersBracket: rawLosersBracket }, null, 2)}</pre>{/if}
-
-    {#if debugLogs.length > 0}
+    {#if showTransactionDebug && transactionDebug.length > 0}
       <div class="debug-terminal">
-        <h4>System Trace Logs</h4>
-        <ul>{#each debugLogs as log}<li><code>{log}</code></li>{/each}</ul>
+        <h4>Debug Logs</h4>
+        <ul>{#each transactionDebug as log}<li><code>{log}</code></li>{/each}</ul>
       </div>
     {/if}
-
   {/if}
 </main>
 
 <style>
-  .container { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, -apple-system, sans-serif; }
+  .container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, -apple-system, sans-serif; }
   .control-row { margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
   select, button { padding: 0.5rem 1rem; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; }
   button { cursor: pointer; background: #f5f5f5; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .link-btn { background: none; border: none; color: #2563eb; cursor: pointer; padding: 0; font-size: 0.9rem; text-decoration: underline; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
-  .manager-tag { font-size: 0.8em; color: #888; }
+  .count-badge { background: #e5e7eb; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.8rem; color: #555; margin-left: 0.5rem; font-weight: normal; }
 
-  /* Podiums */
-  .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
-  .podium-card { padding: 1.5rem; border-radius: 8px; border-left: 6px solid #ccc; background: #fcfcfc; box-shadow: 0 2px 4px rgba(0,0,0,.05); margin-bottom: 1.5rem; }
-  .podium-card.gold    { border-left-color: #ffd700; background: #fffdf3; }
-  .podium-card.poop    { border-left-color: #8b5a2b; background: #fbf7f3; }
-  .podium-card.rivalry { border-left-color: #4a90d9; background: #f3f8fd; }
-  .podium-card p { margin: 0.3rem 0; }
-  .meta-title { font-size: 1.4rem; font-weight: 700; color: #222; }
-  .meta-sub   { font-size: 0.95rem; color: #666; margin-top: 0.25rem; }
-  .meta-empty { color: #999; font-style: italic; margin-bottom: 1rem; }
+  /* Validation guide */
+  .guide-toggle { margin-bottom: 0.5rem; }
+  .validation-guide { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem; font-size: 0.88rem; }
+  .validation-guide h4 { margin: 0.75rem 0 0.25rem; color: #0369a1; }
+  .validation-guide h4:first-child { margin-top: 0; }
+  .validation-guide ul { margin: 0 0 0.5rem; padding-left: 1.5rem; }
+  .validation-guide li { margin-bottom: 0.3rem; }
+  .validation-guide p { margin: 0.25rem 0; }
 
-  /* Data table */
+  /* Tables */
   .data-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; font-size: 0.9rem; }
   .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: center; }
   .data-table th { background: #f5f5f5; }
   .data-table td:first-child, .data-table th:first-child { text-align: left; }
-  .subhead th { background: #ececec; font-weight: 600; }
-
-  /* Trade cards (rivalry section) */
-  .trade-card { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
-  .trade-header { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; background: #f9f9f9; border-bottom: 1px solid #eee; }
-  .trade-date { font-size: 0.85em; color: #666; }
-  .trade-narrative { margin: 0.5rem 1rem; font-style: italic; color: #444; font-size: 0.9em; }
-  .trade-sides, .composite-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 1rem; }
-  .trade-side { padding: 0.75rem; border-radius: 6px; background: #f5f5f5; border: 2px solid transparent; }
-  .trade-side.winner { background: #f0fff4; border-color: #34d399; }
-  .side-manager { font-weight: 700; margin-bottom: 0.35rem; }
-  .side-totals  { font-size: 0.85em; color: #555; margin-bottom: 0.5rem; }
 
   /* Transaction cards */
   .tx-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
@@ -871,64 +554,86 @@
   .tx-card.composite { border-left: 4px solid #7c3aed; }
   .tx-summary { padding: 0.75rem 1rem; cursor: pointer; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; background: #fafafa; }
   .tx-summary:hover { background: #f0f0f0; }
-  .tx-meta    { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .tx-managers { font-size: 0.9em; color: #444; flex: 1; min-width: 150px; }
-  .tx-grade   { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .par-summary { font-size: 0.85em; color: #555; }
+  .tx-meta    { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+  .tx-managers { font-size: 0.88em; color: #444; flex: 1; min-width: 120px; }
+  .par-summary { font-size: 0.83em; color: #555; }
   .expand-toggle { margin-left: auto; color: #888; font-size: 0.8em; flex-shrink: 0; }
-  .tx-detail  { padding: 0.75rem 1rem 1rem; border-top: 1px solid #eee; }
-  .narrative-text { font-style: italic; color: #444; margin: 0 0 0.75rem; font-size: 0.9em; }
+  .tx-detail  { padding: 1rem; border-top: 1px solid #eee; }
+  .narrative-text { font-style: italic; color: #444; margin: 0 0 1rem; font-size: 0.9em; background: #f9f9f9; padding: 0.5rem 0.75rem; border-radius: 4px; }
 
   /* Badges */
-  .tx-type-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; font-weight: 700; text-transform: uppercase; }
+  .tx-type-badge { padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.73em; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
   .tx-type-badge.trade     { background: #dbeafe; color: #1d4ed8; }
   .tx-type-badge.waiver    { background: #dcfce7; color: #15803d; }
   .tx-type-badge.composite { background: #ede9fe; color: #6d28d9; }
-  .tx-date, .tx-season { font-size: 0.82em; color: #666; }
-  .composite-badge   { background: #ede9fe; color: #6d28d9; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; }
-  .draft-pick-badge  { background: #fef3c7; color: #92400e; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75em; }
-  .trade-grade-badge, .waiver-grade-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; text-transform: capitalize; }
+  .tx-info   { font-size: 0.82em; color: #666; }
+  .seq-badge { font-size: 0.72em; background: #f3f4f6; color: #888; padding: 0.1rem 0.35rem; border-radius: 3px; }
+  .pick-badge { background: #fef3c7; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75em; }
+  .stream-tag { background: #e0f2fe; color: #0369a1; padding: 0 0.3rem; border-radius: 3px; font-size: 0.78em; margin-left: 0.25rem; }
+  .rank-tag { background: #e0f2fe; color: #0369a1; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78em; }
+  .source-tag { background: #f3f4f6; color: #6b7280; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.75em; font-style: italic; }
+  .trade-grade-badge, .waiver-grade-badge { padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.8em; font-weight: 700; text-transform: capitalize; }
 
   /* Grade colors */
-  .grade-lopsided { background: #fef2f2; color: #dc2626; }
-  .grade-clear    { background: #f0fdf4; color: #16a34a; }
-  .grade-close    { background: #fffbeb; color: #d97706; }
-  .grade-even     { background: #f3f4f6; color: #6b7280; }
-  .grade-elite    { background: #fef3c7; color: #92400e; }
-  .grade-strong   { background: #d1fae5; color: #065f46; }
-  .grade-solid    { background: #e0f2fe; color: #0369a1; }
-  .grade-neutral  { background: #f3f4f6; color: #6b7280; }
-  .grade-poor     { background: #fef2f2; color: #dc2626; }
+  .grade-lopsided  { background: #fef2f2; color: #dc2626; }
+  .grade-clear     { background: #f0fdf4; color: #16a34a; }
+  .grade-close     { background: #fffbeb; color: #d97706; }
+  .grade-even      { background: #f3f4f6; color: #6b7280; }
+  .grade-elite     { background: #fef3c7; color: #92400e; }
+  .grade-strong    { background: #d1fae5; color: #065f46; }
+  .grade-solid     { background: #e0f2fe; color: #0369a1; }
+  .grade-breakeven { background: #f3f4f6; color: #6b7280; }
+  .grade-poor      { background: #fef2f2; color: #dc2626; }
 
-  /* Player rows */
-  .player-row { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.85em; margin-top: 0.3rem; flex-wrap: wrap; }
-  .player-row.dropped { opacity: 0.5; }
-  .player-pos-tag { background: #e5e7eb; border-radius: 3px; padding: 0 0.3rem; font-size: 0.75em; font-weight: 700; flex-shrink: 0; }
-  .player-name { font-weight: 600; }
-  .player-stat-detail { color: #666; font-size: 0.85em; }
+  /* Trade layout */
+  .trade-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+  .trade-side { padding: 0.75rem; border-radius: 6px; background: #f8f8f8; border: 2px solid transparent; }
+  .trade-side.winner { background: #f0fff4; border-color: #34d399; }
+  .side-header { font-weight: 700; margin-bottom: 0.4rem; font-size: 0.95em; }
+  .side-par { font-size: 0.88em; color: #555; margin-bottom: 0.75rem; }
 
-  /* Tags */
-  .baseline-tag { background: #ddd6fe; color: #5b21b6; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.2rem; }
-  .marginal-tag { background: #e0f2fe; color: #0369a1; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.2rem; }
-  .stream-tag   { background: #e0f2fe; color: #0369a1; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.2rem; }
+  /* Player blocks */
+  .player-block { background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem; }
+  .player-name-row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.3rem; }
+  .pos-tag { background: #e5e7eb; border-radius: 3px; padding: 0.1rem 0.35rem; font-size: 0.75em; font-weight: 700; }
+  .player-stats { font-size: 0.83em; color: #555; margin-bottom: 0.4rem; }
+  .dropped-row { font-size: 0.83em; color: #999; margin-top: 0.25rem; }
 
-  /* Waiver detail */
-  .waiver-detail { margin-top: 0.5rem; }
-  .missed-options { margin-top: 0.5rem; font-size: 0.82em; color: #666; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
-  .missed-label   { font-weight: 600; color: #444; }
-  .missed-player  { background: #fef3c7; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 3px; }
+  /* Baseline section */
+  .baseline-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 0.6rem 0.75rem; margin: 0.4rem 0; font-size: 0.83em; }
+  .baseline-header { font-weight: 700; color: #475569; margin-bottom: 0.35rem; }
+  .baseline-row { display: flex; gap: 0.4rem; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.2rem; }
+  .bl-label { color: #64748b; flex-shrink: 0; }
+  .bl-note { color: #f59e0b; font-style: italic; }
+  .formula { font-family: monospace; font-size: 0.9em; background: #f1f5f9; padding: 0.3rem 0.5rem; border-radius: 3px; margin-top: 0.25rem; }
 
-  /* Flags */
+  /* Pre-trade roster */
+  .pre-trade-roster { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; margin: 0.3rem 0; }
+  .roster-player { background: #f1f5f9; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.82em; }
+  .roster-player.is-marginal { background: #fef3c7; color: #92400e; font-weight: 700; }
+
+  /* Week table */
+  .week-breakdown { margin-top: 0.5rem; }
+  .week-table { width: 100%; border-collapse: collapse; font-size: 0.82em; margin-top: 0.25rem; }
+  .week-table th, .week-table td { border: 1px solid #e5e7eb; padding: 0.25rem 0.4rem; text-align: center; }
+  .week-table th { background: #f1f5f9; font-weight: 600; }
+  .week-table .totals-row td { background: #f8fafc; font-weight: 700; }
+
+  /* Waiver layout */
+  .waiver-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+  .waiver-section { background: #f8f8f8; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem; }
+  .section-label { font-weight: 700; color: #475569; font-size: 0.85em; margin-bottom: 0.4rem; }
+
+  /* Misc */
+  .positive { color: #16a34a; font-weight: 700; }
+  .negative { color: #dc2626; font-weight: 700; }
   .flags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
-  .flag  { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8em; }
+  .flag { padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.8em; }
   .flag-injury-suspected { background: #fff7ed; color: #c2410c; }
   .flag-underutilized    { background: #faf5ff; color: #7e22ce; }
   .constituent-note { font-size: 0.75em; color: #aaa; margin-top: 0.5rem; }
-
-  /* JSON / debug */
-  .raw-json { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; margin-bottom: 1rem; max-height: 400px; }
-  .debug-terminal { background: #1e1e1e; color: #00ff00; padding: 1rem; border-radius: 6px; font-family: monospace; margin-top: 1rem; margin-bottom: 2rem; }
-  .debug-terminal h4 { margin: 0 0 0.5rem 0; color: #fff; }
+  .debug-terminal { background: #1e1e1e; color: #00ff00; padding: 1rem; border-radius: 6px; font-family: monospace; margin-top: 1rem; font-size: 0.82em; }
+  .debug-terminal h4 { margin: 0 0 0.5rem; color: #fff; }
   .debug-terminal ul  { margin: 0; padding-left: 1.2rem; }
-  .debug-terminal li  { margin-bottom: 0.25rem; }
+  .debug-terminal li  { margin-bottom: 0.2rem; }
 </style>
