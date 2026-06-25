@@ -170,30 +170,29 @@ debug.push(`Player database: ${Object.keys(allPlayersData).length} players.`);
 const parTablesBySeason = {};
 for (const output of seasonOutputs) {
   const yearStr = String(output.year);
-  const seasonPlayerResults = allPlayerResults.filter((pr) => String(pr.year) === yearStr);
-  const parTables = buildSeasonPARTables(seasonPlayerResults, allPlayersData, output.numTeams);
+  const seasonPlayerResults = allPlayerResults.filter(
+    (pr) => String(pr.year) === yearStr
+  );
+
+  const parTables = buildSeasonPARTables(
+    seasonPlayerResults,
+    allPlayersData,
+    output.numTeams
+  );
+
   parTablesBySeason[yearStr] = parTables;
   debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
 }
 
-    const parTables = buildSeasonPARTables(
-      seasonPlayerResults,
-      allPlayersData,
-      output.numTeams
-    );
-    parTablesBySeason[yearStr] = parTables;
-    debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
-  }
-
-  return {
-    seasons:          seasonOutputs,
-    weeklyResults:    allWeeklyResults,
-    playerResults:    allPlayerResults,
-    managers,
-    parTablesBySeason,
-    allPlayersData,
-    debug
-  };
+return {
+  seasons: seasonOutputs,
+  weeklyResults: allWeeklyResults,
+  playerResults: allPlayerResults,
+  managers,
+  parTablesBySeason,
+  allPlayersData,
+  debug
+};
 }
 
 /**
