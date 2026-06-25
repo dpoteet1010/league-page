@@ -7,6 +7,7 @@ import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
 import { getAllPlayers } from './allPlayers.js';
 import { buildSeasonPARTables } from './parGrading.js';
+import { getSeasonStatTotals } from './allPlayerSeasonStats.js';
 
 function resolveYear(currentLeagueID, allMetadata) {
   let year = allMetadata?.[currentLeagueID]?.season;
@@ -46,11 +47,6 @@ export async function getAllSeasons() {
     });
 }
 
-/**
- * Runs the full engine across every season and combines results.
- * Re-keys everything from roster_id to manager user_id for cross-season merging.
- * Builds PAR tables per season using fixed dedicated slots (FLEX excluded).
- */
 export async function getAllSeasonsHistory() {
   const debug = [];
   const seasons = await getAllSeasons();
@@ -96,13 +92,11 @@ export async function getAllSeasonsHistory() {
     );
     debug.push(...result.debug.map((line) => `[${year}] ${line}`));
 
-    // Build roster → managerId map for this season
     const rosterToManagerId = {};
     Object.entries(managersForYear).forEach(([rosterId, info]) => {
       rosterToManagerId[rosterId] = info.managerId;
     });
 
-    // Combine weekly results re-keyed by manager ID
     result.weeklyResults.forEach((row) => {
       const managerId         = rosterToManagerId[row.rosterId];
       const opponentManagerId = rosterToManagerId[row.opponentRosterId];
@@ -113,14 +107,12 @@ export async function getAllSeasonsHistory() {
       allWeeklyResults.push({ ...row, year: resolvedYear, managerId, opponentManagerId });
     });
 
-    // Combine player results re-keyed by manager ID
     result.playerResults.forEach((pr) => {
       const managerId = rosterToManagerId[pr.rosterId];
       if (managerId == null) return;
       allPlayerResults.push({ ...pr, managerId, year: resolvedYear });
     });
 
-    // Accumulate per-manager career data
     result.standings.forEach((team) => {
       const managerId = rosterToManagerId[team.rosterId];
       if (managerId == null) return;
@@ -143,10 +135,12 @@ export async function getAllSeasonsHistory() {
       });
     });
 
+    // Store season output — keep scoring_settings from allMetadata for PAR below
     seasonOutputs.push({
-      year:      resolvedYear,
-      leagueId:  id,
-      numTeams:  numRosters,
+      year:            resolvedYear,
+      leagueId:        id,
+      numTeams:        numRosters,
+      scoringSettings: allMetadata?.[id]?.scoring_settings || null,
       ...result
     });
   }
@@ -156,31 +150,54 @@ export async function getAllSeasonsHistory() {
     `${allPlayerResults.length} player-week rows across ${seasonOutputs.length} seasons.`
   );
 
-  // ── Build PAR tables per season ──────────────────────────────────────────
-  // Uses fixed dedicated slots (QB×1 RB×2 WR×2 TE×1 K×1 DEF×1).
-  // FLEX excluded from all replacement calculations.
+  // ── Player name database ──────────────────────────────────────────────────
   const allPlayersData = await getAllPlayers().catch((err) => {
-    debug.push(`getAllPlayers failed — PAR grading will be unavailable: ${err.message}`);
+    debug.push(`getAllPlayers failed: ${err.message}`);
     return {};
   });
   debug.push(`Player database: ${Object.keys(allPlayersData).length} players.`);
 
+  // ── Scoring settings ──────────────────────────────────────────────────────
+  // Use the most recently available scoring settings for all seasons.
+  // The user confirmed scoring hasn't changed between seasons (only FLEX
+  // was added in 2024, which we ignore for PAR). Iterating newest→oldest
+  // to find the first season that has real Sleeper scoring_settings.
+  let sharedScoringSettings = null;
+  for (const output of [...seasonOutputs].reverse()) {
+    if (output.scoringSettings && Object.keys(output.scoringSettings).length > 0) {
+      sharedScoringSettings = output.scoringSettings;
+      debug.push(`Using scoring settings from ${output.year} season for all PAR calculations.`);
+      break;
+    }
+  }
+
+  if (!sharedScoringSettings) {
+    debug.push('Warning: no scoring_settings found in league data — PAR calculations may not match league scoring exactly. Check that getLeagueData returns scoring_settings for the live season.');
+  }
+
+  // ── Build PAR tables per season ───────────────────────────────────────────
+  // Uses Sleeper stats API to get COMPLETE season totals for all players
+  // (including free agents), then ranks by position to find replacement level.
   const parTablesBySeason = {};
 
   for (const output of seasonOutputs) {
     const yearStr = String(output.year);
 
-    // Filter playerResults to this season only
-    const seasonPlayerResults = allPlayerResults.filter(
-      (pr) => String(pr.year) === yearStr
-    );
+    debug.push(`[PAR ${yearStr}] Fetching season stats from Sleeper stats API...`);
 
-    const parTables = buildSeasonPARTables(
-      seasonPlayerResults,
-      allPlayersData,
-      output.numTeams
-    );
+    const seasonStatTotals = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
+      debug.push(`[PAR ${yearStr}] getSeasonStatTotals failed: ${err.message} — PAR table will be empty for this season.`);
+      return {};
+    });
 
+    const playerCount = Object.keys(seasonStatTotals).length;
+    debug.push(`[PAR ${yearStr}] Received stats for ${playerCount} players.`);
+
+    if (playerCount === 0) {
+      debug.push(`[PAR ${yearStr}] Warning: no player stats returned — PAR grades for this season will be missing.`);
+    }
+
+    const parTables = buildSeasonPARTables(seasonStatTotals, allPlayersData, output.numTeams);
     parTablesBySeason[yearStr] = parTables;
     debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
   }
@@ -196,9 +213,6 @@ export async function getAllSeasonsHistory() {
   };
 }
 
-/**
- * Historical head-to-head record between two managers across all seasons.
- */
 export function getRivalry(allWeeklyResults, managerIdA, managerIdB) {
   const games = allWeeklyResults
     .filter((r) => r.managerId === managerIdA && r.opponentManagerId === managerIdB)
@@ -236,9 +250,6 @@ export function getRivalry(allWeeklyResults, managerIdA, managerIdB) {
   };
 }
 
-/**
- * Career totals per manager, summed across all seasons.
- */
 export function getAllTimeTotals(managers) {
   return Object.values(managers).map((manager) => {
     const allTime = {
