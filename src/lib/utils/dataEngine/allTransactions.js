@@ -114,11 +114,10 @@ const digestTransaction = ({ transaction, currentSeason }) => {
 
   const digestedTransaction = {
     id: transaction.transaction_id,
-    date, timestamp, season, leg, seq,
+    date, timestamp, season, leg,
     type: transaction.type === 'trade' ? 'trade' : 'waiver',
     rosters: transactionRosters,
     moves: [],
-    claimedEarlierThisWeek: []
   };
 
   if (season !== currentSeason) digestedTransaction.previousOwners = true;
@@ -341,20 +340,6 @@ function detectAndMergeCompositeTrades(transactions, playerResults = []) {
 
   return { composites, compositeTradeIds };
 }
-
-/**
- * FIX #7: tag each waiver with which players were claimed by earlier waivers
- * in the same week. Sorts by settings.seq (sequence number) — the official
- * Sleeper waiver processing order. Lower seq = processed first.
- */
-function addClaimedEarlierContext(transactions) {
-  const waivers = transactions.filter((tx) => tx.type === 'waiver');
-  const groups = {};
-  waivers.forEach((tx) => {
-    const key = `${tx.seasonKey}-${tx.leg}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(tx);
-  });
 
   Object.values(groups).forEach((group) => {
     // Sort by seq ascending — seq is the official Sleeper processing order.
