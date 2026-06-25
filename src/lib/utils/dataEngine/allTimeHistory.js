@@ -6,7 +6,7 @@ import { getSpecificYearMatchups } from './allMatchups.js';
 import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
 import { getAllPlayers } from './allPlayers.js';
-import { buildSeasonPARTables, getLeagueRosterPositions } from './parGrading.js';
+import { buildSeasonPARTables} from './parGrading.js';
 
 const DEFAULT_ROSTER_POSITIONS = [
   'QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF',
@@ -150,9 +150,6 @@ export async function getAllSeasonsHistory() {
       // Use hardcoded legacy settings for 2023/2024 since those seasons
       // predate Sleeper and won't have roster_positions in allMetadata.
       // 2025+ pulls from the Sleeper API directly.
-      rosterPositions: getLeagueRosterPositions(resolvedYear) ||
-                 allMetadata?.[id]?.settings?.roster_positions ||
-                 DEFAULT_ROSTER_POSITIONS,
       numTeams:         numRosters,
       ...result
     });
@@ -163,27 +160,25 @@ export async function getAllSeasonsHistory() {
     `${allPlayerResults.length} player-week rows across ${seasonOutputs.length} seasons.`
   );
 
-  // ── Build PAR tables per season ──────────────────────────────────────────
-  // Fetch player data once — it's the same across all seasons since we're
-  // just using it for position lookup.
-  const allPlayersData = await getAllPlayers().catch((err) => {
-    debug.push(`getAllPlayers failed — PAR grading will be limited: ${err.message}`);
-    return {};
-  });
-  debug.push(`Player database loaded: ${Object.keys(allPlayersData).length} players.`);
+// ── Build PAR tables per season ──────────────────────────────────────────
+const allPlayersData = await getAllPlayers().catch((err) => {
+  debug.push(`getAllPlayers failed: ${err.message}`);
+  return {};
+});
+debug.push(`Player database: ${Object.keys(allPlayersData).length} players.`);
 
-  const parTablesBySeason = {};
-  for (const output of seasonOutputs) {
-    const yearStr = String(output.year);
-    // Filter playerResults to this season only — PAR tables are per-season
-    const seasonPlayerResults = allPlayerResults.filter(
-      (pr) => String(pr.year) === yearStr
-    );
+const parTablesBySeason = {};
+for (const output of seasonOutputs) {
+  const yearStr = String(output.year);
+  const seasonPlayerResults = allPlayerResults.filter((pr) => String(pr.year) === yearStr);
+  const parTables = buildSeasonPARTables(seasonPlayerResults, allPlayersData, output.numTeams);
+  parTablesBySeason[yearStr] = parTables;
+  debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
+}
 
     const parTables = buildSeasonPARTables(
       seasonPlayerResults,
       allPlayersData,
-      output.rosterPositions,
       output.numTeams
     );
     parTablesBySeason[yearStr] = parTables;
