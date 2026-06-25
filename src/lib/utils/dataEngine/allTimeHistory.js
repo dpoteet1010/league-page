@@ -9,7 +9,7 @@ import { getAllPlayers } from './allPlayers.js';
 import { buildSeasonPARTables} from './parGrading.js';
 
 const DEFAULT_ROSTER_POSITIONS = [
-  'QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF',
+  'QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF',
   'BN', 'BN', 'BN', 'BN', 'BN', 'BN'
 ];
 
