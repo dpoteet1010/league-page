@@ -1,23 +1,39 @@
 // draftAnalysis.js
 //
-// Two independent draft grading analyses:
+// Two draft grading modes:
 //
-// 1. PRE-SEASON GRADE (gradeDraftPreSeason)
-//    Evaluates pick value based on positional scarcity within the draft itself.
-//    No external ADP data needed — uses the actual draft as its own baseline.
-//    "Good value" = got a player at a position earlier than when the average
-//    player at that position was taken by other teams.
+// PRE-SEASON (gradeDraftPreSeason):
+//   Grades based on positional scarcity within the draft itself.
+//   "Did you get this position's player earlier than average?"
+//   No external data needed.
 //
-// 2. END-OF-SEASON GRADE (gradeDraftEndOfSeason)
-//    Evaluates how each pick actually performed. Uses actual season points
-//    from the Sleeper stats API, builds an expected-points curve by pick
-//    position, then measures each pick's actual production vs expectation.
-//    Steals = late pick, high production.
-//    Busts  = early pick, low production.
+// END-OF-SEASON (gradeDraftEndOfSeason):
+//   Builds an expected-points curve via optimal draft simulation,
+//   then measures each pick's actual production against it.
+//
+// OPTIMAL DRAFT SIMULATION:
+//   Mimics how people actually draft using a phase-based approach:
+//   - Rounds 1-2:  Only RB/WR (positional scarcity drives early picks)
+//   - Rounds 3-5:  Adds QB and TE (elite options go here)
+//   - Rounds 6+:   All skill positions (RB/WR/TE/QB)
+//   - Last 2 rds:  Adds K and DEF
+//
+//   Each pick takes the best available player at eligible positions,
+//   respecting per-team roster caps so no team stockpiles one position.
+//   The resulting pick→expectedPts mapping is the baseline for PAR.
+//
+// INJURY FLAGS:
+//   Picks are flagged when gamesPlayed < 8 (roughly half the season).
+//   PAR still reflects full underperformance — injury is a context note,
+//   not an excuse. Teams survive bad draft picks through trades/waivers.
 
-const POSITIONS_OF_INTEREST = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
 
-function normalizePos(position, playerId) {
+// Minimum games played before flagging as injury-affected
+const INJURY_GAMES_THRESHOLD         = 8;   // < 8 = flagged
+const INJURY_GAMES_MAJOR_THRESHOLD   = 4;   // < 4 = major injury
+
+export function normalizePos(position, playerId) {
   if (!position) {
     if (playerId && String(playerId).length <= 3 && /^[A-Z]+$/.test(String(playerId))) return 'DEF';
     return null;
@@ -36,24 +52,190 @@ function fp(val, d = 1) {
   return typeof val === 'number' ? Number(val.toFixed(d)) : null;
 }
 
-// ── Shared helpers ─────────────────────────────────────────────────────────
-
-/**
- * Assigns a pick value score using a smooth curve.
- * Pick 1 = ~100, final pick ≈ 0. Uses square-root decay so mid-round
- * picks retain meaningful value rather than collapsing linearly.
- */
 function pickValueScore(pickNo, totalPicks) {
   if (!totalPicks || totalPicks <= 1) return 0;
   const normalized = (totalPicks - pickNo) / (totalPicks - 1);
   return Math.round(Math.sqrt(normalized) * 100 * 10) / 10;
 }
 
+// ── Optimal draft simulation ───────────────────────────────────────────────
+
 /**
- * Groups picks by position and calculates the average pick number
- * at which each position was taken across the entire draft.
- * Used as the "market ADP" for pre-season value calculations.
+ * Determines which positions are eligible at a given pick number.
+ *
+ * Phase rules (realistic draft behavior):
+ *   Rounds 1-2:  RB and WR only — managers prioritize positional scarcity
+ *   Rounds 3-5:  Add QB and TE — elite options (Kelce, Mahomes) go here
+ *   Round 6+:    All skill positions
+ *   Last 2 rds:  Add K and DEF
+ *
+ * Additionally respects per-team roster caps — a team won't draft a
+ * 3rd QB if they only need 2, keeping the simulation realistic.
  */
+function getEligiblePositions(round, totalRounds, teamNeeds) {
+  const isLastTwoRounds = round >= totalRounds - 2;
+
+  let eligible = [];
+
+  if (round < 2) {
+    // Rounds 1-2: RB/WR only
+    eligible = ['RB', 'WR'];
+  } else if (round < 5) {
+    // Rounds 3-5: skill positions (no K/DEF)
+    eligible = ['RB', 'WR', 'TE', 'QB'];
+  } else {
+    // Round 6+: all skill positions
+    eligible = ['RB', 'WR', 'TE', 'QB'];
+  }
+
+  if (isLastTwoRounds) {
+    eligible = [...eligible, 'K', 'DEF'];
+  }
+
+  // Filter to positions the team still needs (has remaining capacity)
+  const stillNeeded = eligible.filter((pos) => (teamNeeds[pos] || 0) > 0);
+
+  // If all filtered positions are filled, open up everything remaining
+  if (stillNeeded.length === 0) {
+    return POSITIONS.filter((pos) => (teamNeeds[pos] || 0) > 0);
+  }
+
+  return stillNeeded;
+}
+
+/**
+ * Simulates an optimal snake draft and returns the expected-points curve.
+ *
+ * @param {Object} seasonStatTotals - { [playerId]: totalPts }
+ * @param {Object} allPlayersData   - full player info map
+ * @param {number} numTeams
+ * @param {number} rounds
+ * @param {Object} leagueSettings   - { QB, RB, WR, TE, FLEX, K, DEF, BN }
+ * @returns {Object} { [pickNo]: expectedPts }
+ */
+export function simulateOptimalDraft(seasonStatTotals, allPlayersData, numTeams, rounds, leagueSettings) {
+  const debug = [];
+  const totalPicks = numTeams * rounds;
+
+  // Per-team roster caps: how many of each position can one team draft?
+  // Starters + bench approximation: 2× starters for skill, 1 for K/DEF
+  // FLEX adds capacity to RB/WR/TE
+  const flexSlots = leagueSettings?.FLEX || 1;
+  const bnSlots   = leagueSettings?.BN   || 6;
+
+  const rosterCap = {
+    QB:  (leagueSettings?.QB  || 1) + Math.min(2, Math.floor(bnSlots / 4)),
+    RB:  (leagueSettings?.RB  || 2) + Math.ceil(flexSlots / 2) + Math.floor(bnSlots / 3),
+    WR:  (leagueSettings?.WR  || 2) + Math.ceil(flexSlots / 2) + Math.floor(bnSlots / 3),
+    TE:  (leagueSettings?.TE  || 1) + 1,
+    K:   leagueSettings?.K    || 1,
+    DEF: leagueSettings?.DEF  || 1
+  };
+
+  debug.push(`Roster caps per team: ${JSON.stringify(rosterCap)}`);
+
+  // Build sorted player pool per position
+  const poolByPosition = {};
+  POSITIONS.forEach((pos) => { poolByPosition[pos] = []; });
+
+  Object.entries(seasonStatTotals || {}).forEach(([playerId, pts]) => {
+    if (!pts || pts <= 0) return;
+    const pos = normalizePos(allPlayersData[playerId]?.position, playerId);
+    if (!pos || !poolByPosition[pos]) return;
+    const info = allPlayersData[playerId];
+    poolByPosition[pos].push({
+      playerId,
+      pts,
+      name: info?.full_name || `Player ${playerId}`
+    });
+  });
+
+  POSITIONS.forEach((pos) => {
+    poolByPosition[pos].sort((a, b) => b.pts - a.pts);
+  });
+
+  // Track next available index per position
+  const posIdx = {};
+  POSITIONS.forEach((pos) => { posIdx[pos] = 0; });
+
+  // Initialize teams with roster needs
+  const teams = Array.from({ length: numTeams }, () => {
+    const needs = {};
+    POSITIONS.forEach((pos) => { needs[pos] = rosterCap[pos] || 0; });
+    return { needs };
+  });
+
+  // Simulate snake draft
+  const expectedCurve = {};
+  const simulationLog = [];
+
+  for (let round = 0; round < rounds; round++) {
+    // Snake: even rounds go forward, odd rounds go backward
+    const isReverse = round % 2 === 1;
+    const pickOrder = Array.from({ length: numTeams }, (_, i) =>
+      isReverse ? numTeams - 1 - i : i
+    );
+
+    for (const teamIdx of pickOrder) {
+      const pickNo = round * numTeams + (isReverse ? numTeams - teamIdx : teamIdx + 1);
+      const team   = teams[teamIdx];
+
+      const eligible = getEligiblePositions(round, rounds, team.needs);
+
+      // Find best available player across eligible positions
+      let bestPts   = -1;
+      let bestPos   = null;
+      let bestEntry = null;
+
+      eligible.forEach((pos) => {
+        const idx   = posIdx[pos] || 0;
+        const entry = poolByPosition[pos]?.[idx];
+        if (entry && entry.pts > bestPts) {
+          bestPts   = entry.pts;
+          bestPos   = pos;
+          bestEntry = entry;
+        }
+      });
+
+      if (bestPos && bestEntry) {
+        expectedCurve[pickNo] = bestPts;
+        posIdx[bestPos]++;
+        team.needs[bestPos] = Math.max(0, (team.needs[bestPos] || 0) - 1);
+
+        if (pickNo <= 36 || pickNo > totalPicks - 24) {
+          simulationLog.push(`Pick ${pickNo} (Rd${round+1}): ${bestEntry.name} (${bestPos}) — ${fp(bestPts)} pts`);
+        }
+      } else {
+        // No eligible player — fallback: take anything available
+        let fallbackPts = 0;
+        let fallbackPos = null;
+        POSITIONS.forEach((pos) => {
+          if ((team.needs[pos] || 0) <= 0) return;
+          const entry = poolByPosition[pos]?.[posIdx[pos] || 0];
+          if (entry && entry.pts > fallbackPts) {
+            fallbackPts = entry.pts;
+            fallbackPos = pos;
+          }
+        });
+        if (fallbackPos) {
+          expectedCurve[pickNo] = fallbackPts;
+          posIdx[fallbackPos]++;
+          team.needs[fallbackPos] = Math.max(0, (team.needs[fallbackPos] || 0) - 1);
+        } else {
+          expectedCurve[pickNo] = 0;
+        }
+      }
+    }
+  }
+
+  debug.push(...simulationLog);
+  debug.push(`Simulation complete. Expected pts at pick 1: ${fp(expectedCurve[1])}, pick 12: ${fp(expectedCurve[12])}, pick 13: ${fp(expectedCurve[13])}, pick 36: ${fp(expectedCurve[36])}`);
+
+  return { expectedCurve, debug };
+}
+
+// ── Pre-season grade (unchanged) ───────────────────────────────────────────
+
 function buildPositionalADP(picks) {
   const groups = {};
   picks.forEach((pick) => {
@@ -67,123 +249,71 @@ function buildPositionalADP(picks) {
   Object.entries(groups).forEach(([pos, pickNums]) => {
     pickNums.sort((a, b) => a - b);
     adp[pos] = {
-      count:   pickNums.length,
+      count:  pickNums.length,
       avgPick: pickNums.reduce((s, v) => s + v, 0) / pickNums.length,
-      // Per-slot ADP: what pick number was the Nth player at this position taken?
-      bySlot:  pickNums // sorted ascending
+      bySlot: pickNums
     };
   });
   return adp;
 }
 
-// ── Pre-season grade ───────────────────────────────────────────────────────
-
-/**
- * Grades a draft before the season starts using positional scarcity.
- *
- * For each pick:
- *   positional rank = rank among all players drafted at that position
- *   average pick for this positional rank = positionalADP.bySlot[rank - 1]
- *   value = averagePickForThisRank - actualPickNo
- *     positive → got this player earlier than avg (good value / steal)
- *     negative → waited longer than avg (late pick / reach)
- *
- * Team scores are summed pick values weighted by positional importance
- * (earlier positional picks matter more).
- *
- * @param {Object} draft   - normalized draft object from getAllDrafts()
- * @returns {Object} pre-season grade with per-team and per-pick breakdowns
- */
 export function gradeDraftPreSeason(draft) {
   if (!draft?.picks?.length) return null;
 
   const { picks, numTeams, rounds } = draft;
-  const totalPicks = numTeams * rounds;
+  const totalPicks    = numTeams * rounds;
   const positionalADP = buildPositionalADP(picks);
-
-  // Track per-position pick rank as we process (how many of this position picked so far)
   const positionalPickCount = {};
 
-  // Assign pick-level value scores
   const gradedPicks = picks
     .slice()
     .sort((a, b) => a.pickNo - b.pickNo)
     .map((pick) => {
       const pos = normalizePos(pick.position, pick.playerId);
-
       if (!positionalPickCount[pos]) positionalPickCount[pos] = 0;
       positionalPickCount[pos]++;
 
-      const positionalRank = positionalPickCount[pos]; // 1-based
-      const adpForPos      = positionalADP[pos];
-      const avgPickAtRank  = adpForPos?.bySlot?.[positionalRank - 1] ?? pick.pickNo;
-      const pickValue      = pickValueScore(pick.pickNo, totalPicks);
-
-      // Value vs market: how many picks earlier/later than the typical
-      // player taken at this positional rank
-      const vsMarket = avgPickAtRank - pick.pickNo;
+      const positionalRank  = positionalPickCount[pos];
+      const adpForPos       = positionalADP[pos];
+      const avgPickAtRank   = adpForPos?.bySlot?.[positionalRank - 1] ?? pick.pickNo;
+      const pickValue       = pickValueScore(pick.pickNo, totalPicks);
+      const vsMarket        = avgPickAtRank - pick.pickNo;
 
       return {
-        ...pick,
-        positionalRank,
-        pos,
-        pickValue,
-        vsMarket: fp(vsMarket),
+        ...pick, pos, positionalRank, pickValue,
+        vsMarket:     fp(vsMarket),
         avgPickAtRank: fp(avgPickAtRank),
-        valueLabel: vsMarket > 15
-          ? 'steal'
-          : vsMarket > 5
-            ? 'value'
-            : vsMarket < -15
-              ? 'reach'
-              : vsMarket < -5
-                ? 'slight reach'
-                : 'fair'
+        valueLabel: vsMarket > 15 ? 'steal'
+                  : vsMarket > 5  ? 'value'
+                  : vsMarket < -15 ? 'reach'
+                  : vsMarket < -5  ? 'slight reach'
+                  : 'fair'
       };
     });
 
-  // Group by roster
   const byRoster = {};
   gradedPicks.forEach((pick) => {
     const r = pick.rosterId;
     if (!byRoster[r]) {
       byRoster[r] = {
-        rosterId:   r,
-        managerId:  pick.managerId,
-        picks:      [],
-        totalPickValue: 0,
-        vsMarketSum:    0,
-        steals:    [],
-        reaches:   []
+        rosterId: r, managerId: pick.managerId,
+        picks: [], totalPickValue: 0, vsMarketSum: 0,
+        steals: [], reaches: []
       };
     }
     byRoster[r].picks.push(pick);
     byRoster[r].totalPickValue += pick.pickValue;
     byRoster[r].vsMarketSum    += pick.vsMarket || 0;
-
-    if (pick.valueLabel === 'steal')       byRoster[r].steals.push(pick);
-    if (pick.valueLabel === 'reach')       byRoster[r].reaches.push(pick);
-    if (pick.valueLabel === 'slight reach') byRoster[r].reaches.push(pick);
+    if (pick.valueLabel === 'steal')        byRoster[r].steals.push(pick);
+    if (pick.valueLabel.includes('reach'))  byRoster[r].reaches.push(pick);
   });
 
-  // Positional summary per team: when did they draft each position?
   Object.values(byRoster).forEach((team) => {
-    const positional = {};
-    team.picks.forEach((pick) => {
-      const pos = pick.pos;
-      if (!positional[pos]) positional[pos] = [];
-      positional[pos].push({ round: pick.round, pickNo: pick.pickNo, playerName: pick.playerName });
-    });
-    team.positionalSummary = positional;
-
-    // Best and worst value picks for this team
-    const sorted = [...team.picks].sort((a, b) => (b.vsMarket || 0) - (a.vsMarket || 0));
-    team.bestValuePick  = sorted[0]   || null;
+    const sorted        = [...team.picks].sort((a, b) => (b.vsMarket || 0) - (a.vsMarket || 0));
+    team.bestValuePick  = sorted[0] || null;
     team.worstValuePick = sorted[sorted.length - 1] || null;
-
-    // Overall grade label
-    const avgVsMarket = team.picks.length > 0 ? team.vsMarketSum / team.picks.length : 0;
-    team.avgVsMarket = fp(avgVsMarket);
+    const avgVsMarket   = team.picks.length > 0 ? team.vsMarketSum / team.picks.length : 0;
+    team.avgVsMarket    = fp(avgVsMarket);
     team.grade = avgVsMarket > 8  ? 'A'
                : avgVsMarket > 3  ? 'B'
                : avgVsMarket > -3 ? 'C'
@@ -191,19 +321,11 @@ export function gradeDraftPreSeason(draft) {
                : 'F';
   });
 
-  // League-wide pick value rankings
-  const teamRankings = Object.values(byRoster)
-    .sort((a, b) => b.vsMarketSum - a.vsMarketSum);
-
   return {
-    year:            draft.year,
-    draftType:       draft.draftType,
-    totalPicks,
-    positionalADP,
-    gradedPicks,
-    byRoster,
-    teamRankings,
-    leagueTopSteals: [...gradedPicks].sort((a, b) => (b.vsMarket || 0) - (a.vsMarket || 0)).slice(0, 5),
+    year: draft.year, draftType: draft.draftType, totalPicks,
+    positionalADP, gradedPicks, byRoster,
+    teamRankings: Object.values(byRoster).sort((a, b) => b.vsMarketSum - a.vsMarketSum),
+    leagueTopSteals:  [...gradedPicks].sort((a, b) => (b.vsMarket || 0) - (a.vsMarket || 0)).slice(0, 5),
     leagueTopReaches: [...gradedPicks].sort((a, b) => (a.vsMarket || 0) - (b.vsMarket || 0)).slice(0, 5)
   };
 }
@@ -211,114 +333,81 @@ export function gradeDraftPreSeason(draft) {
 // ── End-of-season grade ────────────────────────────────────────────────────
 
 /**
- * Builds the expected points curve by pick position.
+ * Grades a draft against actual season performance using optimal simulation PAR.
  *
- * Takes all drafted players with actual season stats and fits a curve:
- *   expectedPts(pickNo) = smooth trend of actual points by pick number
+ * For each picked player:
+ *   expectedPts = what the optimal simulation produced at that pick slot
+ *   actualPts   = their real season total from the Sleeper stats API
+ *   PAR         = actualPts − expectedPts
  *
- * Implementation: buckets picks into groups of ~6, averages actual points
- * per bucket, then interpolates. Simple and doesn't require curve-fitting math.
+ * Injury flags are added as context but don't change the PAR calculation.
+ *
+ * @param {Object} draft            - from getAllDrafts()
+ * @param {Object} seasonStatTotals - { [playerId]: totalPts }
+ * @param {Object} gamesPlayed      - { [playerId]: weeksWithStats }
+ * @param {Object} allPlayersData   - full player info map
  */
-function buildExpectedPointsCurve(gradedPicksWithActuals, totalPicks) {
-  const bucketSize = Math.max(6, Math.floor(totalPicks / 20));
-  const buckets = {};
-
-  gradedPicksWithActuals.forEach(({ pickNo, actualPts }) => {
-    if (actualPts == null) return;
-    const bucket = Math.floor((pickNo - 1) / bucketSize);
-    if (!buckets[bucket]) buckets[bucket] = [];
-    buckets[bucket].push(actualPts);
-  });
-
-  const curve = {};
-  Object.entries(buckets).forEach(([bucket, vals]) => {
-    const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
-    const startPick = parseInt(bucket) * bucketSize + 1;
-    const endPick   = startPick + bucketSize - 1;
-    for (let p = startPick; p <= Math.min(endPick, totalPicks); p++) {
-      curve[p] = avg;
-    }
-  });
-
-  // Fill any gaps with nearest neighbor
-  for (let p = 1; p <= totalPicks; p++) {
-    if (curve[p] == null) {
-      let nearest = null;
-      let nearestDist = Infinity;
-      Object.keys(curve).forEach((k) => {
-        const dist = Math.abs(parseInt(k) - p);
-        if (dist < nearestDist) { nearest = curve[k]; nearestDist = dist; }
-      });
-      curve[p] = nearest || 0;
-    }
-  }
-
-  return curve;
-}
-
-/**
- * Grades a completed draft against actual season performance.
- *
- * For each drafted player:
- *   actualPts   = their total season points from getSeasonStatTotals()
- *   expectedPts = the smooth expected-points curve at their pick number
- *   PAR         = actualPts - expectedPts
- *     positive → outperformed their draft slot (steal)
- *     negative → underperformed their draft slot (bust)
- *
- * @param {Object} draft           - normalized draft object
- * @param {Object} seasonStatTotals - { [playerId]: totalPts } from getSeasonStatTotals()
- * @param {Object} allPlayersData   - from getAllPlayers()
- * @returns {Object} end-of-season grade with per-team and per-pick breakdowns
- */
-export function gradeDraftEndOfSeason(draft, seasonStatTotals, allPlayersData) {
+export function gradeDraftEndOfSeason(draft, seasonStatTotals, gamesPlayed, allPlayersData) {
   if (!draft?.picks?.length || !seasonStatTotals) return null;
 
-  const { picks, numTeams, rounds } = draft;
+  const { picks, numTeams, rounds, leagueSettings } = draft;
   const totalPicks = numTeams * rounds;
 
-  // Attach actual points to each pick
-  const picksWithActuals = picks.map((pick) => {
-    const actualPts = seasonStatTotals[pick.playerId] ?? null;
-    return { ...pick, actualPts, pos: normalizePos(pick.position, pick.playerId) };
-  });
-
-  // Build expected points curve from this draft's actual outcomes
-  const expectedCurve = buildExpectedPointsCurve(picksWithActuals, totalPicks);
+  // Build the optimal draft expected-points curve
+  const { expectedCurve, debug: simDebug } = simulateOptimalDraft(
+    seasonStatTotals,
+    allPlayersData,
+    numTeams,
+    rounds,
+    leagueSettings
+  );
 
   // Grade each pick
-  const gradedPicks = picksWithActuals.map((pick) => {
+  const gradedPicks = picks.map((pick) => {
+    const pos         = normalizePos(pick.position, pick.playerId);
+    const actualPts   = seasonStatTotals[pick.playerId] ?? null;
     const expectedPts = expectedCurve[pick.pickNo] ?? 0;
-    const actualPts   = pick.actualPts ?? 0;
-    const par         = actualPts - expectedPts;
+    const par         = actualPts != null ? actualPts - expectedPts : null;
     const pickValue   = pickValueScore(pick.pickNo, totalPicks);
 
+    // Injury detection
+    const games          = gamesPlayed?.[pick.playerId] ?? null;
+    const isMajorInjury  = games != null && games < INJURY_GAMES_MAJOR_THRESHOLD;
+    const isInjury       = games != null && games < INJURY_GAMES_THRESHOLD;
+    const injuryFlag     = isMajorInjury ? 'major-injury'
+                         : isInjury      ? 'injury'
+                         : null;
+
+    // Value label based on PAR
     let valueLabel;
-    if (pick.actualPts == null) {
+    if (actualPts == null) {
       valueLabel = 'no data';
-    } else if (par > 60) {
+    } else if (par > 80) {
       valueLabel = 'elite steal';
-    } else if (par > 25) {
+    } else if (par > 35) {
       valueLabel = 'steal';
-    } else if (par > 5) {
+    } else if (par > 10) {
       valueLabel = 'value';
-    } else if (par < -60) {
-      valueLabel = 'major bust';
-    } else if (par < -25) {
-      valueLabel = 'bust';
-    } else if (par < -5) {
-      valueLabel = 'slight bust';
-    } else {
+    } else if (par > -10) {
       valueLabel = 'as expected';
+    } else if (par > -35) {
+      valueLabel = 'slight bust';
+    } else if (par > -80) {
+      valueLabel = 'bust';
+    } else {
+      valueLabel = 'major bust';
     }
 
     return {
       ...pick,
-      actualPts: fp(actualPts),
-      expectedPts: fp(expectedPts),
-      par: fp(par),
+      pos,
+      actualPts:    fp(actualPts),
+      expectedPts:  fp(expectedPts),
+      par:          fp(par),
       pickValue,
-      valueLabel
+      valueLabel,
+      injuryFlag,
+      gamesPlayed:  games
     };
   });
 
@@ -328,21 +417,21 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, allPlayersData) {
     const r = pick.rosterId;
     if (!byRoster[r]) {
       byRoster[r] = {
-        rosterId:  r,
-        managerId: pick.managerId,
-        picks:     [],
+        rosterId: r, managerId: pick.managerId,
+        picks: [],
         totalActualPts:   0,
         totalExpectedPts: 0,
-        totalPAR:  0,
-        steals:    [],
-        busts:     []
+        totalPAR:         0,
+        steals:  [],
+        busts:   [],
+        injured: []
       };
     }
 
     byRoster[r].picks.push(pick);
-    byRoster[r].totalActualPts   += pick.actualPts   || 0;
-    byRoster[r].totalExpectedPts += pick.expectedPts || 0;
-    byRoster[r].totalPAR         += pick.par         || 0;
+    if (pick.actualPts   != null) byRoster[r].totalActualPts   += pick.actualPts;
+    if (pick.expectedPts != null) byRoster[r].totalExpectedPts += pick.expectedPts;
+    if (pick.par         != null) byRoster[r].totalPAR         += pick.par;
 
     if (pick.valueLabel === 'steal' || pick.valueLabel === 'elite steal') {
       byRoster[r].steals.push(pick);
@@ -350,22 +439,20 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, allPlayersData) {
     if (pick.valueLabel === 'bust' || pick.valueLabel === 'major bust') {
       byRoster[r].busts.push(pick);
     }
+    if (pick.injuryFlag) {
+      byRoster[r].injured.push(pick);
+    }
   });
 
   Object.values(byRoster).forEach((team) => {
-    // Round 1 picks only for headline grade (most impactful)
-    const round1 = team.picks.filter((p) => p.round === 1);
-    const round1PAR = round1.reduce((s, p) => s + (p.par || 0), 0);
-
-    // Best/worst picks by PAR
     const sorted = [...team.picks]
-      .filter((p) => p.actualPts != null)
+      .filter((p) => p.par != null)
       .sort((a, b) => (b.par || 0) - (a.par || 0));
 
-    team.bestPick  = sorted[0]   || null;
-    team.worstPick = sorted[sorted.length - 1] || null;
+    team.bestPick  = sorted[0]                       || null;
+    team.worstPick = sorted[sorted.length - 1]        || null;
 
-    // Positional breakdown: how many pts did each position contribute
+    // Positional breakdown
     const positional = {};
     team.picks.forEach((pick) => {
       const pos = pick.pos;
@@ -376,13 +463,26 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, allPlayersData) {
     });
     team.positionalBreakdown = positional;
 
+    // Round-by-round PAR breakdown
+    const byRound = {};
+    team.picks.forEach((pick) => {
+      if (!byRound[pick.round]) byRound[pick.round] = { picks: 0, totalPAR: 0 };
+      byRound[pick.round].picks  += 1;
+      byRound[pick.round].totalPAR += pick.par || 0;
+    });
+    team.byRound = byRound;
+
+    // Injury-adjusted PAR (what PAR would be without injured players)
+    const injuredPAR = team.injured.reduce((s, p) => s + (p.par || 0), 0);
+    team.injuryAdjustedPAR = fp(team.totalPAR - injuredPAR);
+
     // Overall grade
-    const totalPAR = team.totalPAR;
-    team.grade = totalPAR > 200 ? 'A+'
-               : totalPAR > 100 ? 'A'
-               : totalPAR > 40  ? 'B'
-               : totalPAR > -40 ? 'C'
-               : totalPAR > -100 ? 'D'
+    const par = team.totalPAR;
+    team.grade = par > 250 ? 'A+'
+               : par > 125 ? 'A'
+               : par > 50  ? 'B'
+               : par > -50 ? 'C'
+               : par > -125 ? 'D'
                : 'F';
 
     team.totalActualPts   = fp(team.totalActualPts);
@@ -390,23 +490,18 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, allPlayersData) {
     team.totalPAR         = fp(team.totalPAR);
   });
 
-  const teamRankings = Object.values(byRoster)
-    .sort((a, b) => (b.totalPAR || 0) - (a.totalPAR || 0));
+  const teamRankings = Object.values(byRoster).sort((a, b) => (b.totalPAR || 0) - (a.totalPAR || 0));
 
   return {
-    year:       draft.year,
-    draftType:  draft.draftType,
-    totalPicks,
-    expectedCurve,
-    gradedPicks,
-    byRoster,
-    teamRankings,
+    year: draft.year, draftType: draft.draftType, totalPicks,
+    expectedCurve, gradedPicks, byRoster, teamRankings,
+    simulationDebug: simDebug,
     leagueTopSteals: [...gradedPicks]
-      .filter((p) => p.actualPts != null)
+      .filter((p) => p.par != null)
       .sort((a, b) => (b.par || 0) - (a.par || 0))
       .slice(0, 10),
     leagueTopBusts: [...gradedPicks]
-      .filter((p) => p.actualPts != null)
+      .filter((p) => p.par != null)
       .sort((a, b) => (a.par || 0) - (b.par || 0))
       .slice(0, 10)
   };
