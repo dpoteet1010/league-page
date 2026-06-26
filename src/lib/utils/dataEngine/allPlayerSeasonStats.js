@@ -1,30 +1,26 @@
 // allPlayerSeasonStats.js
 //
-// Fetches complete season point totals for ALL NFL players using the
-// Sleeper weekly stats API. Unlike playerResults (which only captures
-// players while rostered), this includes every player regardless of
-// roster status — fixing the replacement level calculation for players
-// who spent time on waivers.
+// Fetches complete season point totals AND games-played counts for ALL
+// NFL players via the Sleeper weekly stats API. Using all players
+// (not just rostered ones) gives accurate replacement level rankings.
 //
-// Points are calculated using the league's actual scoring_settings so
-// the rankings match what happened in your league, not standard scoring.
+// Returns:
+//   totals:      { [playerId]: totalSeasonPts }
+//   gamesPlayed: { [playerId]: weeksWithStats }
+//
+// "gamesPlayed" = number of weeks the player appeared in the stats
+// API response. Players on IR or inactive typically don't appear.
+// Bye weeks are excluded for everyone, so max is ~16 not 17.
 
 const statsCache = {};
 
 /**
- * Fetches and totals fantasy points for every NFL player in a season.
- *
- * Fetches all 17 weeks from the Sleeper stats API and applies the league's
- * scoring_settings to each raw stat. Results are cached in memory so
- * switching seasons doesn't re-fetch.
- *
- * @param {string|number} year - NFL season year (e.g. 2025)
- * @param {Object} scoringSettings - league.scoring_settings from Sleeper API
- * @returns {Promise<Object>} { [playerId]: totalSeasonPts }
+ * @param {string|number} year
+ * @param {Object|null} scoringSettings - league.scoring_settings from Sleeper
+ * @returns {Promise<{ totals: Object, gamesPlayed: Object }>}
  */
 export async function getSeasonStatTotals(year, scoringSettings) {
   const yearStr = String(year);
-
   if (statsCache[yearStr]) return statsCache[yearStr];
 
   const weekPromises = [];
@@ -40,7 +36,9 @@ export async function getSeasonStatTotals(year, scoringSettings) {
   }
 
   const weeklyStatsArr = await Promise.all(weekPromises);
-  const playerTotals = {};
+
+  const playerTotals     = {};
+  const playerGamesPlayed = {};
 
   weeklyStatsArr.forEach((weekStats) => {
     if (!weekStats || typeof weekStats !== 'object') return;
@@ -48,8 +46,12 @@ export async function getSeasonStatTotals(year, scoringSettings) {
     Object.entries(weekStats).forEach(([playerId, stats]) => {
       if (!stats || typeof stats !== 'object') return;
 
-      let weekPts = 0;
+      // Count this week as a game played regardless of points
+      // (player appeared in API response = they had a stat line this week)
+      playerGamesPlayed[playerId] = (playerGamesPlayed[playerId] || 0) + 1;
 
+      // Calculate fantasy points using league scoring settings
+      let weekPts = 0;
       if (scoringSettings) {
         Object.entries(scoringSettings).forEach(([statKey, weight]) => {
           const statVal = stats[statKey];
@@ -60,12 +62,12 @@ export async function getSeasonStatTotals(year, scoringSettings) {
       }
 
       if (weekPts !== 0) {
-        if (!playerTotals[playerId]) playerTotals[playerId] = 0;
-        playerTotals[playerId] += weekPts;
+        playerTotals[playerId] = (playerTotals[playerId] || 0) + weekPts;
       }
     });
   });
 
-  statsCache[yearStr] = playerTotals;
-  return playerTotals;
+  const result = { totals: playerTotals, gamesPlayed: playerGamesPlayed };
+  statsCache[yearStr] = result;
+  return result;
 }
