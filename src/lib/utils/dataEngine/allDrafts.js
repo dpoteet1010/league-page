@@ -1,16 +1,8 @@
 // allDrafts.js
 //
 // Fetches and normalizes draft data across all seasons.
-// Handles legacy seasons (localDrafts.js + draftSummaries.js) and
-// live Sleeper API seasons. Returns a clean normalized format for
-// draftAnalysis.js to consume.
-//
-// Normalized pick format:
-// {
-//   playerId, playerName, position, team,
-//   round, pickNo, slot, rosterId, managerId,
-//   year, draftType
-// }
+// Stores leagueSettings (slot counts per position) from draft metadata
+// so draftAnalysis.js can simulate the optimal draft correctly.
 
 import { get } from 'svelte/store';
 import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
@@ -31,9 +23,6 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
   ]);
 }
 
-/**
- * Builds a rosterId → managerId map for a given year.
- */
 function getRosterToManagerMap(managersSnapshot, year) {
   const yearMap = managersSnapshot?.teamManagersMap?.[String(year)] || {};
   const out = {};
@@ -45,26 +34,43 @@ function getRosterToManagerMap(managersSnapshot, year) {
 }
 
 /**
- * Normalizes a raw pick object (from localDrafts or Sleeper API picks endpoint)
- * into our clean format.
+ * Extracts the league's roster slot settings from draft settings.
+ * Used by the optimal draft simulation to know roster construction.
  */
+function extractLeagueSettings(settings) {
+  return {
+    QB:   settings?.slots_qb   || 1,
+    RB:   settings?.slots_rb   || 2,
+    WR:   settings?.slots_wr   || 2,
+    TE:   settings?.slots_te   || 1,
+    FLEX: settings?.slots_flex || 1,
+    K:    settings?.slots_k    || 1,
+    DEF:  settings?.slots_def  || 1,
+    BN:   settings?.slots_bn   || 6,
+    rounds: settings?.rounds   || 16,
+    teams:  settings?.teams    || 12
+  };
+}
+
 function normalizePick(rawPick, slotToRosterId, rosterToManager, year, draftType, allPlayersData) {
-  const playerId   = String(rawPick.player_id || rawPick.metadata?.player_id || '');
-  const round      = rawPick.round;
-  const slot       = rawPick.draft_slot;
-  const pickNo     = rawPick.pick_no;
-  const rosterId   = String(slotToRosterId?.[String(slot)] || rawPick.roster_id || '');
-  const managerId  = rosterToManager?.[rosterId] ?? null;
+  const playerId  = String(rawPick.player_id || rawPick.metadata?.player_id || '');
+  const round     = rawPick.round;
+  const slot      = rawPick.draft_slot;
+  const pickNo    = rawPick.pick_no;
+  const rosterId  = String(slotToRosterId?.[String(slot)] || rawPick.roster_id || '');
+  const managerId = rosterToManager?.[rosterId] ?? null;
 
   const playerInfo = allPlayersData[playerId];
-  const playerName = playerInfo?.full_name ||
-    (playerInfo ? `${playerInfo.first_name || ''} ${playerInfo.last_name || ''}`.trim() : null) ||
-    rawPick.metadata?.first_name
-      ? `${rawPick.metadata.first_name} ${rawPick.metadata.last_name}`.trim()
-      : `Player ${playerId}`;
+  const meta       = rawPick.metadata || {};
 
-  const position = playerInfo?.position || rawPick.metadata?.position || null;
-  const team     = playerInfo?.team || rawPick.metadata?.team || null;
+  let playerName = playerInfo?.full_name;
+  if (!playerName && meta.first_name) {
+    playerName = `${meta.first_name} ${meta.last_name || ''}`.trim();
+  }
+  if (!playerName) playerName = `Player ${playerId}`;
+
+  const position = playerInfo?.position || meta.position || null;
+  const team     = playerInfo?.team     || meta.team     || null;
 
   return {
     playerId,
@@ -76,14 +82,11 @@ function normalizePick(rawPick, slotToRosterId, rosterToManager, year, draftType
     slot,
     rosterId,
     managerId,
-    year: Number(year),
+    year:      Number(year),
     draftType: draftType || 'snake'
   };
 }
 
-/**
- * Processes legacy seasons from localDrafts.js + draftSummaries.js.
- */
 function buildLegacyDrafts(allPlayersData, managersSnapshot) {
   const drafts = [];
   if (!Array.isArray(draftSummaries) || !Array.isArray(localDrafts)) return drafts;
@@ -96,32 +99,31 @@ function buildLegacyDrafts(allPlayersData, managersSnapshot) {
   }, {});
 
   for (const summary of draftSummaries) {
-    const year = parseInt(summary.season);
+    const year     = parseInt(summary.season);
     const rawPicks = groupedByYear[year];
     if (!rawPicks || rawPicks.length === 0) continue;
     if (!summary.slot_to_roster_id || !summary.settings?.rounds) continue;
 
     const rosterToManager = getRosterToManagerMap(managersSnapshot, year);
+    const leagueSettings  = extractLeagueSettings(summary.settings);
 
     const picks = rawPicks
       .map((raw) => normalizePick(
-        raw,
-        summary.slot_to_roster_id,
-        rosterToManager,
-        year,
-        summary.type,
-        allPlayersData
+        raw, summary.slot_to_roster_id, rosterToManager,
+        year, summary.type, allPlayersData
       ))
-      .filter((p) => p.playerId && p.round && p.pickNo);
+      .filter((p) => p.playerId && p.round && p.pickNo)
+      .sort((a, b) => a.pickNo - b.pickNo);
 
     if (picks.length === 0) continue;
 
     drafts.push({
       year,
-      draftId:       String(summary.draft_id),
-      draftType:     summary.type,
-      rounds:        summary.settings.rounds,
-      numTeams:      summary.settings.teams || 12,
+      draftId:        String(summary.draft_id),
+      draftType:      summary.type,
+      rounds:         summary.settings.rounds,
+      numTeams:       summary.settings.teams || 12,
+      leagueSettings,
       slotToRosterId: summary.slot_to_roster_id,
       rosterToManager,
       picks
@@ -131,13 +133,9 @@ function buildLegacyDrafts(allPlayersData, managersSnapshot) {
   return drafts;
 }
 
-/**
- * Fetches live Sleeper drafts for the current and previous seasons
- * by walking the previous_league_id chain.
- */
 async function buildLiveDrafts(allPlayersData, managersSnapshot) {
   const drafts = [];
-  let curSeason = mainLeagueID;
+  let curSeason  = mainLeagueID;
   let iterations = 0;
 
   while (curSeason && curSeason !== 0 && iterations < 10) {
@@ -164,26 +162,25 @@ async function buildLiveDrafts(allPlayersData, managersSnapshot) {
         const year    = parseInt(draftInfo.season);
 
         try {
-          const [picksRes] = await Promise.all([
-            fetchWithTimeout(`https://api.sleeper.app/v1/draft/${draftId}/picks`, { compress: true })
-          ]);
+          const picksRes = await fetchWithTimeout(
+            `https://api.sleeper.app/v1/draft/${draftId}/picks`,
+            { compress: true }
+          );
 
           if (!picksRes.ok) continue;
           const rawPicks = await picksRes.json();
           if (!Array.isArray(rawPicks)) continue;
 
           const rosterToManager = getRosterToManagerMap(managersSnapshot, year);
+          const leagueSettings  = extractLeagueSettings(draftInfo.settings);
 
           const picks = rawPicks
             .map((raw) => normalizePick(
-              raw,
-              draftInfo.slot_to_roster_id,
-              rosterToManager,
-              year,
-              draftInfo.type,
-              allPlayersData
+              raw, draftInfo.slot_to_roster_id, rosterToManager,
+              year, draftInfo.type, allPlayersData
             ))
-            .filter((p) => p.playerId && p.round && p.pickNo);
+            .filter((p) => p.playerId && p.round && p.pickNo)
+            .sort((a, b) => a.pickNo - b.pickNo);
 
           if (picks.length === 0) continue;
 
@@ -193,6 +190,7 @@ async function buildLiveDrafts(allPlayersData, managersSnapshot) {
             draftType:      draftInfo.type,
             rounds:         draftInfo.settings.rounds,
             numTeams:       draftInfo.settings.teams || 12,
+            leagueSettings,
             slotToRosterId: draftInfo.slot_to_roster_id,
             rosterToManager,
             picks
@@ -213,23 +211,15 @@ async function buildLiveDrafts(allPlayersData, managersSnapshot) {
   return drafts;
 }
 
-/**
- * Fetches and normalizes all draft data across every season.
- * Merges legacy and live drafts, deduplicates by year, and caches.
- *
- * @param {Object} allPlayersData - from getAllPlayers()
- * @returns {Promise<Array>} sorted newest-first array of draft objects
- */
 export async function getAllDrafts(allPlayersData = {}) {
   if (draftCache.drafts) return draftCache.drafts;
 
   const managersSnapshot = get(teamManagersStore) || {};
-  await getLeagueTeamManagers(); // ensure store is populated
+  await getLeagueTeamManagers();
 
   const legacyDrafts = buildLegacyDrafts(allPlayersData, managersSnapshot);
   const liveDrafts   = await buildLiveDrafts(allPlayersData, managersSnapshot);
 
-  // Merge, deduplicating by year (legacy takes precedence for its years)
   const legacyYears = new Set(legacyDrafts.map((d) => d.year));
   const merged = [
     ...legacyDrafts,
