@@ -36,7 +36,6 @@ function buildManagersForYear(managersSnapshot, year) {
 export async function getAllSeasons() {
   const managers = await getLeagueTeamManagers();
   const allMetadata = get(leagueDataStore) || {};
-
   return Object.keys(managers?.teamManagersMap || {})
     .sort((a, b) => Number(a) - Number(b))
     .map((year) => {
@@ -135,7 +134,6 @@ export async function getAllSeasonsHistory() {
       });
     });
 
-    // Store season output — keep scoring_settings from allMetadata for PAR below
     seasonOutputs.push({
       year:            resolvedYear,
       leagueId:        id,
@@ -158,44 +156,35 @@ export async function getAllSeasonsHistory() {
   debug.push(`Player database: ${Object.keys(allPlayersData).length} players.`);
 
   // ── Scoring settings ──────────────────────────────────────────────────────
-  // Use the most recently available scoring settings for all seasons.
-  // The user confirmed scoring hasn't changed between seasons (only FLEX
-  // was added in 2024, which we ignore for PAR). Iterating newest→oldest
-  // to find the first season that has real Sleeper scoring_settings.
   let sharedScoringSettings = null;
   for (const output of [...seasonOutputs].reverse()) {
     if (output.scoringSettings && Object.keys(output.scoringSettings).length > 0) {
       sharedScoringSettings = output.scoringSettings;
-      debug.push(`Using scoring settings from ${output.year} season for all PAR calculations.`);
+      debug.push(`Using scoring settings from ${output.year} for PAR calculations.`);
       break;
     }
   }
 
   if (!sharedScoringSettings) {
-    debug.push('Warning: no scoring_settings found in league data — PAR calculations may not match league scoring exactly. Check that getLeagueData returns scoring_settings for the live season.');
+    debug.push('Warning: no scoring_settings found — PAR may not match league scoring exactly.');
   }
 
   // ── Build PAR tables per season ───────────────────────────────────────────
-  // Uses Sleeper stats API to get COMPLETE season totals for all players
-  // (including free agents), then ranks by position to find replacement level.
-  const parTablesBySeason = {};
+  const parTablesBySeason  = {};
 
   for (const output of seasonOutputs) {
     const yearStr = String(output.year);
 
-    debug.push(`[PAR ${yearStr}] Fetching season stats from Sleeper stats API...`);
+    debug.push(`[PAR ${yearStr}] Fetching season stats...`);
 
-    const seasonStatTotals = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
-      debug.push(`[PAR ${yearStr}] getSeasonStatTotals failed: ${err.message} — PAR table will be empty for this season.`);
-      return {};
+    const statsResult = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
+      debug.push(`[PAR ${yearStr}] getSeasonStatTotals failed: ${err.message}`);
+      return { totals: {}, gamesPlayed: {} };
     });
 
+    const seasonStatTotals = statsResult.totals || {};
     const playerCount = Object.keys(seasonStatTotals).length;
     debug.push(`[PAR ${yearStr}] Received stats for ${playerCount} players.`);
-
-    if (playerCount === 0) {
-      debug.push(`[PAR ${yearStr}] Warning: no player stats returned — PAR grades for this season will be missing.`);
-    }
 
     const parTables = buildSeasonPARTables(seasonStatTotals, allPlayersData, output.numTeams);
     parTablesBySeason[yearStr] = parTables;
@@ -209,6 +198,7 @@ export async function getAllSeasonsHistory() {
     managers,
     parTablesBySeason,
     allPlayersData,
+    sharedScoringSettings,
     debug
   };
 }
