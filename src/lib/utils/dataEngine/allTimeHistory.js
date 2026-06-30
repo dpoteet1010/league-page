@@ -19,7 +19,7 @@ function buildManagersForYear(managersSnapshot, year) {
   const yearMap = managersSnapshot?.teamManagersMap?.[year] || {};
   const out = {};
   Object.entries(yearMap).forEach(([rosterId, teamInfo]) => {
-    const managerId = teamInfo?.managers?.[0] ?? null;
+    const managerId   = teamInfo?.managers?.[0] ?? null;
     const managerName = managerId != null
       ? (managersSnapshot.users?.[managerId]?.display_name || 'Unknown')
       : 'Unknown Manager';
@@ -34,7 +34,7 @@ function buildManagersForYear(managersSnapshot, year) {
 }
 
 export async function getAllSeasons() {
-  const managers = await getLeagueTeamManagers();
+  const managers   = await getLeagueTeamManagers();
   const allMetadata = get(leagueDataStore) || {};
   return Object.keys(managers?.teamManagersMap || {})
     .sort((a, b) => Number(a) - Number(b))
@@ -47,8 +47,8 @@ export async function getAllSeasons() {
 }
 
 export async function getAllSeasonsHistory() {
-  const debug = [];
-  const seasons = await getAllSeasons();
+  const debug            = [];
+  const seasons          = await getAllSeasons();
   const managersSnapshot = get(teamManagersStore) || {};
 
   const allWeeklyResults = [];
@@ -115,15 +115,13 @@ export async function getAllSeasonsHistory() {
     result.standings.forEach((team) => {
       const managerId = rosterToManagerId[team.rosterId];
       if (managerId == null) return;
-
       if (!managers[managerId]) {
         managers[managerId] = {
           managerId,
           displayName: managersSnapshot.users?.[managerId]?.display_name || 'Unknown',
-          seasons: []
+          seasons:     []
         };
       }
-
       managers[managerId].seasons.push({
         year:           resolvedYear,
         teamName:       team.name,
@@ -155,7 +153,7 @@ export async function getAllSeasonsHistory() {
   });
   debug.push(`Player database: ${Object.keys(allPlayersData).length} players.`);
 
-  // ── Scoring settings ──────────────────────────────────────────────────────
+  // ── Shared scoring settings ───────────────────────────────────────────────
   let sharedScoringSettings = null;
   for (const output of [...seasonOutputs].reverse()) {
     if (output.scoringSettings && Object.keys(output.scoringSettings).length > 0) {
@@ -169,34 +167,44 @@ export async function getAllSeasonsHistory() {
     debug.push('Warning: no scoring_settings found — PAR may not match league scoring exactly.');
   }
 
-  // ── Build PAR tables per season ───────────────────────────────────────────
-  const parTablesBySeason  = {};
+  // ── Fetch season stats + build PAR tables per season ─────────────────────
+  // allSeasonStats is stored and returned so draftBaselines.js can use it
+  // to compute round-by-round expected baselines from historical draft data.
+  const parTablesBySeason = {};
+  const allSeasonStats    = {};  // { [year]: { totals, gamesPlayed } }
 
   for (const output of seasonOutputs) {
     const yearStr = String(output.year);
 
-    debug.push(`[PAR ${yearStr}] Fetching season stats...`);
+    debug.push(`[Stats ${yearStr}] Fetching season stats from Sleeper API...`);
 
     const statsResult = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
-      debug.push(`[PAR ${yearStr}] getSeasonStatTotals failed: ${err.message}`);
+      debug.push(`[Stats ${yearStr}] getSeasonStatTotals failed: ${err.message}`);
       return { totals: {}, gamesPlayed: {} };
     });
 
-    const seasonStatTotals = statsResult.totals || {};
-    const playerCount = Object.keys(seasonStatTotals).length;
-    debug.push(`[PAR ${yearStr}] Received stats for ${playerCount} players.`);
+    // Store for draft baseline computation
+    allSeasonStats[yearStr] = statsResult;
 
-    const parTables = buildSeasonPARTables(seasonStatTotals, allPlayersData, output.numTeams);
+    const playerCount = Object.keys(statsResult.totals || {}).length;
+    debug.push(`[Stats ${yearStr}] ${playerCount} players with stats.`);
+
+    if (playerCount === 0) {
+      debug.push(`[Stats ${yearStr}] Warning: no stats returned — PAR grades for this season will be missing.`);
+    }
+
+    const parTables = buildSeasonPARTables(statsResult.totals, allPlayersData, output.numTeams);
     parTablesBySeason[yearStr] = parTables;
     debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
   }
 
   return {
-    seasons:          seasonOutputs,
-    weeklyResults:    allWeeklyResults,
-    playerResults:    allPlayerResults,
+    seasons:               seasonOutputs,
+    weeklyResults:         allWeeklyResults,
+    playerResults:         allPlayerResults,
     managers,
     parTablesBySeason,
+    allSeasonStats,          // ← new: used by computeRoundBaselines
     allPlayersData,
     sharedScoringSettings,
     debug
@@ -259,26 +267,21 @@ export function getAllTimeTotals(managers) {
       allTime.regularSeason.ties        += season.regularSeason.ties;
       allTime.regularSeason.fptsFor     += season.regularSeason.fptsFor;
       allTime.regularSeason.fptsAgainst += season.regularSeason.fptsAgainst;
-
-      allTime.playoffs.wins        += season.playoffs.wins;
-      allTime.playoffs.losses      += season.playoffs.losses;
-      allTime.playoffs.ties        += season.playoffs.ties;
-      allTime.playoffs.fptsFor     += season.playoffs.fptsFor;
-      allTime.playoffs.fptsAgainst += season.playoffs.fptsAgainst;
+      allTime.playoffs.wins             += season.playoffs.wins;
+      allTime.playoffs.losses           += season.playoffs.losses;
+      allTime.playoffs.ties             += season.playoffs.ties;
+      allTime.playoffs.fptsFor          += season.playoffs.fptsFor;
+      allTime.playoffs.fptsAgainst      += season.playoffs.fptsAgainst;
 
       if (season.finalPlacement === 1) allTime.championships += 1;
       if (
         season.finalPlacement != null &&
         season.numRosters &&
         season.finalPlacement === season.numRosters
-      ) {
-        allTime.lastPlaceFinishes += 1;
-      }
+      ) allTime.lastPlaceFinishes += 1;
 
       allTime.placements.push({
-        year:  season.year,
-        place: season.finalPlacement,
-        outOf: season.numRosters
+        year: season.year, place: season.finalPlacement, outOf: season.numRosters
       });
     });
 
