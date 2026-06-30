@@ -19,7 +19,7 @@
   let selectedDraft      = null;
   let preSeasonGrade     = null;
   let endOfSeasonGrade   = null;
-  let currentBaselines   = null;  // { baselines, raw, seasonYears, sampleSizes }
+  let currentBaselines   = null;
   let activeTab          = 'end';
 
   $: draftYearOptions = allDrafts.map((d) => d.year).sort((a, b) => b - a);
@@ -85,7 +85,6 @@
         allTimeHistory = await getAllSeasonsHistory();
         const years = Object.keys(allTimeHistory.parTablesBySeason || {});
         draftDebug.push(`Loaded ${years.length} seasons: ${years.join(', ')}`);
-        draftDebug.push(`allSeasonStats available for: ${Object.keys(allTimeHistory.allSeasonStats || {}).join(', ')}`);
       }
 
       draftDebug.push('Fetching draft data...');
@@ -114,39 +113,38 @@
 
     draftDebug.push(`--- Analyzing ${year} (${selectedDraft.picks.length} picks) ---`);
 
-    // Pre-season grade: positional scarcity, no external data needed
     preSeasonGrade = gradeDraftPreSeason(selectedDraft);
 
-    // End-of-season grade: needs stats + round baselines + PAR tables
     const parTables = allTimeHistory?.parTablesBySeason?.[String(year)];
     if (!parTables) {
       draftDebug.push(`No PAR tables for ${year} — end-of-season grade unavailable.`);
       return;
     }
 
-    // Compute round baselines from historical draft data + season stats
-    const allSeasonStats = allTimeHistory?.allSeasonStats || {};
-    draftDebug.push(`Computing round baselines for ${year}...`);
+    const allSeasonStats    = allTimeHistory?.allSeasonStats || {};
+    const parTablesBySeason = allTimeHistory?.parTablesBySeason || {};
+    const allPlayersData    = allTimeHistory?.allPlayersData || {};
 
-    currentBaselines = computeRoundBaselines(year, allDrafts, allSeasonStats);
+    draftDebug.push(`Computing round-based expected PAR for ${year}...`);
+
+    currentBaselines = computeRoundBaselines(
+      year, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData
+    );
 
     if (currentBaselines) {
-      draftDebug.push(`Baselines using seasons: ${currentBaselines.seasonYears.join(', ')}`);
-      Object.entries(currentBaselines.baselines)
+      draftDebug.push(`Expected PAR baselines using seasons: ${currentBaselines.seasonYears.join(', ')}`);
+      Object.entries(currentBaselines.expectedPAR)
         .sort(([a], [b]) => Number(a) - Number(b))
-        .forEach(([r, pts]) => {
+        .forEach(([r, val]) => {
           const raw = currentBaselines.raw[r];
           const n   = currentBaselines.sampleSizes[r];
-          draftDebug.push(
-            `  Round ${r}: ${pts.toFixed(1)} pts (raw avg: ${raw.toFixed(1)}, n=${n} picks)`
-          );
+          draftDebug.push(`  Round ${r}: expected PAR ${val.toFixed(1)} (raw: ${raw.toFixed(1)}, n=${n})`);
         });
     } else {
       draftDebug.push(`Could not compute round baselines for ${year}.`);
       return;
     }
 
-    // Fetch actual season stats for this year
     const scoringSettings = allTimeHistory?.sharedScoringSettings || null;
     draftDebug.push(`Fetching ${year} season stats...`);
 
@@ -165,7 +163,7 @@
       statsResult.gamesPlayed,
       currentBaselines,
       parTables,
-      allTimeHistory?.allPlayersData || {}
+      allPlayersData
     );
 
     if (endOfSeasonGrade) {
@@ -190,7 +188,7 @@
   </div>
 
   {#if loadingDrafts}
-    <div class="status-msg">Loading drafts and computing round baselines...</div>
+    <div class="status-msg">Loading drafts and computing adjusted PAR...</div>
 
   {:else if allDrafts.length > 0}
 
@@ -216,40 +214,38 @@
 
         <h3>{endOfSeasonGrade.year} — End-of-Season Draft Grade</h3>
         <div class="explainer">
-          <strong>PAR = actual season pts − round baseline pts.</strong>
-          Round baselines are the historical average points for picks in each round
-          (from {endOfSeasonGrade.baselineSeasons?.join(' + ')} season data), smoothed to
-          decrease each round. Zero PAR = performed exactly as historically expected for
-          that round. Positive = beat expectations. Negative = underperformed.
+          <strong>Adjusted PAR = Actual PAR − Expected PAR.</strong><br/>
+          Actual PAR = actual season pts − positional replacement level (accounts for scarcity).<br/>
+          Expected PAR = historical average Actual PAR for that round
+          (from {endOfSeasonGrade.baselineSeasons?.join(' + ')} season data, smoothed so later
+          rounds never exceed earlier rounds).<br/>
+          Adjusted PAR near 0 = performed as historically expected for that round + position.
           🤕 = injury-affected (under 8 games played).
         </div>
 
         <!-- ── Reference panels ────────────────────────────────────────────── -->
         <div class="ref-grid">
-
-          <!-- Round baselines -->
           <div class="ref-panel">
             <div class="ref-title">
-              📊 Round Baselines
-              <span class="ref-sub">(historical avg pts, based on {endOfSeasonGrade.baselineSeasons?.join('+')} seasons)</span>
+              📊 Expected PAR by Round
+              <span class="ref-sub">(historical avg actual PAR, {endOfSeasonGrade.baselineSeasons?.join('+')} seasons)</span>
             </div>
             <div class="baseline-pills">
-              {#each Object.entries(endOfSeasonGrade.roundBaselines || {}).sort(([a],[b]) => Number(a)-Number(b)) as [r, pts]}
+              {#each Object.entries(endOfSeasonGrade.expectedPARByRound || {}).sort(([a],[b]) => Number(a)-Number(b)) as [r, val]}
                 <div class="baseline-pill">
                   <span class="bl-round">R{r}</span>
-                  <span class="bl-pts">{fp(pts)}</span>
-                  <span class="bl-raw muted">raw: {fp(endOfSeasonGrade.rawBaselines?.[r])}</span>
+                  <span class="bl-pts">{signedFp(val)}</span>
+                  <span class="bl-raw muted">raw: {signedFp(endOfSeasonGrade.rawExpectedPAR?.[r])}</span>
                   <span class="bl-n muted">n={endOfSeasonGrade.sampleSizes?.[r]}</span>
                 </div>
               {/each}
             </div>
           </div>
 
-          <!-- Positional replacement levels (reference only, not used in PAR) -->
           <div class="ref-panel">
             <div class="ref-title">
-              🔄 Replacement Level (reference only)
-              <span class="ref-sub">used for trades/waivers PAR, shown here for context</span>
+              🔄 Replacement Levels (this season)
+              <span class="ref-sub">used to compute each pick's actual PAR</span>
             </div>
             <div class="rep-pills">
               {#each Object.entries(endOfSeasonGrade.replacementLevels || {}).sort(([a],[b]) => a.localeCompare(b)) as [pos, pts]}
@@ -269,7 +265,7 @@
           <thead>
             <tr>
               <th>Rank</th><th>Manager</th><th>Grade</th>
-              <th>Total PAR</th><th>Excl. Injuries</th>
+              <th>Adjusted PAR</th><th>Excl. Injuries</th>
               <th>Actual Pts</th><th>Injuries</th>
               <th>Best Pick</th><th>Worst Pick</th>
             </tr>
@@ -280,7 +276,7 @@
                 <td>#{idx + 1}</td>
                 <td><strong>{managerDisplayName(team.managerId)}</strong></td>
                 <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
-                <td class="{parClass(team.totalPAR)}">{signedFp(team.totalPAR)}</td>
+                <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
                 <td class="{parClass(team.injuryExcludedPAR)}">{signedFp(team.injuryExcludedPAR)}</td>
                 <td>{fp(team.totalActualPts)}</td>
                 <td>
@@ -293,7 +289,7 @@
                     {team.bestPick.playerName}
                     <span class="pos-tag">{team.bestPick.pos}</span>
                     R{team.bestPick.round}
-                    <span class="vl-tag vl-steal">{signedFp(team.bestPick.par)}</span>
+                    <span class="vl-tag vl-steal">{signedFp(team.bestPick.adjustedPAR)}</span>
                   {:else}—{/if}
                 </td>
                 <td>
@@ -302,7 +298,7 @@
                     <span class="pos-tag">{team.worstPick.pos}</span>
                     R{team.worstPick.round}
                     {injuryIcon(team.worstPick.injuryFlag)}
-                    <span class="vl-tag vl-bust">{signedFp(team.worstPick.par)}</span>
+                    <span class="vl-tag vl-bust">{signedFp(team.worstPick.adjustedPAR)}</span>
                   {:else}—{/if}
                 </td>
               </tr>
@@ -316,7 +312,7 @@
             <h4>🔥 Biggest Steals</h4>
             <table class="data-table">
               <thead>
-                <tr><th>Player</th><th>Pos</th><th>Rd</th><th>Pick</th><th>Actual</th><th>Baseline</th><th>PAR</th><th>Manager</th></tr>
+                <tr><th>Player</th><th>Pos</th><th>Rd</th><th>Pick</th><th>Actual</th><th>Actual PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr>
               </thead>
               <tbody>
                 {#each endOfSeasonGrade.leagueTopSteals as pick}
@@ -326,8 +322,9 @@
                     <td>{pick.round}</td>
                     <td>#{pick.pickNo}</td>
                     <td>{fp(pick.actualPts)}</td>
-                    <td class="muted">{fp(pick.roundBaseline)}</td>
-                    <td class="positive">{signedFp(pick.par)}</td>
+                    <td class="muted">{signedFp(pick.actualPAR)}</td>
+                    <td class="muted">{signedFp(pick.expectedPAR)}</td>
+                    <td class="positive">{signedFp(pick.adjustedPAR)}</td>
                     <td>{managerDisplayName(pick.managerId)}</td>
                   </tr>
                 {/each}
@@ -338,7 +335,7 @@
             <h4>💀 Biggest Busts</h4>
             <table class="data-table">
               <thead>
-                <tr><th>Player</th><th>Pos</th><th>Rd</th><th>Pick</th><th>Actual</th><th>Baseline</th><th>PAR</th><th>Inj</th><th>Manager</th></tr>
+                <tr><th>Player</th><th>Pos</th><th>Rd</th><th>Pick</th><th>Actual</th><th>Actual PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Inj</th><th>Manager</th></tr>
               </thead>
               <tbody>
                 {#each endOfSeasonGrade.leagueTopBusts as pick}
@@ -348,8 +345,9 @@
                     <td>{pick.round}</td>
                     <td>#{pick.pickNo}</td>
                     <td>{fp(pick.actualPts)}</td>
-                    <td class="muted">{fp(pick.roundBaseline)}</td>
-                    <td class="negative">{signedFp(pick.par)}</td>
+                    <td class="muted">{signedFp(pick.actualPAR)}</td>
+                    <td class="muted">{signedFp(pick.expectedPAR)}</td>
+                    <td class="negative">{signedFp(pick.adjustedPAR)}</td>
                     <td>{injuryIcon(pick.injuryFlag) || '—'}</td>
                     <td>{managerDisplayName(pick.managerId)}</td>
                   </tr>
@@ -367,32 +365,30 @@
               <span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span>
               <strong>{managerDisplayName(team.managerId)}</strong>
               <span class="header-stat">
-                Total PAR: <span class="{parClass(team.totalPAR)}">{signedFp(team.totalPAR)}</span>
+                Adjusted PAR: <span class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</span>
               </span>
               <span class="header-stat muted">
-                Actual: {fp(team.totalActualPts)} pts
+                Actual PAR: {signedFp(team.totalActualPAR)} · {fp(team.totalActualPts)} pts
               </span>
               {#if team.injured.length > 0}
                 <span class="header-stat muted">
                   🤕 {team.injured.length} injured ·
-                  excl. injuries: <span class="{parClass(team.injuryExcludedPAR)}">{signedFp(team.injuryExcludedPAR)}</span>
+                  excl: <span class="{parClass(team.injuryExcludedPAR)}">{signedFp(team.injuryExcludedPAR)}</span>
                 </span>
               {/if}
             </div>
 
-            <!-- Pick table: sorted by round then pickNo (Fix #1) -->
             <div class="table-scroll">
               <table class="data-table mini">
                 <thead>
                   <tr>
                     <th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th>
-                    <th>Actual Pts</th><th>Rd Baseline</th><th>PAR</th>
+                    <th>Actual Pts</th><th>Actual PAR</th><th>Exp PAR</th><th>Adj PAR</th>
                     <th>Games</th><th>Label</th>
                   </tr>
                 </thead>
                 <tbody>
                   {#each team.picks as pick}
-                    <!-- picks are already sorted by round then pickNo in gradeDraftEndOfSeason -->
                     <tr class="{pick.injuryFlag ? 'injury-row' : ''}">
                       <td>{pick.round}</td>
                       <td>#{pick.pickNo}</td>
@@ -408,17 +404,16 @@
                       </td>
                       <td><span class="pos-tag">{pick.pos}</span></td>
                       <td>{fp(pick.actualPts)}</td>
-                      <td class="muted">{fp(pick.roundBaseline)}</td>
-                      <td class="{parClass(pick.par)}">
-                        {pick.par != null ? signedFp(pick.par) : '—'}
+                      <td class="muted">{signedFp(pick.actualPAR)}</td>
+                      <td class="muted">{signedFp(pick.expectedPAR)}</td>
+                      <td class="{parClass(pick.adjustedPAR)}">
+                        {pick.adjustedPAR != null ? signedFp(pick.adjustedPAR) : '—'}
                       </td>
                       <td class="{pick.injuryFlag ? 'negative' : 'muted'}">
                         {pick.gamesPlayed != null ? pick.gamesPlayed : '—'}
                       </td>
                       <td>
-                        <span class="vl-tag {valueLabelClass(pick.valueLabel)}">
-                          {pick.valueLabel}
-                        </span>
+                        <span class="vl-tag {valueLabelClass(pick.valueLabel)}">{pick.valueLabel}</span>
                       </td>
                     </tr>
                   {/each}
@@ -426,26 +421,24 @@
               </table>
             </div>
 
-            <!-- Positional breakdown -->
             <div class="pos-breakdown">
               {#each Object.entries(team.byPosition).sort(([a],[b]) => a.localeCompare(b)) as [pos, data]}
                 <div class="pos-card">
                   <div class="pos-label">{pos}</div>
                   <div class="pos-stat">{data.picks} picks</div>
                   <div class="pos-stat">{fp(data.totalActualPts)} pts</div>
-                  <div class="pos-par {data.totalPAR >= 0 ? 'positive' : 'negative'}">
-                    {signedFp(data.totalPAR)} PAR
+                  <div class="pos-par {data.totalAdjustedPAR >= 0 ? 'positive' : 'negative'}">
+                    {signedFp(data.totalAdjustedPAR)} Adj PAR
                   </div>
                 </div>
               {/each}
             </div>
 
-            <!-- Round-by-round PAR -->
             <div class="round-breakdown">
-              <span class="muted">PAR by round:</span>
+              <span class="muted">Adjusted PAR by round:</span>
               {#each Object.entries(team.byRound).sort(([a],[b]) => Number(a)-Number(b)) as [rnd, data]}
-                <span class="round-pill {data.totalPAR >= 0 ? 'positive-bg' : 'negative-bg'}">
-                  R{rnd}: {signedFp(data.totalPAR)}
+                <span class="round-pill {data.totalAdjustedPAR >= 0 ? 'positive-bg' : 'negative-bg'}">
+                  R{rnd}: {signedFp(data.totalAdjustedPAR)}
                 </span>
               {/each}
             </div>
@@ -468,8 +461,8 @@
         <h3>{preSeasonGrade.year} — Pre-Season Draft Grade</h3>
         <div class="explainer">
           Grades based on positional scarcity within the draft itself.
-          <strong>vs Market</strong> = how many picks earlier/later than the average
-          for that positional slot. Positive = got the position cheaper than average.
+          <strong>vs Market</strong> = picks earlier/later than the average for that
+          positional slot. Positive = got the position cheaper than average.
         </div>
 
         <h4>Team Grades</h4>
@@ -574,48 +567,41 @@
   button:disabled { opacity: 0.5; cursor: not-allowed; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; }
   .muted { color: #888; font-size: 0.86em; }
-  .explainer { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.87rem; color: #0c4a6e; }
+  .explainer { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.87rem; color: #0c4a6e; line-height: 1.6; }
 
-  /* Tabs */
   .tab-group { display: flex; gap: 0.5rem; }
   .tab-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; font-size: 0.9rem; }
   .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
 
-  /* Reference panels */
   .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
   .ref-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; }
   .ref-title { font-weight: 700; font-size: 0.87em; color: #374151; margin-bottom: 0.5rem; }
   .ref-sub { font-weight: 400; color: #888; font-size: 0.9em; margin-left: 0.25rem; }
 
-  /* Baseline pills (round-by-round expected points) */
   .baseline-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; }
   .baseline-pill { background: white; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.2rem 0.45rem; font-size: 0.79em; display: flex; flex-direction: column; align-items: center; min-width: 52px; }
   .bl-round { font-weight: 700; color: #374151; }
   .bl-pts { font-weight: 700; color: #2563eb; }
   .bl-raw, .bl-n { font-size: 0.85em; }
 
-  /* Replacement level pills */
   .rep-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; }
   .rep-pill { background: white; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.79em; display: flex; flex-direction: column; align-items: center; }
   .rp-pos { font-weight: 700; color: #374151; }
   .rp-pts { color: #555; }
   .rp-name { font-size: 0.88em; }
 
-  /* Tables */
-  .data-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.87rem; }
-  .data-table.mini { font-size: 0.81rem; }
-  .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.32rem 0.5rem; text-align: center; }
+  .data-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.85rem; }
+  .data-table.mini { font-size: 0.79rem; }
+  .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.3rem 0.45rem; text-align: center; }
   .data-table th { background: #f5f5f5; font-weight: 600; }
   .data-table td:first-child, .data-table th:first-child { text-align: left; }
   .injury-row { background: #fff7ed; }
   .table-scroll { overflow-x: auto; }
 
-  /* Team blocks */
   .team-block { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 1.25rem; overflow: hidden; }
   .team-header { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; background: #f9f9f9; border-bottom: 1px solid #eee; flex-wrap: wrap; }
   .header-stat { font-size: 0.88em; }
 
-  /* Grade badges */
   .grade-badge { padding: 0.18rem 0.55rem; border-radius: 4px; font-weight: 700; font-size: 0.84em; }
   .grade-a { background: #d1fae5; color: #065f46; }
   .grade-b { background: #e0f2fe; color: #0369a1; }
@@ -623,7 +609,6 @@
   .grade-d { background: #fed7aa; color: #9a3412; }
   .grade-f { background: #fef2f2; color: #dc2626; }
 
-  /* Value label tags */
   .vl-tag        { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.77em; font-weight: 600; margin-left: 0.2rem; }
   .vl-steal      { background: #d1fae5; color: #065f46; }
   .vl-value      { background: #e0f2fe; color: #0369a1; }
@@ -632,31 +617,25 @@
   .vl-bust       { background: #fef2f2; color: #dc2626; }
   .vl-reach      { background: #fff7ed; color: #c2410c; }
 
-  /* Position tag */
   .pos-tag { background: #e5e7eb; border-radius: 3px; padding: 0.08rem 0.3rem; font-size: 0.74em; font-weight: 700; margin: 0 0.15rem; }
 
-  /* Positional breakdown */
   .pos-breakdown { display: flex; gap: 0.5rem; flex-wrap: wrap; padding: 0.6rem 1rem; background: #fafafa; border-top: 1px solid #eee; }
   .pos-card { background: white; border: 1px solid #e5e7eb; border-radius: 5px; padding: 0.35rem 0.55rem; min-width: 65px; text-align: center; }
   .pos-label { font-weight: 700; font-size: 0.78em; color: #374151; }
   .pos-stat  { font-size: 0.76em; color: #555; }
   .pos-par   { font-size: 0.8em; font-weight: 700; }
 
-  /* Round breakdown */
   .round-breakdown { display: flex; gap: 0.4rem; flex-wrap: wrap; padding: 0.5rem 1rem; background: #f8f8f8; border-top: 1px solid #eee; font-size: 0.83em; align-items: center; }
   .round-pill { padding: 0.15rem 0.45rem; border-radius: 3px; font-size: 0.85em; font-weight: 600; }
   .positive-bg { background: #d1fae5; color: #065f46; }
   .negative-bg { background: #fef2f2; color: #dc2626; }
 
-  /* Two column */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
 
-  /* Colors */
   .positive { color: #16a34a; font-weight: 700; }
   .negative { color: #dc2626; font-weight: 700; }
   .injury-count { color: #d97706; font-weight: 600; font-size: 0.88em; }
 
-  /* Debug */
   .debug-terminal { background: #1e1e1e; color: #00ff00; padding: 1rem; border-radius: 6px; font-family: monospace; font-size: 0.8em; margin-top: 1rem; }
   .debug-terminal h4 { margin: 0 0 0.5rem; color: #fff; }
   .debug-terminal ul { margin: 0; padding-left: 1.2rem; }
