@@ -199,4 +199,53 @@ export function gradeDraftEndOfSeason(
     if (pick.actualPAR   != null) byRoster[r].totalActualPAR   += parseFloat(pick.actualPAR);
     if (pick.actualPts   != null) byRoster[r].totalActualPts   += parseFloat(pick.actualPts);
     if (pick.valueLabel === 'steal' || pick.valueLabel === 'elite steal') byRoster[r].steals.push(pick);
-    if
+    if (pick.valueLabel === 'bust'  || pick.valueLabel === 'major bust')  byRoster[r].busts.push(pick);
+    if (pick.injuryFlag) byRoster[r].injured.push(pick);
+  });
+
+  Object.values(byRoster).forEach((team) => {
+    team.picks.sort((a, b) => Number(a.round) - Number(b.round) || Number(a.pickNo) - Number(b.pickNo));
+    const sorted = [...team.picks].filter((p) => p.adjustedPAR != null).sort((a, b) => parseFloat(b.adjustedPAR) - parseFloat(a.adjustedPAR));
+    team.bestPick  = sorted[0] || null;
+    team.worstPick = sorted[sorted.length - 1] || null;
+
+    const byPos = {};
+    team.picks.forEach((pick) => {
+      const pos = pick.pos;
+      if (!byPos[pos]) byPos[pos] = { picks: 0, totalActualPts: 0, totalAdjustedPAR: 0 };
+      byPos[pos].picks            += 1;
+      byPos[pos].totalActualPts   += parseFloat(pick.actualPts)   || 0;
+      byPos[pos].totalAdjustedPAR += parseFloat(pick.adjustedPAR) || 0;
+    });
+    team.byPosition = byPos;
+
+    const byRound = {};
+    team.picks.forEach((pick) => {
+      const r = Number(pick.round);
+      if (!byRound[r]) byRound[r] = { picks: 0, totalAdjustedPAR: 0 };
+      byRound[r].picks            += 1;
+      byRound[r].totalAdjustedPAR += parseFloat(pick.adjustedPAR) || 0;
+    });
+    team.byRound = byRound;
+
+    const injuredAdjustedPAR = team.injured.reduce((s, p) => s + (parseFloat(p.adjustedPAR) || 0), 0);
+    team.injuryExcludedPAR   = fp(team.totalAdjustedPAR - injuredAdjustedPAR);
+
+    team.grade            = getTeamGrade(team.totalAdjustedPAR);
+    team.totalAdjustedPAR = fp(team.totalAdjustedPAR);
+    team.totalActualPAR   = fp(team.totalActualPAR);
+    team.totalActualPts   = fp(team.totalActualPts);
+  });
+
+  const teamRankings = Object.values(byRoster).sort((a, b) => parseFloat(b.totalAdjustedPAR) - parseFloat(a.totalAdjustedPAR));
+
+  return {
+    year: draft.year, draftType: draft.draftType,
+    expectedPARByRound: expectedPAR, rawExpectedPAR: raw, sampleSizes, baselineSeasons: seasonYears,
+    gradedPicks, byRoster, teamRankings, debug,
+    replacementLevels: parTables?.replacementLevels || {},
+    replacementNames:  parTables?.replacementPlayerNames || {},
+    leagueTopSteals: [...gradedPicks].filter((p) => p.adjustedPAR != null).sort((a, b) => parseFloat(b.adjustedPAR) - parseFloat(a.adjustedPAR)).slice(0, 10),
+    leagueTopBusts:  [...gradedPicks].filter((p) => p.adjustedPAR != null).sort((a, b) => parseFloat(a.adjustedPAR) - parseFloat(b.adjustedPAR)).slice(0, 10)
+  };
+}
