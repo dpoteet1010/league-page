@@ -1,24 +1,34 @@
 // parGrading.js
 //
-// Unified PAR (Points Above Replacement) grading for trades and waivers.
+// Unified PAR (Points Above Replacement) for trades, waivers, and drafts.
 //
-// Replacement level = the (numTeams × dedicatedSlotsAtPosition)th player
-// ranked by FULL SEASON points from the Sleeper stats API. FLEX excluded.
-// All years use the same fixed dedicated slot counts:
-//   QB×1  RB×2  WR×2  TE×1  K×1  DEF×1
+// Replacement level = the Nth-best player at that position by full-season
+// points, where N = numTeams × dedicatedSlots.
 //
-// PAR formula (identical for trades and waivers):
-//   baseline  = (replacementSeasonTotal / 17) × weeksHeld
-//   PAR       = playerActualPts − baseline
+// FLEX HANDLING: RB and WR replacement levels also consider a combined
+// RB+WR flex pool (TE excluded — flex is rarely used for TE in practice).
+// The flex pool's cutoff rank = (RBslots + WRslots + FLEXslots + 1) × numTeams.
+// Whichever bar is LOWER (easier to clear) — the position-specific bar or
+// the flex-pool bar — becomes the actual replacement level for that position,
+// since a player only needs to clear the easiest path to be rosterable.
 //
-// weeksHeld = actual weeks the player appeared on that roster in
-// playerResults after the transaction date. Handles re-trades and
-// drops naturally since the data stops when the player leaves.
+// K and DEF do not participate in flex at all.
 
 const TOTAL_SEASON_WEEKS = 17;
 
-// Fixed dedicated starter slots — same for all years. FLEX ignored entirely.
+// Fixed dedicated starter slots — same for all years. FLEX handled separately above.
 const DEDICATED_SLOTS = { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
+
+// FLEX slot count per season — RB/WR/TE flex slots from league settings,
+// but only RB+WR participate in the flex POOL calculation per league convention.
+const FLEX_SLOTS_BY_YEAR = {
+  '2023': 1
+  // 2024 and all later seasons default to 2 (see getFlexSlotsForYear)
+};
+
+export function getFlexSlotsForYear(year) {
+  return FLEX_SLOTS_BY_YEAR[String(year)] ?? 2;
+}
 
 export function normalizePosition(position, playerId) {
   if (!position) {
@@ -44,31 +54,23 @@ function playerDisplayName(info, playerId) {
 // ── Season PAR tables ────────────────────────────────────────────────────────
 
 /**
- * Builds replacement level data for one season.
- *
- * Uses seasonStatTotals from the Sleeper stats API (complete season points
- * for ALL players including those who spent time as free agents) rather than
- * playerResults (which only captures rostered weeks). This ensures the Nth
- * ranked player is the true Nth best player in the league, not the Nth best
- * among only those who happened to be rostered.
- *
- * Replacement index = numTeams × dedicatedSlots (0-based), so for 12 teams
- * with 1 QB slot, index 12 = the 13th best QB.
+ * Builds replacement level data for one season, including the RB/WR flex
+ * pool adjustment.
  *
  * @param {Object} seasonStatTotals - { [playerId]: totalSeasonPts } from getSeasonStatTotals()
- * @param {Object} allPlayersData   - full Sleeper player map from getAllPlayers()
+ * @param {Object} allPlayersData   - full Sleeper player map
  * @param {number} numTeams         - number of teams in the league that season
+ * @param {number} flexSlots        - number of FLEX slots that season (use getFlexSlotsForYear)
  */
-export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams) {
+export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams, flexSlots = 2) {
   const debug = [];
-  debug.push(`Building PAR tables — numTeams: ${numTeams}, slots: ${JSON.stringify(DEDICATED_SLOTS)}, FLEX: ignored`);
-  debug.push(`Total players with season stats: ${Object.keys(seasonStatTotals || {}).length}`);
+  debug.push(`Building PAR tables — numTeams: ${numTeams}, dedicated slots: ${JSON.stringify(DEDICATED_SLOTS)}, FLEX slots: ${flexSlots} (RB/WR pool only, TE excluded)`);
 
   // Group players by position, sorted descending by season total
   const playersByPosition = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
 
   Object.entries(seasonStatTotals || {}).forEach(([playerId, totalPts]) => {
-    if (!totalPts || totalPts <= 0) return; // skip zero-point players
+    if (!totalPts || totalPts <= 0) return;
     const pos = normalizePosition(allPlayersData[playerId]?.position, playerId);
     if (!pos || !playersByPosition[pos]) return;
     playersByPosition[pos].push({ playerId, totalPts });
@@ -76,30 +78,65 @@ export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams)
 
   Object.values(playersByPosition).forEach((g) => g.sort((a, b) => b.totalPts - a.totalPts));
 
-  // Replacement level per position
-  const replacementLevels      = {};
-  const replacementPlayerIds   = {};
-  const replacementPlayerNames = {};
+  // ── Dedicated-slot replacement levels (position-specific bar) ──────────────
+  const dedicatedLevels      = {};
+  const dedicatedPlayerIds   = {};
+  const dedicatedPlayerNames = {};
 
   Object.entries(DEDICATED_SLOTS).forEach(([pos, slots]) => {
-    // Index = numTeams × slots. For QB (1 slot, 12 teams) → index 12 → 13th best.
-    const repIdx   = slots * numTeams;
-    const repEntry = playersByPosition[pos]?.[repIdx];
+    const starterCount = slots * numTeams;
+    const repEntry = playersByPosition[pos]?.[starterCount];
     const repInfo  = repEntry ? allPlayersData[repEntry.playerId] : null;
 
-    replacementLevels[pos]      = repEntry ? repEntry.totalPts : 0;
-    replacementPlayerIds[pos]   = repEntry ? repEntry.playerId : null;
-    replacementPlayerNames[pos] = repEntry
-      ? playerDisplayName(repInfo, repEntry.playerId)
-      : '(none)';
+    dedicatedLevels[pos]      = repEntry ? repEntry.totalPts : 0;
+    dedicatedPlayerIds[pos]   = repEntry ? repEntry.playerId : null;
+    dedicatedPlayerNames[pos] = repEntry ? playerDisplayName(repInfo, repEntry.playerId) : '(none)';
 
-    const rank = repIdx + 1; // 1-based for display
+    const rank = starterCount + 1;
     debug.push(
-      `${pos}: ${slots} slots × ${numTeams} teams = index ${repIdx} (#${rank} ranked) ` +
-      `— replacement: ${replacementPlayerNames[pos]} ` +
-      `(${(replacementLevels[pos] || 0).toFixed(1)} pts)`
+      `${pos} (dedicated): ${slots} slots × ${numTeams} teams = #${rank} ranked — ` +
+      `${dedicatedPlayerNames[pos]} (${(dedicatedLevels[pos] || 0).toFixed(1)} pts)`
     );
   });
+
+  // ── FLEX pool replacement level (combined RB+WR, TE excluded) ──────────────
+  const flexPool = [];
+  ['RB', 'WR'].forEach((pos) => {
+    playersByPosition[pos].forEach((p) => flexPool.push({ ...p, position: pos }));
+  });
+  flexPool.sort((a, b) => b.totalPts - a.totalPts);
+
+  // rank = (RBslots + WRslots + FLEXslots + 1 buffer) × numTeams
+  const flexSlotsCount = DEDICATED_SLOTS.RB + DEDICATED_SLOTS.WR + flexSlots + 1;
+  const flexRankIdx    = (flexSlotsCount * numTeams) - 1; // 0-based index for the Nth player
+  const flexRepEntry   = flexPool[flexRankIdx];
+  const flexRepInfo    = flexRepEntry ? allPlayersData[flexRepEntry.playerId] : null;
+  const flexLevel       = flexRepEntry ? flexRepEntry.totalPts : 0;
+  const flexPlayerName  = flexRepEntry ? playerDisplayName(flexRepInfo, flexRepEntry.playerId) : '(none)';
+
+  debug.push(
+    `FLEX pool (RB+WR only): slotsCount = ${DEDICATED_SLOTS.RB}+${DEDICATED_SLOTS.WR}+${flexSlots}+1 = ${flexSlotsCount}, ` +
+    `× ${numTeams} teams = #${flexSlotsCount * numTeams} ranked — ` +
+    `${flexPlayerName} (${flexLevel.toFixed(1)} pts)`
+  );
+
+  // ── Final replacement levels: lower of dedicated vs flex bar wins ──────────
+  const replacementLevels      = { ...dedicatedLevels };
+  const replacementPlayerIds   = { ...dedicatedPlayerIds };
+  const replacementPlayerNames = { ...dedicatedPlayerNames };
+
+  ['RB', 'WR'].forEach((pos) => {
+    if (flexLevel < dedicatedLevels[pos]) {
+      replacementLevels[pos]      = flexLevel;
+      replacementPlayerIds[pos]   = flexRepEntry?.playerId ?? null;
+      replacementPlayerNames[pos] = flexPlayerName;
+      debug.push(`${pos} replacement LOWERED to FLEX-pool level: ${flexLevel.toFixed(1)} pts (was ${dedicatedLevels[pos].toFixed(1)} pts dedicated-only)`);
+    } else {
+      debug.push(`${pos} replacement kept at dedicated-slot level: ${dedicatedLevels[pos].toFixed(1)} pts (flex pool was higher/equal at ${flexLevel.toFixed(1)} pts)`);
+    }
+  });
+
+  // K and DEF never participate in flex — already correct in dedicatedLevels.
 
   // Per-player full-season PAR for reference
   const playerPAR = {};
@@ -123,8 +160,12 @@ export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams)
     replacementLevels,
     replacementPlayerIds,
     replacementPlayerNames,
+    dedicatedLevels,    // exposed for debugging/validation
+    flexLevel,
+    flexPlayerName,
     playerPAR,
     numTeams,
+    flexSlots,
     debug
   };
 }
