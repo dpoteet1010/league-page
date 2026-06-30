@@ -2,25 +2,23 @@
 //
 // Computes historical round-by-round EXPECTED PAR baselines.
 //
-// Step 1: For every historical pick, compute its actualPAR:
+// K and DEF picks are EXCLUDED from this calculation entirely — their
+// draft timing is irrelevant (you draft your K/DEF in the last couple
+// rounds regardless of skill), and including them artificially inflates/
+// deflates the round averages for skill positions. K/DEF get expectedPAR
+// forced to 0 in draftAnalysis.js instead — they're judged purely on
+// actual PAR vs replacement, with no round-based adjustment.
+//
+// Step 1: For every historical non-K/DEF pick, compute actualPAR:
 //           actualPAR = actualSeasonPts − replacementLevel[position]
-//         using that pick's OWN season's replacement levels (position-aware,
-//         scarcity already baked in via replacement level).
+//         (replacement level already includes the RB/WR flex-pool adjustment)
 //
-// Step 2: Group actualPAR by round across all baseline seasons and average:
-//           expectedPAR[round] = avg(actualPAR for all historical picks in that round)
+// Step 2: Group actualPAR by round and average:
+//           expectedPAR[round] = avg(actualPAR for all historical non-K/DEF picks in that round)
 //
-// Step 3: Smooth monotonically so expectedPAR never increases in a later round
-//         (round 8 expected PAR can't exceed round 7's).
-//
-// Final grading formula (used in draftAnalysis.js):
-//   adjustedPAR = actualPAR − expectedPAR[round]
-//
-// Season inclusion rules:
-//   2023:  2023 only          (1 FLEX)
-//   2024:  2024 only          (2 FLEX — different roster, can't mix with 2023)
-//   2025:  2024 + 2025        (rolling from 2024 onward)
-//   2026+: 2024 through year  (rolling, anchored at 2024)
+// Step 3: Smooth monotonically so expectedPAR never increases in a later round.
+
+const EXCLUDED_FROM_ROUND_BASELINE = ['K', 'DEF'];
 
 function getBaselineSeasons(scoringYear) {
   const year = Number(scoringYear);
@@ -47,14 +45,13 @@ function normalizePos(position, playerId) {
 }
 
 /**
- * Computes expected PAR baselines per round from historical draft + season
- * stats + replacement-level data.
+ * Computes expected PAR baselines per round, excluding K/DEF picks.
  *
  * @param {number|string} scoringYear
  * @param {Array}  allDrafts          - from getAllDrafts()
  * @param {Object} allSeasonStats     - { [year]: { totals: {[id]: pts} } }
  * @param {Object} parTablesBySeason  - { [year]: { replacementLevels: {...} } }
- * @param {Object} allPlayersData     - full player info map (for position lookup)
+ * @param {Object} allPlayersData     - full player info map
  * @returns {{ expectedPAR, raw, seasonYears, sampleSizes } | null}
  */
 export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData) {
@@ -64,24 +61,28 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, pa
   if (relevantDrafts.length === 0) return null;
   if (!allSeasonStats || Object.keys(allSeasonStats).length === 0) return null;
 
-  // Step 1 + 2: compute actualPAR for every historical pick, grouped by round
   const roundData = {};
+  let excludedCount = 0;
 
   relevantDrafts.forEach((draft) => {
-    const yearStr      = String(draft.year);
-    const stats         = allSeasonStats[yearStr]?.totals || {};
-    const parTables     = parTablesBySeason?.[yearStr];
-    const repLevels      = parTables?.replacementLevels || {};
+    const yearStr   = String(draft.year);
+    const stats     = allSeasonStats[yearStr]?.totals || {};
+    const parTables = parTablesBySeason?.[yearStr];
+    const repLevels = parTables?.replacementLevels || {};
 
     draft.picks.forEach((pick) => {
       const round = Number(pick.round);
       const pos   = normalizePos(pick.position, pick.playerId) ||
                     normalizePos(allPlayersData?.[String(pick.playerId)]?.position, pick.playerId);
 
-      const actualPts = stats[String(pick.playerId)] ?? 0; // unrostered/IR players = 0 pts, real draft risk
-      const repLevel  = repLevels[pos] ?? null;
+      // FIX: exclude K/DEF from round baseline calculation entirely
+      if (EXCLUDED_FROM_ROUND_BASELINE.includes(pos)) {
+        excludedCount++;
+        return;
+      }
 
-      // Skip if we can't determine a replacement level for this position/season
+      const actualPts = stats[String(pick.playerId)] ?? 0;
+      const repLevel  = repLevels[pos] ?? null;
       if (repLevel == null) return;
 
       const actualPAR = actualPts - repLevel;
@@ -94,7 +95,6 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, pa
 
   if (Object.keys(roundData).length === 0) return null;
 
-  // Raw average actualPAR per round = expectedPAR before smoothing
   const raw         = {};
   const sampleSizes = {};
   Object.entries(roundData).forEach(([round, data]) => {
@@ -103,7 +103,7 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, pa
     sampleSizes[r] = data.count;
   });
 
-  // Step 3: monotonic smoothing — expectedPAR[r] ≤ expectedPAR[r-1]
+  // Monotonic smoothing
   const rounds      = Object.keys(raw).map(Number).sort((a, b) => a - b);
   const expectedPAR = {};
   let ceiling       = Infinity;
@@ -114,5 +114,5 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, pa
     ceiling        = val;
   });
 
-  return { expectedPAR, raw, seasonYears, sampleSizes };
+  return { expectedPAR, raw, seasonYears, sampleSizes, excludedKDefCount: excludedCount };
 }
