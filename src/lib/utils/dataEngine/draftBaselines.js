@@ -1,24 +1,22 @@
 // draftBaselines.js
 //
-// Computes historical round-by-round EXPECTED PAR baselines.
+// Computes historical round-by-round EXPECTED PAR baselines, used by the
+// post-season data-based draft grade.
 //
-// K and DEF picks are EXCLUDED from this calculation entirely — their
-// draft timing is irrelevant (you draft your K/DEF in the last couple
-// rounds regardless of skill), and including them artificially inflates/
-// deflates the round averages for skill positions. K/DEF get expectedPAR
-// forced to 0 in draftAnalysis.js instead — they're judged purely on
-// actual PAR vs replacement, with no round-based adjustment.
+// IMPORTANT: for baseline purposes only, ALL seasons (including 2023) are
+// evaluated using a 2-FLEX replacement level assumption, so historical
+// data is consistent across years regardless of the real league setting
+// that season. This does NOT affect real per-season PAR grading elsewhere
+// (trades/waivers/actual draft grades), which still correctly use 1 FLEX
+// for 2023 and 2 FLEX for 2024+.
 //
-// Step 1: For every historical non-K/DEF pick, compute actualPAR:
-//           actualPAR = actualSeasonPts − replacementLevel[position]
-//         (replacement level already includes the RB/WR flex-pool adjustment)
-//
-// Step 2: Group actualPAR by round and average:
-//           expectedPAR[round] = avg(actualPAR for all historical non-K/DEF picks in that round)
-//
-// Step 3: Smooth monotonically so expectedPAR never increases in a later round.
+// K and DEF are excluded entirely from round baseline calculation — their
+// draft timing doesn't reflect skill and would distort skill-position rounds.
+
+import { buildSeasonPARTables } from './parGrading.js';
 
 const EXCLUDED_FROM_ROUND_BASELINE = ['K', 'DEF'];
+const BASELINE_FLEX_SLOTS = 2; // forced for all years, for baseline consistency only
 
 function getBaselineSeasons(scoringYear) {
   const year = Number(scoringYear);
@@ -46,20 +44,34 @@ function normalizePos(position, playerId) {
 
 /**
  * Computes expected PAR baselines per round, excluding K/DEF picks.
+ * Builds its OWN baseline-only PAR tables (always 2 FLEX) rather than
+ * using the real per-season parTables, so 2023 is treated consistently
+ * with 2024+ for this calculation specifically.
  *
  * @param {number|string} scoringYear
- * @param {Array}  allDrafts          - from getAllDrafts()
- * @param {Object} allSeasonStats     - { [year]: { totals: {[id]: pts} } }
- * @param {Object} parTablesBySeason  - { [year]: { replacementLevels: {...} } }
- * @param {Object} allPlayersData     - full player info map
- * @returns {{ expectedPAR, raw, seasonYears, sampleSizes } | null}
+ * @param {Array}  allDrafts      - from getAllDrafts()
+ * @param {Object} allSeasonStats - { [year]: { totals: {[id]: pts} } }
+ * @param {Object} allPlayersData - full player info map
+ * @returns {{ expectedPAR, raw, seasonYears, sampleSizes, excludedKDefCount } | null}
  */
-export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData) {
+export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, allPlayersData) {
   const seasonYears    = getBaselineSeasons(scoringYear);
   const relevantDrafts = allDrafts.filter((d) => seasonYears.includes(Number(d.year)));
 
   if (relevantDrafts.length === 0) return null;
   if (!allSeasonStats || Object.keys(allSeasonStats).length === 0) return null;
+
+  const debug = [];
+
+  // Build baseline-only PAR tables for each relevant season — ALWAYS 2 FLEX,
+  // independent of that season's real setting (this is the 2023-consistency fix).
+  const baselineParTables = {};
+  relevantDrafts.forEach((draft) => {
+    const yearStr = String(draft.year);
+    const stats   = allSeasonStats[yearStr]?.totals || {};
+    baselineParTables[yearStr] = buildSeasonPARTables(stats, allPlayersData, draft.numTeams, BASELINE_FLEX_SLOTS);
+    debug.push(`[Baseline ${yearStr}] Recomputed with forced 2-FLEX assumption for historical consistency.`);
+  });
 
   const roundData = {};
   let excludedCount = 0;
@@ -67,15 +79,13 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, pa
   relevantDrafts.forEach((draft) => {
     const yearStr   = String(draft.year);
     const stats     = allSeasonStats[yearStr]?.totals || {};
-    const parTables = parTablesBySeason?.[yearStr];
-    const repLevels = parTables?.replacementLevels || {};
+    const repLevels = baselineParTables[yearStr]?.replacementLevels || {};
 
     draft.picks.forEach((pick) => {
       const round = Number(pick.round);
       const pos   = normalizePos(pick.position, pick.playerId) ||
                     normalizePos(allPlayersData?.[String(pick.playerId)]?.position, pick.playerId);
 
-      // FIX: exclude K/DEF from round baseline calculation entirely
       if (EXCLUDED_FROM_ROUND_BASELINE.includes(pos)) {
         excludedCount++;
         return;
@@ -103,16 +113,15 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, pa
     sampleSizes[r] = data.count;
   });
 
-  // Monotonic smoothing
+  // Monotonic smoothing — expectedPAR[r] ≤ expectedPAR[r-1]
   const rounds      = Object.keys(raw).map(Number).sort((a, b) => a - b);
   const expectedPAR = {};
   let ceiling       = Infinity;
-
   rounds.forEach((r) => {
     const val      = Math.min(raw[r], ceiling);
     expectedPAR[r] = val;
     ceiling        = val;
   });
 
-  return { expectedPAR, raw, seasonYears, sampleSizes, excludedKDefCount: excludedCount };
+  return { expectedPAR, raw, seasonYears, sampleSizes, excludedKDefCount: excludedCount, debug };
 }
