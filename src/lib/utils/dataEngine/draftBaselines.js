@@ -1,21 +1,26 @@
 // draftBaselines.js
 //
-// Computes historical round-by-round expected point baselines from actual
-// draft and season stats data.
+// Computes historical round-by-round EXPECTED PAR baselines.
 //
-// PAR = actualPts − roundBaseline[round]
-// This measures performance vs the historical average for that draft slot.
-// A team whose picks beat their round averages has positive total PAR.
-// Grades are now centered around 0 instead of all being negative.
+// Step 1: For every historical pick, compute its actualPAR:
+//           actualPAR = actualSeasonPts − replacementLevel[position]
+//         using that pick's OWN season's replacement levels (position-aware,
+//         scarcity already baked in via replacement level).
 //
-// Season inclusion rules (based on roster setting consistency):
+// Step 2: Group actualPAR by round across all baseline seasons and average:
+//           expectedPAR[round] = avg(actualPAR for all historical picks in that round)
+//
+// Step 3: Smooth monotonically so expectedPAR never increases in a later round
+//         (round 8 expected PAR can't exceed round 7's).
+//
+// Final grading formula (used in draftAnalysis.js):
+//   adjustedPAR = actualPAR − expectedPAR[round]
+//
+// Season inclusion rules:
 //   2023:  2023 only          (1 FLEX)
-//   2024:  2024 only          (changed to 2 FLEX — different roster)
+//   2024:  2024 only          (2 FLEX — different roster, can't mix with 2023)
 //   2025:  2024 + 2025        (rolling from 2024 onward)
-//   2026+: 2024 through year  (rolling, always anchored at 2024)
-//
-// Monotonic smoothing enforces that later rounds never exceed earlier
-// rounds (round 8 baseline can't be higher than round 7).
+//   2026+: 2024 through year  (rolling, anchored at 2024)
 
 function getBaselineSeasons(scoringYear) {
   const year = Number(scoringYear);
@@ -26,39 +31,70 @@ function getBaselineSeasons(scoringYear) {
   return seasons;
 }
 
+function normalizePos(position, playerId) {
+  if (!position) {
+    if (playerId && String(playerId).length <= 3 && /^[A-Z]+$/.test(String(playerId))) return 'DEF';
+    return null;
+  }
+  const p = position.toUpperCase();
+  if (p === 'QB')              return 'QB';
+  if (p === 'RB')              return 'RB';
+  if (p === 'WR')              return 'WR';
+  if (p === 'TE')              return 'TE';
+  if (p === 'K')               return 'K';
+  if (p === 'DEF' || p === 'DST') return 'DEF';
+  return p;
+}
+
 /**
- * Computes round baselines from historical draft + season stats.
+ * Computes expected PAR baselines per round from historical draft + season
+ * stats + replacement-level data.
  *
  * @param {number|string} scoringYear
- * @param {Array}  allDrafts      - from getAllDrafts()
- * @param {Object} allSeasonStats - { [year]: { totals: {[id]: pts} } }
- * @returns {{ baselines, raw, seasonYears, sampleSizes } | null}
+ * @param {Array}  allDrafts          - from getAllDrafts()
+ * @param {Object} allSeasonStats     - { [year]: { totals: {[id]: pts} } }
+ * @param {Object} parTablesBySeason  - { [year]: { replacementLevels: {...} } }
+ * @param {Object} allPlayersData     - full player info map (for position lookup)
+ * @returns {{ expectedPAR, raw, seasonYears, sampleSizes } | null}
  */
-export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats) {
+export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData) {
   const seasonYears    = getBaselineSeasons(scoringYear);
   const relevantDrafts = allDrafts.filter((d) => seasonYears.includes(Number(d.year)));
 
   if (relevantDrafts.length === 0) return null;
   if (!allSeasonStats || Object.keys(allSeasonStats).length === 0) return null;
 
-  // Aggregate points per round across all relevant seasons
+  // Step 1 + 2: compute actualPAR for every historical pick, grouped by round
   const roundData = {};
 
   relevantDrafts.forEach((draft) => {
-    const stats = allSeasonStats[String(draft.year)]?.totals || {};
+    const yearStr      = String(draft.year);
+    const stats         = allSeasonStats[yearStr]?.totals || {};
+    const parTables     = parTablesBySeason?.[yearStr];
+    const repLevels      = parTables?.replacementLevels || {};
+
     draft.picks.forEach((pick) => {
       const round = Number(pick.round);
-      // Use 0 for players with no stats (injured, IR, released) — draft risk is real
-      const pts = stats[String(pick.playerId)] ?? 0;
+      const pos   = normalizePos(pick.position, pick.playerId) ||
+                    normalizePos(allPlayersData?.[String(pick.playerId)]?.position, pick.playerId);
+
+      const actualPts = stats[String(pick.playerId)] ?? 0; // unrostered/IR players = 0 pts, real draft risk
+      const repLevel  = repLevels[pos] ?? null;
+
+      // Skip if we can't determine a replacement level for this position/season
+      if (repLevel == null) return;
+
+      const actualPAR = actualPts - repLevel;
+
       if (!roundData[round]) roundData[round] = { sum: 0, count: 0 };
-      roundData[round].sum   += pts;
+      roundData[round].sum   += actualPAR;
       roundData[round].count += 1;
     });
   });
 
   if (Object.keys(roundData).length === 0) return null;
 
-  // Raw average per round
+  // Raw average actualPAR per round = expectedPAR before smoothing
   const raw         = {};
   const sampleSizes = {};
   Object.entries(roundData).forEach(([round, data]) => {
@@ -67,17 +103,16 @@ export function computeRoundBaselines(scoringYear, allDrafts, allSeasonStats) {
     sampleSizes[r] = data.count;
   });
 
-  // Monotonic smoothing: enforce baselines[r] ≤ baselines[r-1]
-  // Prevents statistical noise from making round 8 look better than round 7
-  const rounds    = Object.keys(raw).map(Number).sort((a, b) => a - b);
-  const baselines = {};
-  let ceiling     = Infinity;
+  // Step 3: monotonic smoothing — expectedPAR[r] ≤ expectedPAR[r-1]
+  const rounds      = Object.keys(raw).map(Number).sort((a, b) => a - b);
+  const expectedPAR = {};
+  let ceiling       = Infinity;
 
   rounds.forEach((r) => {
-    const val    = Math.min(raw[r], ceiling);
-    baselines[r] = val;
-    ceiling      = val;
+    const val      = Math.min(raw[r], ceiling);
+    expectedPAR[r] = val;
+    ceiling        = val;
   });
 
-  return { baselines, raw, seasonYears, sampleSizes };
+  return { expectedPAR, raw, seasonYears, sampleSizes };
 }
