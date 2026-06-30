@@ -3,67 +3,31 @@
 // PRE-SEASON (gradeDraftPreSeason):
 //   Grades based on positional scarcity within the draft itself.
 //   "Did you get this position earlier than the average for that slot?"
-//   No external data needed.
 //
 // END-OF-SEASON (gradeDraftEndOfSeason):
-//   Simple PAR = actualSeasonPts − replacementLevel[position]
-//   Uses the same replacement levels already computed for trades/waivers.
-//   Round context determines grade labels — a pick below replacement in
-//   round 1 is a bust; a pick below replacement in round 12 is expected.
+//   PAR = actualPts − roundBaseline[round]
+//   roundBaseline[round] = historical average pts for picks in that round
+//                          (from computeRoundBaselines in draftBaselines.js)
+//
+//   Since the baseline already accounts for round position, grade thresholds
+//   are symmetric around 0 regardless of round. A team whose picks beat their
+//   historical round averages has positive total PAR. Grades now center around
+//   0 instead of all being negative.
 
-// ── Round-based grade thresholds ─────────────────────────────────────────────
-// Each tier: { maxRound, majorBust, bust, slightBust, value, steal, eliteSteal }
-// PAR ranges between thresholds map to labels:
-//   PAR < majorBust       → 'major bust'
-//   majorBust ≤ PAR < bust → 'bust'
-//   bust ≤ PAR < slightBust → 'slight bust'
-//   slightBust ≤ PAR < value → 'as expected'
-//   value ≤ PAR < steal   → 'value'
-//   steal ≤ PAR < eliteSteal → 'steal'
-//   PAR ≥ eliteSteal      → 'elite steal'
+// ── Grade thresholds (applied uniformly, baseline is already round-adjusted) ──
+const PICK_THRESHOLDS = {
+  eliteSteal:  80,
+  steal:       40,
+  value:       15,
+  asExpected:  -15,   // -15 to +15 = as expected
+  slightBust:  -35,
+  bust:        -70,
+  // below -70 = major bust
+};
 
-const ROUND_TIERS = [
-  {
-    maxRound:   2,    // Rounds 1-2: high expectations
-    majorBust:  -80,
-    bust:       -30,
-    slightBust:   0,
-    value:       40,
-    steal:       80,
-    eliteSteal: 150
-  },
-  {
-    maxRound:   5,    // Rounds 3-5: good player expected
-    majorBust:  -60,
-    bust:       -20,
-    slightBust:  -5,
-    value:       25,
-    steal:       60,
-    eliteSteal: 100
-  },
-  {
-    maxRound:   9,    // Rounds 6-9: above replacement is the bar
-    majorBust:  -50,
-    bust:       -20,
-    slightBust: -10,
-    value:       20,
-    steal:       50,
-    eliteSteal:  80
-  },
-  {
-    maxRound:  99,    // Rounds 10+: any positive PAR is a win
-    majorBust:  -40,
-    bust:       -15,
-    slightBust: -10,
-    value:        5,
-    steal:       30,
-    eliteSteal:  60
-  }
-];
-
-// Injury thresholds (games played from stats API)
-const INJURY_MAJOR_THRESHOLD = 4;   // < 4 games = major injury
-const INJURY_THRESHOLD       = 8;   // < 8 games = injury-affected
+// ── Injury detection ──────────────────────────────────────────────────────────
+const INJURY_MAJOR = 4;   // < 4 games = major injury
+const INJURY_MIN   = 8;   // < 8 games = injury-affected
 
 export function normalizePos(position, playerId) {
   if (!position) {
@@ -84,33 +48,35 @@ function fp(val, d = 1) {
   return typeof val === 'number' ? Number(val.toFixed(d)) : null;
 }
 
-function getGradeTier(round) {
-  return ROUND_TIERS.find((t) => round <= t.maxRound) || ROUND_TIERS[ROUND_TIERS.length - 1];
+function signedFp(val, d = 1) {
+  const n = typeof val === 'string' ? parseFloat(val) : val;
+  if (typeof n !== 'number' || isNaN(n)) return '—';
+  return (n >= 0 ? '+' : '') + n.toFixed(d);
 }
 
-function getPickLabel(par, round) {
+function getPickLabel(par) {
   if (par == null) return 'no data';
-  const t = getGradeTier(round);
-  if (par >= t.eliteSteal) return 'elite steal';
-  if (par >= t.steal)      return 'steal';
-  if (par >= t.value)      return 'value';
-  if (par >= t.slightBust) return 'as expected';
-  if (par >= t.bust)       return 'slight bust';
-  if (par >= t.majorBust)  return 'bust';
+  if (par >= PICK_THRESHOLDS.eliteSteal)  return 'elite steal';
+  if (par >= PICK_THRESHOLDS.steal)       return 'steal';
+  if (par >= PICK_THRESHOLDS.value)       return 'value';
+  if (par >= PICK_THRESHOLDS.asExpected)  return 'as expected';
+  if (par >= PICK_THRESHOLDS.slightBust)  return 'slight bust';
+  if (par >= PICK_THRESHOLDS.bust)        return 'bust';
   return 'major bust';
 }
 
 function getTeamGrade(totalPAR) {
-  if (totalPAR == null) return '—';
-  if (totalPAR >  300)  return 'A+';
-  if (totalPAR >  150)  return 'A';
-  if (totalPAR >   50)  return 'B';
-  if (totalPAR >  -50)  return 'C';
-  if (totalPAR > -150)  return 'D';
+  const n = typeof totalPAR === 'string' ? parseFloat(totalPAR) : totalPAR;
+  if (n == null || isNaN(n)) return '—';
+  if (n >  250) return 'A+';
+  if (n >  125) return 'A';
+  if (n >   40) return 'B';
+  if (n >  -40) return 'C';
+  if (n > -125) return 'D';
   return 'F';
 }
 
-// ── Pre-season grade ───────────────────────────────────────────────────────
+// ── Pre-season grade (positional scarcity, no external data needed) ───────────
 
 function buildPositionalADP(picks) {
   const groups = {};
@@ -143,9 +109,9 @@ export function gradeDraftPreSeason(draft) {
   if (!draft?.picks?.length) return null;
 
   const { picks, numTeams, rounds } = draft;
-  const totalPicks     = numTeams * rounds;
-  const positionalADP  = buildPositionalADP(picks);
-  const posPickCount   = {};
+  const totalPicks    = numTeams * rounds;
+  const positionalADP = buildPositionalADP(picks);
+  const posPickCount  = {};
 
   const gradedPicks = picks
     .slice()
@@ -165,11 +131,11 @@ export function gradeDraftPreSeason(draft) {
         ...pick, pos, positionalRank, pickValue,
         vsMarket:      fp(vsMarket),
         avgPickAtRank: fp(avgPickAtRank),
-        valueLabel: vsMarket >  15 ? 'steal'
-                  : vsMarket >   5 ? 'value'
-                  : vsMarket < -15 ? 'reach'
-                  : vsMarket <  -5 ? 'slight reach'
-                  : 'fair'
+        valueLabel:    vsMarket >  15 ? 'steal'
+                     : vsMarket >   5 ? 'value'
+                     : vsMarket < -15 ? 'reach'
+                     : vsMarket <  -5 ? 'slight reach'
+                     : 'fair'
       };
     });
 
@@ -212,60 +178,73 @@ export function gradeDraftPreSeason(draft) {
   };
 }
 
-// ── End-of-season grade ────────────────────────────────────────────────────
+// ── End-of-season grade ────────────────────────────────────────────────────────
 
 /**
- * Grades every drafted player using PAR against positional replacement level.
+ * Grades every drafted player using PAR against historical round baselines.
  *
- *   PAR = actualSeasonPts − replacementLevel[position]
+ *   PAR = actualPts − roundBaseline[round]
  *
- * Uses the same replacement levels as trades/waivers (Nth-best player at
- * each position, where N = numTeams × dedicatedSlots). Round context
- * determines whether that PAR is a steal, as expected, or a bust.
+ * roundBaseline[round] is the historical average points for players
+ * drafted in that round, computed from relevant past seasons.
+ * Baselines are monotonically decreasing (round 8 ≤ round 7).
  *
- * @param {Object} draft           - from getAllDrafts()
- * @param {Object} seasonStatTotals - { [playerId]: totalPts }
- * @param {Object} gamesPlayed     - { [playerId]: weeksWithStats }
- * @param {Object} parTables       - from allTimeHistory.parTablesBySeason[year]
- * @param {Object} allPlayersData  - full player info map
+ * @param {Object} draft             - from getAllDrafts()
+ * @param {Object} seasonStatTotals  - { [playerId]: totalPts }
+ * @param {Object} gamesPlayed       - { [playerId]: weeksWithStats }
+ * @param {Object} roundBaselinesData - from computeRoundBaselines()
+ * @param {Object} parTables         - from allTimeHistory (for replacement level display only)
+ * @param {Object} allPlayersData    - full player info map
  */
-export function gradeDraftEndOfSeason(draft, seasonStatTotals, gamesPlayed, parTables, allPlayersData) {
-  if (!draft?.picks?.length || !seasonStatTotals || !parTables) return null;
+export function gradeDraftEndOfSeason(
+  draft, seasonStatTotals, gamesPlayed, roundBaselinesData, parTables, allPlayersData
+) {
+  if (!draft?.picks?.length || !seasonStatTotals || !roundBaselinesData) return null;
 
   const { picks, numTeams, rounds } = draft;
+  const { baselines, raw, seasonYears, sampleSizes } = roundBaselinesData;
   const debug = [];
 
-  debug.push(`Grading ${draft.year} draft: ${picks.length} picks, ${rounds} rounds, ${numTeams} teams.`);
-  debug.push(`Replacement levels used:`);
-  Object.entries(parTables.replacementLevels || {}).forEach(([pos, pts]) => {
-    debug.push(`  ${pos}: ${fp(pts)} pts/season (${parTables.replacementPlayerNames?.[pos] || '?'})`);
-  });
+  debug.push(`Grading ${draft.year} — using round baselines from seasons: ${seasonYears.join(', ')}`);
+  debug.push(`Round baselines (smoothed):`);
+  Object.entries(baselines)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .forEach(([r, pts]) => {
+      debug.push(`  Round ${r}: ${fp(pts)} pts avg (raw: ${fp(raw[r])}, n=${sampleSizes[r]})`);
+    });
 
   // Grade each pick
   const gradedPicks = picks.map((pick) => {
-    const pos         = normalizePos(pick.position, pick.playerId);
-    const actualPts   = seasonStatTotals[pick.playerId] ?? null;
-    const repLevel    = parTables.replacementLevels?.[pos]      ?? null;
-    const repName     = parTables.replacementPlayerNames?.[pos]  ?? '(none)';
-    const par         = actualPts != null && repLevel != null ? actualPts - repLevel : null;
-    const valueLabel  = getPickLabel(par, pick.round);
+    const pos           = normalizePos(pick.position, pick.playerId);
+    const actualPts     = seasonStatTotals[String(pick.playerId)] ?? null;
+    const roundBaseline = baselines[Number(pick.round)] ?? null;
+    const par           = actualPts != null && roundBaseline != null
+      ? actualPts - roundBaseline
+      : null;
+    const valueLabel    = getPickLabel(par);
+
+    // Position replacement level (for reference display only, not used in PAR)
+    const repLevel = parTables?.replacementLevels?.[pos]     ?? null;
+    const repName  = parTables?.replacementPlayerNames?.[pos] ?? '(none)';
 
     // Injury detection
-    const games         = gamesPlayed?.[pick.playerId] ?? null;
-    const injuryFlag    = games != null && games < INJURY_MAJOR_THRESHOLD ? 'major-injury'
-                        : games != null && games < INJURY_THRESHOLD       ? 'injury'
-                        : null;
+    const games      = gamesPlayed?.[String(pick.playerId)] ?? null;
+    const injuryFlag = games != null && games < INJURY_MAJOR ? 'major-injury'
+                     : games != null && games < INJURY_MIN   ? 'injury'
+                     : null;
 
     return {
       ...pick,
       pos,
-      actualPts:   fp(actualPts),
-      repLevel:    fp(repLevel),
-      repName,
-      par:         fp(par),
+      actualPts:     fp(actualPts),
+      roundBaseline: fp(roundBaseline),
+      par:           fp(par),
       valueLabel,
       injuryFlag,
-      gamesPlayed: games
+      gamesPlayed:   games,
+      // Position replacement level for reference panel
+      repLevel:      fp(repLevel),
+      repName
     };
   });
 
@@ -276,8 +255,8 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, gamesPlayed, parT
     if (!byRoster[r]) {
       byRoster[r] = {
         rosterId: r, managerId: pick.managerId,
-        picks:        [],
-        totalPAR:     0,
+        picks:         [],
+        totalPAR:      0,
         totalActualPts: 0,
         steals:  [],
         busts:   [],
@@ -286,8 +265,8 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, gamesPlayed, parT
     }
 
     byRoster[r].picks.push(pick);
-    if (pick.par        != null) byRoster[r].totalPAR       += pick.par;
-    if (pick.actualPts  != null) byRoster[r].totalActualPts += pick.actualPts;
+    if (pick.par        != null) byRoster[r].totalPAR       += parseFloat(pick.par);
+    if (pick.actualPts  != null) byRoster[r].totalActualPts += parseFloat(pick.actualPts);
 
     if (pick.valueLabel === 'steal' || pick.valueLabel === 'elite steal') byRoster[r].steals.push(pick);
     if (pick.valueLabel === 'bust'  || pick.valueLabel === 'major bust')  byRoster[r].busts.push(pick);
@@ -295,13 +274,15 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, gamesPlayed, parT
   });
 
   Object.values(byRoster).forEach((team) => {
-    // Sort picks by PAR for best/worst identification
+    // Sort picks by round then pickNo within round (Fix #1)
+    team.picks.sort((a, b) => Number(a.round) - Number(b.round) || Number(a.pickNo) - Number(b.pickNo));
+
     const sorted = [...team.picks]
       .filter((p) => p.par != null)
-      .sort((a, b) => (b.par || 0) - (a.par || 0));
+      .sort((a, b) => parseFloat(b.par) - parseFloat(a.par));
 
-    team.bestPick  = sorted[0]                    || null;
-    team.worstPick = sorted[sorted.length - 1]    || null;
+    team.bestPick  = sorted[0]                 || null;
+    team.worstPick = sorted[sorted.length - 1] || null;
 
     // Per-position breakdown
     const byPos = {};
@@ -309,44 +290,54 @@ export function gradeDraftEndOfSeason(draft, seasonStatTotals, gamesPlayed, parT
       const pos = pick.pos;
       if (!byPos[pos]) byPos[pos] = { picks: 0, totalActualPts: 0, totalPAR: 0 };
       byPos[pos].picks          += 1;
-      byPos[pos].totalActualPts += pick.actualPts || 0;
-      byPos[pos].totalPAR       += pick.par       || 0;
+      byPos[pos].totalActualPts += parseFloat(pick.actualPts) || 0;
+      byPos[pos].totalPAR       += parseFloat(pick.par)       || 0;
     });
     team.byPosition = byPos;
 
     // Per-round PAR
     const byRound = {};
     team.picks.forEach((pick) => {
-      if (!byRound[pick.round]) byRound[pick.round] = { picks: 0, totalPAR: 0 };
-      byRound[pick.round].picks    += 1;
-      byRound[pick.round].totalPAR += pick.par || 0;
+      const r = Number(pick.round);
+      if (!byRound[r]) byRound[r] = { picks: 0, totalPAR: 0 };
+      byRound[r].picks    += 1;
+      byRound[r].totalPAR += parseFloat(pick.par) || 0;
     });
     team.byRound = byRound;
 
-    // Injury-excluded PAR: what would PAR be if injured players are removed
-    const injuredPAR = team.injured.reduce((s, p) => s + (p.par || 0), 0);
+    // Injury-excluded PAR (what PAR would be without injured picks)
+    const injuredPAR = team.injured.reduce((s, p) => s + (parseFloat(p.par) || 0), 0);
     team.injuryExcludedPAR = fp(team.totalPAR - injuredPAR);
 
+    team.grade          = getTeamGrade(team.totalPAR);
     team.totalPAR       = fp(team.totalPAR);
     team.totalActualPts = fp(team.totalActualPts);
-    team.grade          = getTeamGrade(team.totalPAR);
   });
 
   const teamRankings = Object.values(byRoster)
-    .sort((a, b) => (b.totalPAR || 0) - (a.totalPAR || 0));
+    .sort((a, b) => parseFloat(b.totalPAR) - parseFloat(a.totalPAR));
 
   return {
-    year: draft.year, draftType: draft.draftType,
-    replacementLevels: parTables.replacementLevels,
-    replacementNames:  parTables.replacementPlayerNames,
-    gradedPicks, byRoster, teamRankings, debug,
+    year:             draft.year,
+    draftType:        draft.draftType,
+    roundBaselines:   baselines,
+    rawBaselines:     raw,
+    sampleSizes,
+    baselineSeasons:  seasonYears,
+    gradedPicks,
+    byRoster,
+    teamRankings,
+    debug,
+    // Replacement levels from PAR tables for reference display
+    replacementLevels: parTables?.replacementLevels || {},
+    replacementNames:  parTables?.replacementPlayerNames || {},
     leagueTopSteals: [...gradedPicks]
       .filter((p) => p.par != null)
-      .sort((a, b) => (b.par || 0) - (a.par || 0))
+      .sort((a, b) => parseFloat(b.par) - parseFloat(a.par))
       .slice(0, 10),
     leagueTopBusts: [...gradedPicks]
       .filter((p) => p.par != null)
-      .sort((a, b) => (a.par || 0) - (b.par || 0))
+      .sort((a, b) => parseFloat(a.par) - parseFloat(b.par))
       .slice(0, 10)
   };
 }
