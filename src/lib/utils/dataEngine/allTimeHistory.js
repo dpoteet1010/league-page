@@ -6,7 +6,7 @@ import { getSpecificYearMatchups } from './allMatchups.js';
 import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
 import { getAllPlayers } from './allPlayers.js';
-import { buildSeasonPARTables } from './parGrading.js';
+import { buildSeasonPARTables, getFlexSlotsForYear } from './parGrading.js';
 import { getSeasonStatTotals } from './allPlayerSeasonStats.js';
 
 function resolveYear(currentLeagueID, allMetadata) {
@@ -146,14 +146,12 @@ export async function getAllSeasonsHistory() {
     `${allPlayerResults.length} player-week rows across ${seasonOutputs.length} seasons.`
   );
 
-  // ── Player name database ──────────────────────────────────────────────────
   const allPlayersData = await getAllPlayers().catch((err) => {
     debug.push(`getAllPlayers failed: ${err.message}`);
     return {};
   });
   debug.push(`Player database: ${Object.keys(allPlayersData).length} players.`);
 
-  // ── Shared scoring settings ───────────────────────────────────────────────
   let sharedScoringSettings = null;
   for (const output of [...seasonOutputs].reverse()) {
     if (output.scoringSettings && Object.keys(output.scoringSettings).length > 0) {
@@ -167,33 +165,27 @@ export async function getAllSeasonsHistory() {
     debug.push('Warning: no scoring_settings found — PAR may not match league scoring exactly.');
   }
 
-  // ── Fetch season stats + build PAR tables per season ─────────────────────
-  // allSeasonStats is stored and returned so draftBaselines.js can use it
-  // to compute round-by-round expected baselines from historical draft data.
   const parTablesBySeason = {};
-  const allSeasonStats    = {};  // { [year]: { totals, gamesPlayed } }
+  const allSeasonStats    = {};
 
   for (const output of seasonOutputs) {
     const yearStr = String(output.year);
 
-    debug.push(`[Stats ${yearStr}] Fetching season stats from Sleeper API...`);
+    debug.push(`[Stats ${yearStr}] Fetching season stats...`);
 
     const statsResult = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
       debug.push(`[Stats ${yearStr}] getSeasonStatTotals failed: ${err.message}`);
       return { totals: {}, gamesPlayed: {} };
     });
 
-    // Store for draft baseline computation
     allSeasonStats[yearStr] = statsResult;
 
     const playerCount = Object.keys(statsResult.totals || {}).length;
     debug.push(`[Stats ${yearStr}] ${playerCount} players with stats.`);
 
-    if (playerCount === 0) {
-      debug.push(`[Stats ${yearStr}] Warning: no stats returned — PAR grades for this season will be missing.`);
-    }
-
-    const parTables = buildSeasonPARTables(statsResult.totals, allPlayersData, output.numTeams);
+    // Pass flexSlots for this year so RB/WR replacement levels factor in the flex pool
+    const flexSlots = getFlexSlotsForYear(yearStr);
+    const parTables = buildSeasonPARTables(statsResult.totals, allPlayersData, output.numTeams, flexSlots);
     parTablesBySeason[yearStr] = parTables;
     debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
   }
@@ -204,7 +196,7 @@ export async function getAllSeasonsHistory() {
     playerResults:         allPlayerResults,
     managers,
     parTablesBySeason,
-    allSeasonStats,          // ← new: used by computeRoundBaselines
+    allSeasonStats,
     allPlayersData,
     sharedScoringSettings,
     debug
