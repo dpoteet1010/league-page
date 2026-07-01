@@ -1011,9 +1011,9 @@
                     </span>
                   {:else}—{/if}
                 </td>
-                <td>{draftComp?.score != null  ? fp(draftComp.score, 0)  : <span class="muted">—</span>}</td>
-                <td>{tradeComp?.score != null  ? fp(tradeComp.score, 0)  : <span class="muted">—</span>}</td>
-                <td>{waiverComp?.score != null ? fp(waiverComp.score, 0) : <span class="muted">—</span>}</td>
+                <td>{draftComp?.score != null ? fp(draftComp.score, 0) : '—'}</td>
+                <td>{tradeComp?.score != null ? fp(tradeComp.score, 0) : '—'}</td>
+                <td>{waiverComp?.score != null ? fp(waiverComp.score, 0) : '—'}</td>
                 <td>
                   {#if lineupComp?.score != null}
                     {fp(lineupComp.score, 0)}
