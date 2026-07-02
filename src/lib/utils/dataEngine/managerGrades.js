@@ -1,59 +1,30 @@
 // managerGrades.js
 //
-// Manager grade = weighted blend of 4 components, each normalized 0-100:
-//   40% Draft       — post-season adjusted PAR from gradeDraftEndOfSeason
-//   20% Trades      — total trade PAR this season
-//   20% Waivers     — total waiver PAR this season
-//   20% Lineup IQ   — fpts/ppts ratio
+// Manager grade = weighted blend of 4 components, each normalized 0-100
+// using z-score centering (league average = 50):
+//   40% Draft     — post-season adjusted PAR from gradeDraftEndOfSeason
+//   20% Trades    — total trade PAR
+//   20% Waivers   — total waiver PAR
+//   20% Lineup IQ — fpts/ppts ratio
 //
-// NORMALIZATION: z-score centered at 50. League average = 50. Above-average
-// performance scores above 50. Scale factor of 25 means ±1 std dev = 25 points.
-// Clamped 0-100. Extreme outliers don't break the scale.
-//
-// ZERO ACTIVITY: managers with null/zero activity score 50 (neutral) for that
-// component and are excluded from the distribution so they don't distort active
-// managers' z-scores. "Did nothing" ≠ "did badly."
-//
-// MISSING COMPONENTS: weight redistributes proportionally so a manager with
-// no draft data isn't unfairly penalized on their overall grade.
+// Zero activity scores 50 (neutral), not 0. Missing components redistribute
+// weight proportionally rather than penalizing the manager.
 
 const WEIGHTS = { draft: 0.40, trades: 0.20, waivers: 0.20, lineupIQ: 0.20 };
+const SCALE_FACTOR = 25; // ±1 std dev = 25 points from center (50)
 
-// How many standard deviations maps to a 25-point swing from center (50).
-// ±1 std dev → 25-75. ±2 std dev → 0-100 (clamped).
-const SCALE_FACTOR = 25;
-
-/**
- * Z-score normalization centered at 50.
- * Null values (no activity) are excluded from the distribution and scored 50.
- * Everyone scoring identically → all get 50.
- */
 function normalizeZScore(value, allRawValues) {
-  // No activity → neutral
   if (value == null) return 50;
-
-  // Only include non-null values in the distribution
-  const activeValues = allRawValues.filter((v) => v != null);
-  if (activeValues.length === 0) return 50;
-
-  const mean = activeValues.reduce((s, v) => s + v, 0) / activeValues.length;
-  const variance = activeValues.reduce((s, v) => s + (v - mean) ** 2, 0) / activeValues.length;
-  const stdDev = Math.sqrt(variance);
-
-  // Everyone equal → all score 50
+  const active = allRawValues.filter((v) => v != null);
+  if (active.length === 0) return 50;
+  const mean    = active.reduce((s, v) => s + v, 0) / active.length;
+  const variance = active.reduce((s, v) => s + (v - mean) ** 2, 0) / active.length;
+  const stdDev  = Math.sqrt(variance);
   if (stdDev === 0) return 50;
-
-  const zScore = (value - mean) / stdDev;
-  return Math.max(0, Math.min(100, 50 + zScore * SCALE_FACTOR));
+  return Math.max(0, Math.min(100, 50 + ((value - mean) / stdDev) * SCALE_FACTOR));
 }
 
-/**
- * Computes one manager's grade for one season.
- *
- * @param {Object} scores    - { draft, trades, waivers, lineupIQ } — each 0-100 normalized, or null
- * @returns {{ overallGrade, components, missingComponents }}
- */
-function computeManagerGradeFromScores(scores) {
+function computeFromScores(scores) {
   const components = [
     { key: 'draft',    score: scores.draft,    weight: WEIGHTS.draft },
     { key: 'trades',   score: scores.trades,   weight: WEIGHTS.trades },
@@ -66,11 +37,9 @@ function computeManagerGradeFromScores(scores) {
     return { overallGrade: null, components, missingComponents: components.map((c) => c.key) };
   }
 
-  // Redistribute weight proportionally across available components
   const totalAvailableWeight = available.reduce((s, c) => s + c.weight, 0);
   const overallGrade = available.reduce(
-    (sum, c) => sum + c.score * (c.weight / totalAvailableWeight),
-    0
+    (sum, c) => sum + c.score * (c.weight / totalAvailableWeight), 0
   );
 
   return {
@@ -80,59 +49,40 @@ function computeManagerGradeFromScores(scores) {
   };
 }
 
-/**
- * Computes manager grades for every manager in a single season.
- *
- * Draft score comes from post-season adjusted PAR (gradeDraftEndOfSeason).
- * All raw values are z-score normalized within the league this season.
- *
- * @param {string|number} year
- * @param {Object} managerDraftPAR    - { [managerId]: totalAdjustedPAR } from post-season draft data
- * @param {Object} managerTradePAR    - { [managerId]: totalPAR } from transaction grading
- * @param {Object} managerWaiverPAR   - { [managerId]: totalPAR } from transaction grading
- * @param {Object} managerLineupIQ    - { [managerId]: fpts/ppts ratio } from roster stats
- * @param {Array}  allManagerIds
- */
-export function computeSeasonManagerGrades(
-  year, managerDraftPAR, managerTradePAR, managerWaiverPAR, managerLineupIQ, allManagerIds
-) {
-  // Collect raw values across all managers for normalization
-  // Null = no data. 0-activity managers get 50 and are excluded from distribution.
-  const rawDraftValues   = allManagerIds.map((id) => managerDraftPAR?.[id]  ?? null);
-  const rawTradeValues   = allManagerIds.map((id) => {
+export function computeSeasonManagerGrades(year, managerDraftPAR, managerTradePAR, managerWaiverPAR, managerLineupIQ, allManagerIds) {
+  const rawDraft   = allManagerIds.map((id) => managerDraftPAR?.[id]  ?? null);
+  const rawTrade   = allManagerIds.map((id) => {
     const v = managerTradePAR?.[id];
-    return (v == null || v === 0) ? null : v; // 0 trades = null (neutral, not 0 PAR from bad trades)
+    return (v == null || v === 0) ? null : v;
   });
-  const rawWaiverValues  = allManagerIds.map((id) => {
+  const rawWaiver  = allManagerIds.map((id) => {
     const v = managerWaiverPAR?.[id];
     return (v == null || v === 0) ? null : v;
   });
-  const rawLineupValues  = allManagerIds.map((id) => managerLineupIQ?.[id]  ?? null);
+  const rawLineup  = allManagerIds.map((id) => managerLineupIQ?.[id]  ?? null);
 
   const results = {};
   allManagerIds.forEach((managerId, idx) => {
-    const normDraft   = normalizeZScore(rawDraftValues[idx],  rawDraftValues);
-    const normTrade   = normalizeZScore(rawTradeValues[idx],  rawTradeValues);
-    const normWaiver  = normalizeZScore(rawWaiverValues[idx], rawWaiverValues);
-    const normLineup  = normalizeZScore(rawLineupValues[idx], rawLineupValues);
+    const normDraft   = normalizeZScore(rawDraft[idx],   rawDraft);
+    const normTrade   = normalizeZScore(rawTrade[idx],   rawTrade);
+    const normWaiver  = normalizeZScore(rawWaiver[idx],  rawWaiver);
+    const normLineup  = normalizeZScore(rawLineup[idx],  rawLineup);
 
     results[managerId] = {
-      ...computeManagerGradeFromScores({
-        draft:    rawDraftValues[idx]  != null ? normDraft   : null,
-        trades:   rawTradeValues[idx]  != null ? normTrade   : 50,   // 0 activity = 50 (neutral)
-        waivers:  rawWaiverValues[idx] != null ? normWaiver  : 50,
-        lineupIQ: rawLineupValues[idx] != null ? normLineup  : null
+      ...computeFromScores({
+        draft:    rawDraft[idx]   != null ? normDraft   : null,
+        trades:   rawTrade[idx]   != null ? normTrade   : 50,
+        waivers:  rawWaiver[idx]  != null ? normWaiver  : 50,
+        lineupIQ: rawLineup[idx]  != null ? normLineup  : null
       }),
-      // Raw values for display/debugging
-      rawDraftPAR:   rawDraftValues[idx],
-      rawTradePAR:   managerTradePAR?.[managerId] ?? null,
+      rawDraftPAR:   rawDraft[idx],
+      rawTradePAR:   managerTradePAR?.[managerId]  ?? null,
       rawWaiverPAR:  managerWaiverPAR?.[managerId] ?? null,
       rawLineupIQ:   managerLineupIQ?.[managerId]  ?? null,
-      // Normalized scores
-      normDraft:   rawDraftValues[idx]  != null ? Number(normDraft.toFixed(1))   : null,
-      normTrade:   Number(normTrade.toFixed(1)),
-      normWaiver:  Number(normWaiver.toFixed(1)),
-      normLineup:  rawLineupValues[idx] != null ? Number(normLineup.toFixed(1))  : null
+      normDraft:     rawDraft[idx]  != null ? Number(normDraft.toFixed(1))  : null,
+      normTrade:     Number(normTrade.toFixed(1)),
+      normWaiver:    Number(normWaiver.toFixed(1)),
+      normLineup:    rawLineup[idx] != null ? Number(normLineup.toFixed(1)) : null
     };
   });
 
@@ -140,28 +90,65 @@ export function computeSeasonManagerGrades(
 }
 
 /**
- * All-time manager grades: simple average of per-season overall grades.
- * Seasons without a grade are skipped.
+ * All-time manager grades with per-component breakdowns across all seasons.
+ * Includes per-season detail and averages for each of the 4 components.
  */
 export function computeAllTimeManagerGrades(seasonGradesByYear) {
   const byManager = {};
 
   Object.entries(seasonGradesByYear).forEach(([year, seasonGrades]) => {
     Object.entries(seasonGrades).forEach(([managerId, result]) => {
-      if (result.overallGrade == null) return;
-      if (!byManager[managerId]) byManager[managerId] = { grades: [], years: [] };
-      byManager[managerId].grades.push(result.overallGrade);
-      byManager[managerId].years.push(year);
+      if (!byManager[managerId]) {
+        byManager[managerId] = {
+          overallGrades: [],
+          normDraftArr:  [],
+          normTradeArr:  [],
+          normWaiverArr: [],
+          normLineupArr: [],
+          rawDraftArr:   [],
+          rawTradeArr:   [],
+          rawWaiverArr:  [],
+          rawLineupArr:  [],
+          years:         [],
+          perSeason:     []
+        };
+      }
+
+      const d = byManager[managerId];
+      d.years.push(year);
+      d.perSeason.push({ year, ...result });
+
+      if (result.overallGrade != null)  d.overallGrades.push(result.overallGrade);
+      if (result.normDraft    != null)  d.normDraftArr.push(result.normDraft);
+      if (result.normTrade    != null)  d.normTradeArr.push(result.normTrade);
+      if (result.normWaiver   != null)  d.normWaiverArr.push(result.normWaiver);
+      if (result.normLineup   != null)  d.normLineupArr.push(result.normLineup);
+      if (result.rawDraftPAR  != null)  d.rawDraftArr.push(result.rawDraftPAR);
+      if (result.rawTradePAR  != null)  d.rawTradeArr.push(result.rawTradePAR);
+      if (result.rawWaiverPAR != null)  d.rawWaiverArr.push(result.rawWaiverPAR);
+      if (result.rawLineupIQ  != null)  d.rawLineupArr.push(result.rawLineupIQ);
     });
   });
 
+  const avg = (arr) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+
   const result = {};
-  Object.entries(byManager).forEach(([managerId, data]) => {
-    const avg = data.grades.reduce((s, g) => s + g, 0) / data.grades.length;
+  Object.entries(byManager).forEach(([managerId, d]) => {
     result[managerId] = {
-      allTimeGrade:   Number(avg.toFixed(1)),
-      seasonsCounted: data.grades.length,
-      years:          data.years
+      allTimeGrade:        avg(d.overallGrades) != null ? Number(avg(d.overallGrades).toFixed(1)) : null,
+      seasonsCounted:      d.overallGrades.length,
+      years:               d.years,
+      perSeason:           d.perSeason.sort((a, b) => Number(a.year) - Number(b.year)),
+      // Component averages (normalized 0-100)
+      avgNormDraft:        avg(d.normDraftArr)  != null ? Number(avg(d.normDraftArr).toFixed(1))  : null,
+      avgNormTrade:        avg(d.normTradeArr)  != null ? Number(avg(d.normTradeArr).toFixed(1))  : null,
+      avgNormWaiver:       avg(d.normWaiverArr) != null ? Number(avg(d.normWaiverArr).toFixed(1)) : null,
+      avgNormLineup:       avg(d.normLineupArr) != null ? Number(avg(d.normLineupArr).toFixed(1)) : null,
+      // Raw averages for context
+      avgRawDraftPAR:      avg(d.rawDraftArr)   != null ? Number(avg(d.rawDraftArr).toFixed(1))   : null,
+      avgRawTradePAR:      avg(d.rawTradeArr)   != null ? Number(avg(d.rawTradeArr).toFixed(1))   : null,
+      avgRawWaiverPAR:     avg(d.rawWaiverArr)  != null ? Number(avg(d.rawWaiverArr).toFixed(1))  : null,
+      avgRawLineupIQ:      avg(d.rawLineupArr)  != null ? Number(avg(d.rawLineupArr).toFixed(4))  : null
     };
   });
 
