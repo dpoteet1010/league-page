@@ -1,138 +1,196 @@
 // powerRankings.js
 //
-// Weekly in-season power rankings. Blends current performance with manager
-// quality, weighted by how far into the season we are — manager grade
-// matters most early (weeks 1-3, before there's meaningful in-season signal)
-// and fades out as actual results accumulate.
+// PRE-SEASON RANKINGS:
+//   Year 1: 100% all-time manager grade (only 1 season available or first ever)
+//   Year 2+: 60% all-time manager grade (prior seasons only) + 40% previous
+//            season's final placement (normalized, best placement = highest score)
 //
-// Week 0 (pre-season / post-draft) is a SPECIAL CASE: no in-season data
-// exists at all, so rankings are 100% manager-grade-driven (post-draft
-// data grade + prior all-time manager grade if available).
+// IN-SEASON RANKINGS (weeks 1–14 only — regular season):
+//   Weeks 1-3:  40% manager grade, 30% record, 20% points, 10% recent form
+//   Weeks 4-8:  15% manager grade, 40% record, 25% points, 20% recent form
+//   Weeks 9-14: 5% manager grade,  45% record, 25% points, 25% recent form
+//
+// PROGRESSION: computeAllWeekRankings builds rankings for all 14 regular-season
+// weeks (plus week 0 pre-season) so a line chart can show rank over time.
 
-const RANKING_WEIGHTS_BY_PHASE = {
-  // week: { record, points, recentForm, managerGrade }
+export const REGULAR_SEASON_WEEKS = 14; // weeks used for ranking (no playoffs)
+
+const PHASE_WEIGHTS = {
   preseason: { record: 0,    points: 0,    recentForm: 0,    managerGrade: 1.0 },
-  early:     { record: 0.30, points: 0.20, recentForm: 0.10, managerGrade: 0.40 }, // weeks 1-3
-  mid:       { record: 0.40, points: 0.25, recentForm: 0.20, managerGrade: 0.15 }, // weeks 4-8
-  late:      { record: 0.45, points: 0.25, recentForm: 0.25, managerGrade: 0.05 }, // weeks 9+
+  early:     { record: 0.30, points: 0.20, recentForm: 0.10, managerGrade: 0.40 },
+  mid:       { record: 0.40, points: 0.25, recentForm: 0.20, managerGrade: 0.15 },
+  late:      { record: 0.45, points: 0.25, recentForm: 0.25, managerGrade: 0.05 }
 };
 
-function getPhase(currentWeek) {
-  if (currentWeek == null || currentWeek <= 0) return 'preseason';
-  if (currentWeek <= 3) return 'early';
-  if (currentWeek <= 8) return 'mid';
+function getPhase(week) {
+  if (!week || week <= 0)  return 'preseason';
+  if (week <= 3)           return 'early';
+  if (week <= 8)           return 'mid';
   return 'late';
 }
 
 function normalize(value, allValues) {
-  if (value == null || allValues.length === 0) return 50;
-  const min = Math.min(...allValues);
-  const max = Math.max(...allValues);
+  const active = allValues.filter((v) => v != null && !isNaN(v));
+  if (value == null || active.length === 0) return 50;
+  const min = Math.min(...active);
+  const max = Math.max(...active);
   if (max === min) return 50;
   return ((value - min) / (max - min)) * 100;
 }
 
-/**
- * Computes recent form: win/loss + margin over the last 3 weeks, normalized.
- */
-function computeRecentForm(weeklyResultsForManager, currentWeek, lookback = 3) {
-  const recent = weeklyResultsForManager
-    .filter((r) => !r.isPlayoffs && r.week <= currentWeek && r.week > currentWeek - lookback)
+function computeRecentForm(managerWeeklyResults, throughWeek, lookback = 3) {
+  const recent = managerWeeklyResults
+    .filter((r) => !r.isPlayoffs && r.week <= throughWeek && r.week > throughWeek - lookback)
     .sort((a, b) => b.week - a.week);
 
   if (recent.length === 0) return null;
 
   let score = 0;
   recent.forEach((r, idx) => {
-    const recencyWeight = 1 - (idx * 0.2); // most recent week weighted highest
-    const margin = r.pointsFor - r.pointsAgainst;
-    const resultPts = r.result === 'W' ? 1 : r.result === 'T' ? 0.5 : 0;
-    score += (resultPts * 10 + margin * 0.1) * recencyWeight;
+    const weight  = 1 - idx * 0.2;
+    const margin  = r.pointsFor - r.pointsAgainst;
+    const winPts  = r.result === 'W' ? 1 : r.result === 'T' ? 0.5 : 0;
+    score += (winPts * 10 + margin * 0.1) * weight;
   });
-
   return score;
 }
 
 /**
- * Computes weekly power rankings for the current season.
+ * Computes pre-season rankings for a given year, blending manager grade history
+ * with the previous season's final standings.
  *
- * @param {number} currentWeek           - the most recently completed week (0 = pre-season)
- * @param {Array}  standings              - this season's standings array from getLeagueState
- * @param {Array}  weeklyResults           - this season's weeklyResults
- * @param {Object} managerGradesThisSeason - from computeSeasonManagerGrades (current season, may be partial)
- * @param {Object} allTimeManagerGrades    - from computeAllTimeManagerGrades (prior seasons), used as fallback
- * @param {Function} rosterToManagerId     - (rosterId) => managerId
+ * @param {string|number} year              - season to rank for
+ * @param {Object}        allTimeGradesUpTo - all-time grades computed from seasons BEFORE this year
+ * @param {Array}         prevStandings     - standings array from the previous season (with managerId + finalPlacement)
+ * @param {Array}         allManagerIds
  */
-export function computePowerRankings(currentWeek, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
-  const phase   = getPhase(currentWeek);
-  const weights = RANKING_WEIGHTS_BY_PHASE[phase];
+export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings, allManagerIds) {
+  const hasPrevStandings = prevStandings && prevStandings.length > 0;
 
-  const teamData = standings.map((team) => {
-    const managerId = rosterToManagerId(team.rosterId);
-    const wins      = team.regularSeason.wins;
-    const losses    = team.regularSeason.losses;
-    const ties      = team.regularSeason.ties;
-    const pf        = team.regularSeason.fptsFor;
+  // Normalize previous placement: 1st = 100, last = 0
+  const placements     = hasPrevStandings
+    ? prevStandings.map((t) => t.finalPlacement).filter((v) => v != null)
+    : [];
+  const maxPlacement   = placements.length > 0 ? Math.max(...placements) : 1;
+  const minPlacement   = placements.length > 0 ? Math.min(...placements) : 1;
 
-    const recordPct = (wins + losses + ties) > 0
-      ? (wins + ties * 0.5) / (wins + losses + ties)
-      : null;
+  const placementScore = (placement) => {
+    if (!placement) return 50;
+    if (maxPlacement === minPlacement) return 50;
+    // Invert: lower placement number (1st) = 100
+    return ((maxPlacement - placement) / (maxPlacement - minPlacement)) * 100;
+  };
 
-    const managerResultsForTeam = weeklyResults.filter((r) => r.rosterId === team.rosterId);
-    const recentForm = currentWeek > 0 ? computeRecentForm(managerResultsForTeam, currentWeek) : null;
-
-    // Manager grade: prefer this season's in-progress grade, fall back to all-time
-    const thisSeasonGrade = managerGradesThisSeason?.[managerId]?.overallGrade ?? null;
-    const allTimeGrade    = allTimeManagerGrades?.[managerId]?.allTimeGrade ?? null;
-    const managerGrade    = thisSeasonGrade ?? allTimeGrade ?? null;
-
-    return { rosterId: team.rosterId, managerId, name: team.name, wins, losses, ties, pf, recordPct, recentForm, managerGrade };
+  const prevPlacementByManager = {};
+  (prevStandings || []).forEach((t) => {
+    if (t.managerId) prevPlacementByManager[t.managerId] = t.finalPlacement;
   });
 
-  // Normalize each component across the league this week
-  const allRecordPct   = teamData.map((t) => t.recordPct).filter((v) => v != null);
-  const allPF          = teamData.map((t) => t.pf).filter((v) => v != null);
-  const allRecentForm  = teamData.map((t) => t.recentForm).filter((v) => v != null);
-  const allManagerGrade = teamData.map((t) => t.managerGrade).filter((v) => v != null);
+  const ranked = allManagerIds.map((managerId) => {
+    const mgrGrade = allTimeGradesUpTo?.[managerId]?.allTimeGrade ?? null;
+    const prevPlacement = prevPlacementByManager[managerId] ?? null;
+    const prevScore     = prevPlacement != null ? placementScore(prevPlacement) : 50;
+
+    let score;
+    if (!hasPrevStandings || mgrGrade == null) {
+      // First season or no grade history: use grade only (or 50 if no grade)
+      score = mgrGrade ?? 50;
+    } else {
+      // 60% all-time manager grade, 40% previous season's placement
+      score = mgrGrade * 0.60 + prevScore * 0.40;
+    }
+
+    return {
+      managerId,
+      score:         Number(score.toFixed(1)),
+      mgrGrade,
+      prevPlacement,
+      prevScore:     Number(prevScore.toFixed(1))
+    };
+  }).sort((a, b) => b.score - a.score);
+
+  ranked.forEach((t, idx) => { t.rank = idx + 1; });
+  return { year, rankings: ranked };
+}
+
+/**
+ * Computes in-season power rankings for one specific week (1-14).
+ * Returns null for week > REGULAR_SEASON_WEEKS.
+ */
+export function computePowerRankings(currentWeek, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
+  const week = Math.min(Number(currentWeek || 0), REGULAR_SEASON_WEEKS);
+  const phase   = getPhase(week);
+  const weights = PHASE_WEIGHTS[phase];
+
+  // Only count regular season weeks up to the cap
+  const regularResults = weeklyResults.filter((r) => !r.isPlayoffs && r.week <= REGULAR_SEASON_WEEKS);
+
+  const teamData = standings.map((team) => {
+    const managerId = team.managerId || rosterToManagerId(team.rosterId);
+    const myResults = regularResults.filter((r) => r.managerId === managerId && r.week <= week);
+
+    const wins   = myResults.filter((r) => r.result === 'W').length;
+    const losses = myResults.filter((r) => r.result === 'L').length;
+    const ties   = myResults.filter((r) => r.result === 'T').length;
+    const pf     = myResults.reduce((s, r) => s + r.pointsFor, 0);
+    const gp     = wins + losses + ties;
+    const recordPct = gp > 0 ? (wins + ties * 0.5) / gp : null;
+
+    const recentForm  = week > 0 ? computeRecentForm(myResults, week) : null;
+    const mgrGrade    = managerGradesThisSeason?.[managerId]?.overallGrade ??
+                        allTimeManagerGrades?.[managerId]?.allTimeGrade ?? null;
+
+    return { rosterId: team.rosterId, managerId, name: team.name, wins, losses, ties, pf, gp, recordPct, recentForm, mgrGrade };
+  });
+
+  const allRecordPct  = teamData.map((t) => t.recordPct);
+  const allPF         = teamData.map((t) => t.pf);
+  const allRecentForm = teamData.map((t) => t.recentForm);
+  const allMgrGrade   = teamData.map((t) => t.mgrGrade);
 
   const ranked = teamData.map((t) => {
-    const recordScore = normalize(t.recordPct,   allRecordPct);
-    const pointsScore  = normalize(t.pf,          allPF);
-    const formScore    = normalize(t.recentForm,  allRecentForm);
-    const mgrScore     = normalize(t.managerGrade, allManagerGrade);
+    const rScore   = normalize(t.recordPct,   allRecordPct);
+    const pScore   = normalize(t.pf,          allPF);
+    const fScore   = normalize(t.recentForm,  allRecentForm);
+    const mScore   = normalize(t.mgrGrade,    allMgrGrade);
 
-    const compositeScore =
-      recordScore * weights.record +
-      pointsScore  * weights.points +
-      formScore    * weights.recentForm +
-      mgrScore     * weights.managerGrade;
+    const composite =
+      rScore * weights.record +
+      pScore * weights.points +
+      fScore * weights.recentForm +
+      mScore * weights.managerGrade;
 
     return {
       ...t,
-      recordScore: Number(recordScore.toFixed(1)),
-      pointsScore:  Number(pointsScore.toFixed(1)),
-      formScore:    Number(formScore.toFixed(1)),
-      managerScore: Number(mgrScore.toFixed(1)),
-      compositeScore: Number(compositeScore.toFixed(1))
+      recordScore:    Number(rScore.toFixed(1)),
+      pointsScore:    Number(pScore.toFixed(1)),
+      formScore:      Number(fScore.toFixed(1)),
+      managerScore:   Number(mScore.toFixed(1)),
+      compositeScore: Number(composite.toFixed(1))
     };
   }).sort((a, b) => b.compositeScore - a.compositeScore);
 
   ranked.forEach((t, idx) => { t.rank = idx + 1; });
-
-  return { phase, weights, week: currentWeek, rankings: ranked };
+  return { phase, weights, week, rankings: ranked };
 }
 
 /**
- * Tracks rank movement by comparing this week's rankings to last week's,
- * for "↑2" / "↓1" style indicators in the newsletter.
+ * Computes rankings for ALL weeks 0-14, returning an array indexed by week.
+ * Week 0 = pre-season. Used to build the progression line chart.
  */
+export function computeAllWeekRankings(standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
+  const all = [];
+  for (let w = 0; w <= REGULAR_SEASON_WEEKS; w++) {
+    all.push(computePowerRankings(w, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId));
+  }
+  return all;
+}
+
 export function computeRankMovement(currentRankings, previousRankings) {
   const prevRankByManager = {};
   (previousRankings || []).forEach((t) => { prevRankByManager[t.managerId] = t.rank; });
-
   return currentRankings.map((t) => {
     const prevRank = prevRankByManager[t.managerId];
-    const movement = prevRank != null ? prevRank - t.rank : null; // positive = moved up
-    return { ...t, prevRank, movement };
+    return { ...t, prevRank, movement: prevRank != null ? prevRank - t.rank : null };
   });
 }
