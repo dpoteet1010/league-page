@@ -15,6 +15,186 @@
   import { computePreSeasonRankings, computePowerRankings, computeAllWeekRankings, REGULAR_SEASON_WEEKS } from '$lib/utils/dataEngine/powerRankings.js';
   import { computeSeasonSOS, computeAllTimeSOS } from '$lib/utils/dataEngine/strengthOfSchedule.js';
   import { teamManagersStore } from '$lib/stores';
+  import {
+    exportLeagueContext,
+    exportSeasonStats,
+    exportAllTimeHistory,
+    exportWeeklyData,
+    exportPreDraftPackage,
+    PROMPTS
+  } from '$lib/utils/dataEngine/dataExport.js';
+
+  // ── Export state ────────────────────────────────────────────────────────
+  let exportPreview      = '';
+  let exportPreviewTitle = '';
+  let exportPreviewType  = '';
+  let exportCopied       = {};
+  let promptCopied       = {};
+  let mainCopied         = false;
+  let exportWeek         = 1;
+
+  const EXPORT_CONFIGS = [
+    {
+      key:      'context',
+      title:    'League Context',
+      filename: 'league_context.md',
+      desc:     'League rules, scoring settings, manager roster, metrics glossary.',
+      freq:     'Upload once — re-upload only if rules change'
+    },
+    {
+      key:      'history',
+      title:    'All-Time History',
+      filename: 'all_time_history.md',
+      desc:     'Career records, all-time grades, SOS, draft/trade/waiver history by season.',
+      freq:     'Replace once per year after season ends'
+    },
+    {
+      key:      'season',
+      title:    'Current Season Stats',
+      filename: 'current_season.md',
+      desc:     'Full current season: standings, all grades, SOS, draft analysis.',
+      freq:     'Replace weekly with cumulative data'
+    },
+    {
+      key:      'week',
+      title:    'Current Week',
+      filename: 'current_week.md',
+      desc:     'This week\'s matchup results, waivers, standings, power rankings.',
+      freq:     'Replace every week'
+    },
+    {
+      key:      'predraft',
+      title:    'Pre-Draft Package',
+      filename: 'pre_draft.md',
+      desc:     'Pre-season power rankings + all-time history + last season stats combined.',
+      freq:     'Generate once before the draft'
+    }
+  ];
+
+  const PROMPT_LABELS = {
+    preDraftRecap:    '📰 Pre-Draft Recap',
+    draftGrades:      '📋 Draft Grades',
+    weeklyRecap:      '📅 Weekly Recap',
+    endOfSeasonRecap: '🏆 End of Season Recap'
+  };
+
+  async function generateExport(type) {
+    const snap       = get(teamManagersStore) || {};
+    const yearStr    = currentSeasonYears[0];
+    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+    const activeIds  = (seasonData?.standings || []).map((t) => t.managerId).filter(Boolean);
+
+    let text  = '';
+    let title = '';
+
+    try {
+      if (type === 'context') {
+        text  = exportLeagueContext(snap);
+        title = 'league_context.md';
+
+      } else if (type === 'history') {
+        text = exportAllTimeHistory({
+          allTimeManagerGrades,
+          allTimeSOS,
+          seasonManagerGrades,
+          seasonSOSByYear,
+          allDrafts,
+          draftGradesByYear,
+          managerTradePARBySeason,
+          managerWaiverPARBySeason,
+          managers:        allTimeHistory?.managers || {},
+          managersSnapshot: snap
+        });
+        title = 'all_time_history.md';
+
+      } else if (type === 'season') {
+        text = exportSeasonStats({
+          year:           yearStr,
+          standings:      seasonData?.standings || [],
+          weeklyResults:  allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
+          seasonSOS:      seasonSOSByYear[yearStr] || null,
+          draftEndOfSeasonGrade: eosCache[yearStr] || null,
+          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
+          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
+          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+          rosterStats,
+          managersSnapshot: snap
+        });
+        title = 'current_season.md';
+
+      } else if (type === 'week') {
+        const weekResults = allTimeHistory?.weeklyResults?.filter(
+          (r) => String(r.year) === yearStr && r.week === exportWeek
+        ) || [];
+        const pr     = weeklyProgressionData[exportWeek] || null;
+        const prevPR = exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
+        text = exportWeeklyData({
+          year:            yearStr,
+          week:            exportWeek,
+          weeklyResults:   weekResults,
+          gradedTransactions,
+          currentStandings: seasonData?.standings || [],
+          powerRankings:    pr,
+          previousPowerRankings: prevPR?.rankings || [],
+          managersSnapshot: snap
+        });
+        title = 'current_week.md';
+
+      } else if (type === 'predraft') {
+        const histText = exportAllTimeHistory({
+          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
+          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+        });
+        const seasonText = exportSeasonStats({
+          year: yearStr, standings: seasonData?.standings || [],
+          weeklyResults: allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
+          seasonSOS: seasonSOSByYear[yearStr] || null,
+          draftEndOfSeasonGrade: eosCache[yearStr] || null,
+          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
+          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
+          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+          rosterStats, managersSnapshot: snap
+        });
+        text = exportPreDraftPackage({
+          year:               Number(yearStr) + 1,
+          allTimeExport:      histText,
+          latestSeasonExport: seasonText,
+          preSeasonRankings,
+          managersSnapshot:   snap
+        });
+        title = 'pre_draft.md';
+      }
+
+      exportPreview      = text;
+      exportPreviewTitle = title;
+      exportPreviewType  = type;
+
+      await navigator.clipboard.writeText(text);
+      exportCopied       = { ...exportCopied, [type]: true };
+      setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
+    } catch (e) {
+      console.error('Export error:', e);
+    }
+  }
+
+  async function copyPrompt(key, text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      promptCopied = { ...promptCopied, [key]: true };
+      setTimeout(() => { promptCopied = { ...promptCopied, [key]: false }; }, 2000);
+    } catch {}
+  }
+
+  async function copyPreview() {
+    try {
+      await navigator.clipboard.writeText(exportPreview);
+      mainCopied = true;
+      setTimeout(() => { mainCopied = false; }, 2000);
+    } catch {}
+  }
 
   // ── Global ─────────────────────────────────────────────────────────────────
   let allTimeHistory  = null;
@@ -349,62 +529,83 @@
     } finally { loadingManagers = false; }
   }
 
-  function recomputeGrades() {
-    seasonManagerGrades = {};
-    currentSeasonYears.forEach((year) => {
-      seasonManagerGrades[year] = computeSeasonManagerGrades(
-        year,
-        draftGradesByYear[year]       || {},
-        managerTradePARBySeason[year] || {},
-        managerWaiverPARBySeason[year] || {},
-        managerLineupIQBySeason[year] || {},
-        allManagerIds
-      );
-    });
-    allTimeManagerGrades = computeAllTimeManagerGrades(seasonManagerGrades);
-  }
+function recomputeGrades() {
+  seasonManagerGrades = {};
+  currentSeasonYears.forEach((year) => {
+    // Only include managers who actually played this season
+    const seasonData     = allTimeHistory?.seasons?.find((s) => String(s.year) === year);
+    const activeManagerIds = (seasonData?.standings || [])
+      .map((t) => t.managerId)
+      .filter(Boolean);
+
+    if (activeManagerIds.length === 0) return;
+
+    seasonManagerGrades[year] = computeSeasonManagerGrades(
+      year,
+      draftGradesByYear[year]        || {},
+      managerTradePARBySeason[year]  || {},
+      managerWaiverPARBySeason[year] || {},
+      managerLineupIQBySeason[year]  || {},
+      activeManagerIds
+    );
+  });
+  allTimeManagerGrades = computeAllTimeManagerGrades(seasonManagerGrades);
+}
 
   // ── Power rankings ────────────────────────────────────────────────────────────
-  async function loadPowerRankings(year) {
-    loadingPower = true;
-    powerYear    = year;
-    preSeasonRankings   = null;
-    endOfSeasonRankings = null;
-    weeklyProgressionData = [];
-    try {
-      await ensureHistory();
-      const ys         = String(year);
-      const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
-      if (!seasonData) return;
+async function loadPowerRankings(year) {
+  loadingPower = true;
+  powerYear    = year;
+  preSeasonRankings     = null;
+  endOfSeasonRankings   = null;
+  weeklyProgressionData = [];
+  try {
+    await ensureHistory();
+    const ys         = String(year);
+    const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
+    if (!seasonData) return;
 
-      const standings     = seasonData.standings || [];
-      const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
-      const mgrGrades     = seasonManagerGrades[ys] || {};
-      const rosterToMgr   = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
+    const standings   = seasonData.standings || [];
+    const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
+    const rosterToMgr = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
 
-      // Pre-season rankings
-      const sortedYears   = currentSeasonYears.map(Number).sort((a, b) => a - b);
-      const prevYear      = sortedYears.find((y) => y < Number(year));
-      const prevStandings = prevYear
-        ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear)?.standings || []
-        : [];
+    // Only rank managers who played this season
+    const activeManagerIds = standings.map((t) => t.managerId).filter(Boolean);
+    if (activeManagerIds.length === 0) return;
 
-      // All-time grades from seasons BEFORE this one
-      const priorSeasonGrades = {};
-      currentSeasonYears
-        .filter((y) => Number(y) < Number(year))
-        .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
-      const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
+    const mgrGrades = seasonManagerGrades[ys] || {};
 
-      preSeasonRankings = computePreSeasonRankings(year, priorAllTimeGrades, prevStandings, allManagerIds);
+    // Pre-season: use grades from seasons BEFORE this one only
+    const sortedYears  = currentSeasonYears.map(Number).sort((a, b) => a - b);
+    const prevYear     = sortedYears.find((y) => y < Number(year));
+    const prevSeason   = prevYear
+      ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear)
+      : null;
+    const prevStandings = prevSeason?.standings || [];
 
-      // Weekly progression (weeks 0-14)
-      weeklyProgressionData = computeAllWeekRankings(standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr);
-      endOfSeasonRankings   = weeklyProgressionData[REGULAR_SEASON_WEEKS];
-    } catch (e) {
-      console.error(e);
-    } finally { loadingPower = false; }
+    const priorSeasonGrades = {};
+    currentSeasonYears
+      .filter((y) => Number(y) < Number(year))
+      .forEach((y) => {
+        if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y];
+      });
+    const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
+
+    preSeasonRankings = computePreSeasonRankings(
+      year, priorAllTimeGrades, prevStandings, activeManagerIds
+    );
+
+    // Weekly progression for active managers only
+    weeklyProgressionData = computeAllWeekRankings(
+      standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr
+    );
+    endOfSeasonRankings = weeklyProgressionData[REGULAR_SEASON_WEEKS];
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loadingPower = false;
   }
+}
 
   // SVG line chart helpers
   function chartPath(managerId, progression, chartW, chartH, numTeams) {
@@ -429,6 +630,7 @@
   <div class="main-tabs">
     {#each [['transactions','💱 Transactions'],['draft','📋 Draft'],['llm','🤖 LLM Context'],['managers','📊 Manager Grades'],['sos','📅 Schedule Strength'],['power','⚡ Power Rankings']] as [tab, label]}
       <button class="tab-btn {mainTab===tab?'active':''}" on:click={() => (mainTab=tab)}>{label}</button>
+<button class="tab-btn {mainTab === 'export' ? 'active' : ''}" on:click={() => (mainTab = 'export')}>📤 Export</button>
     {/each}
   </div>
 
@@ -1080,6 +1282,154 @@
       {/if}
     {/if}
   {/if}
+<!-- ════════ EXPORT ════════ -->
+  {:else if mainTab === 'export'}
+    <h2>Export for LLM</h2>
+    <div class="explainer">
+      Export your league data as Markdown files to upload into a <strong>Claude Project</strong>.
+      You only ever need 4 files — always overwrite rather than adding new ones so you never hit the file limit.
+      <br/><br/>
+      <strong>Setup:</strong> claude.ai → Projects → New Project → Add content → paste/upload .md files.
+      Then start a conversation in that project with the article prompt below — Claude will have full context.
+    </div>
+
+    {#if !allTimeHistory}
+      <div class="status-msg">
+        Load data first: Transactions → Draft Data → Manager Grades (in that order), then come back here.
+      </div>
+    {:else}
+
+      <!-- ── File structure guide ───────────────────────────────────────── -->
+      <div class="file-guide">
+        <h4>Recommended Project Structure (4 files, always)</h4>
+        <div class="file-grid">
+          <div class="file-pill static">
+            <div class="file-name">league_context.md</div>
+            <div class="file-freq">Upload once</div>
+          </div>
+          <div class="file-pill yearly">
+            <div class="file-name">all_time_history.md</div>
+            <div class="file-freq">Replace each year</div>
+          </div>
+          <div class="file-pill weekly">
+            <div class="file-name">current_season.md</div>
+            <div class="file-freq">Replace each week</div>
+          </div>
+          <div class="file-pill weekly">
+            <div class="file-name">current_week.md</div>
+            <div class="file-freq">Replace each week</div>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:0.5rem;">
+          For different article types, create 2-3 Projects using subsets of these same 4 files.
+          Never accumulate — always overwrite.
+        </p>
+      </div>
+
+      <!-- ── Week selector (for weekly exports) ────────────────────────── -->
+      <div class="control-row">
+        <label><strong>Current week (for weekly exports):</strong></label>
+        <select bind:value={exportWeek}>
+          {#each Array.from({length: 17}, (_, i) => i + 1) as w}
+            <option value={w}>Week {w}</option>
+          {/each}
+        </select>
+        <span class="muted">Set this before generating Current Week or Current Season exports.</span>
+      </div>
+
+      <!-- ── Export cards ───────────────────────────────────────────────── -->
+      <h3>Generate Files</h3>
+      <div class="export-card-grid">
+        {#each EXPORT_CONFIGS as config}
+          <div class="export-card {exportPreviewType === config.key ? 'active-card' : ''}">
+            <div class="export-card-header">
+              <div>
+                <div class="export-card-title">{config.title}</div>
+                <code class="export-filename">{config.filename}</code>
+              </div>
+              <button
+                class="copy-btn {exportCopied[config.key] ? 'copied' : ''}"
+                on:click={() => generateExport(config.key)}
+              >
+                {exportCopied[config.key] ? '✓ Copied!' : 'Generate & Copy'}
+              </button>
+            </div>
+            <p class="export-desc">{config.desc}</p>
+            <div class="export-freq">{config.freq}</div>
+          </div>
+        {/each}
+      </div>
+
+      <!-- ── Preview panel ──────────────────────────────────────────────── -->
+      {#if exportPreview}
+        <div class="preview-panel">
+          <div class="preview-header">
+            <div>
+              <h4 style="margin:0;">{exportPreviewTitle}</h4>
+              <span class="muted">{exportPreview.split('\n').length} lines · {Math.round(exportPreview.length / 4)} approx tokens</span>
+            </div>
+            <button class="copy-btn {mainCopied ? 'copied' : ''}" on:click={copyPreview}>
+              {mainCopied ? '✓ Copied!' : 'Copy File Again'}
+            </button>
+          </div>
+          <pre class="export-preview-text">{exportPreview}</pre>
+        </div>
+      {/if}
+
+      <!-- ── Project guides ─────────────────────────────────────────────── -->
+      <h3>Project Guides</h3>
+      <div class="project-guide-grid">
+        <div class="project-guide">
+          <div class="pg-title">📅 Weekly Recap Project</div>
+          <div class="pg-files">
+            <span class="file-ref">league_context.md</span>
+            <span class="file-ref">current_season.md</span>
+            <span class="file-ref">current_week.md</span>
+          </div>
+          <p class="muted">Replace current_season.md and current_week.md each week.</p>
+        </div>
+        <div class="project-guide">
+          <div class="pg-title">📰 Pre-Draft / End of Season Project</div>
+          <div class="pg-files">
+            <span class="file-ref">league_context.md</span>
+            <span class="file-ref">all_time_history.md</span>
+            <span class="file-ref">pre_draft.md or current_season.md</span>
+          </div>
+          <p class="muted">Replace history and season files once per year.</p>
+        </div>
+        <div class="project-guide">
+          <div class="pg-title">📋 Draft Grades Project</div>
+          <div class="pg-files">
+            <span class="file-ref">league_context.md</span>
+            <span class="file-ref">all_time_history.md</span>
+            <span class="file-ref">pre_draft.md</span>
+          </div>
+          <p class="muted">Generate pre_draft.md right after the draft completes.</p>
+        </div>
+      </div>
+
+      <!-- ── Article prompts ────────────────────────────────────────────── -->
+      <h3>Article Prompts</h3>
+      <p class="muted">Paste these as your first message in the relevant Claude Project.</p>
+
+      <div class="prompt-list">
+        {#each Object.entries(PROMPTS) as [key, prompt]}
+          <div class="prompt-card {promptCopied[key] ? 'prompt-copied' : ''}">
+            <div class="prompt-card-header">
+              <strong>{PROMPT_LABELS[key] || key}</strong>
+              <button
+                class="copy-btn {promptCopied[key] ? 'copied' : ''}"
+                on:click={() => copyPrompt(key, prompt)}
+              >
+                {promptCopied[key] ? '✓ Copied!' : 'Copy Prompt'}
+              </button>
+            </div>
+            <pre class="prompt-text">{prompt}</pre>
+          </div>
+        {/each}
+      </div>
+
+    {/if}
 
   <!-- Global debug -->
   <div class="control-row" style="margin-top:2rem;">
@@ -1239,4 +1589,38 @@
   .debug-terminal h4 { margin: 0 0 0.5rem; color: #fff; }
   .debug-terminal ul { margin: 0; padding-left: 1.2rem; }
   .debug-terminal li { margin-bottom: 0.18rem; }
+/* ── Export tab ──────────────────────────────────────────────────────── */
+  .file-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+  .file-grid  { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .file-pill  { border-radius: 6px; padding: 0.5rem 0.75rem; min-width: 160px; }
+  .file-pill.static  { background: #dbeafe; border: 1px solid #93c5fd; }
+  .file-pill.yearly  { background: #d1fae5; border: 1px solid #6ee7b7; }
+  .file-pill.weekly  { background: #fef3c7; border: 1px solid #fcd34d; }
+  .file-name  { font-family: monospace; font-size: 0.85em; font-weight: 700; color: #1e293b; }
+  .file-freq  { font-size: 0.76em; color: #64748b; margin-top: 0.15rem; }
+
+  .export-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .export-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; transition: border-color 0.15s; }
+  .export-card.active-card { border-color: #2563eb; background: #eff6ff; }
+  .export-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.5rem; }
+  .export-card-title { font-weight: 700; font-size: 0.95em; color: #1e293b; }
+  .export-filename { font-size: 0.8em; color: #2563eb; display: block; margin-top: 0.15rem; }
+  .export-desc { font-size: 0.83em; color: #555; margin: 0 0 0.4rem; }
+  .export-freq { font-size: 0.78em; color: #888; font-style: italic; }
+
+  .preview-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 2rem; }
+  .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .export-preview-text { white-space: pre-wrap; font-family: monospace; font-size: 0.77em; background: #1e1e1e; color: #d4d4d4; padding: 0.75rem; border-radius: 6px; max-height: 500px; overflow-y: auto; margin: 0; }
+
+  .project-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .project-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
+  .pg-title { font-weight: 700; margin-bottom: 0.4rem; }
+  .pg-files { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .file-ref { background: #e2e8f0; font-family: monospace; font-size: 0.78em; padding: 0.15rem 0.4rem; border-radius: 3px; color: #374151; }
+
+  .prompt-list { display: flex; flex-direction: column; gap: 1rem; }
+  .prompt-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
+  .prompt-card.prompt-copied { border-color: #16a34a; }
+  .prompt-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .prompt-text { white-space: pre-wrap; font-size: 0.8em; color: #374151; background: #f0f4f8; padding: 0.5rem 0.75rem; border-radius: 4px; margin: 0; max-height: 160px; overflow-y: auto; }
 </style>
