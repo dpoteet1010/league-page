@@ -14,187 +14,11 @@
   import { computeSeasonManagerGrades, computeAllTimeManagerGrades } from '$lib/utils/dataEngine/managerGrades.js';
   import { computePreSeasonRankings, computePowerRankings, computeAllWeekRankings, REGULAR_SEASON_WEEKS } from '$lib/utils/dataEngine/powerRankings.js';
   import { computeSeasonSOS, computeAllTimeSOS } from '$lib/utils/dataEngine/strengthOfSchedule.js';
-  import { teamManagersStore } from '$lib/stores';
   import {
-    exportLeagueContext,
-    exportSeasonStats,
-    exportAllTimeHistory,
-    exportWeeklyData,
-    exportPreDraftPackage,
-    PROMPTS
+    exportLeagueContext, exportSeasonStats, exportAllTimeHistory,
+    exportWeeklyData, exportPreDraftPackage, PROMPTS
   } from '$lib/utils/dataEngine/dataExport.js';
-
-  // ── Export state ────────────────────────────────────────────────────────
-  let exportPreview      = '';
-  let exportPreviewTitle = '';
-  let exportPreviewType  = '';
-  let exportCopied       = {};
-  let promptCopied       = {};
-  let mainCopied         = false;
-  let exportWeek         = 1;
-
-  const EXPORT_CONFIGS = [
-    {
-      key:      'context',
-      title:    'League Context',
-      filename: 'league_context.md',
-      desc:     'League rules, scoring settings, manager roster, metrics glossary.',
-      freq:     'Upload once — re-upload only if rules change'
-    },
-    {
-      key:      'history',
-      title:    'All-Time History',
-      filename: 'all_time_history.md',
-      desc:     'Career records, all-time grades, SOS, draft/trade/waiver history by season.',
-      freq:     'Replace once per year after season ends'
-    },
-    {
-      key:      'season',
-      title:    'Current Season Stats',
-      filename: 'current_season.md',
-      desc:     'Full current season: standings, all grades, SOS, draft analysis.',
-      freq:     'Replace weekly with cumulative data'
-    },
-    {
-      key:      'week',
-      title:    'Current Week',
-      filename: 'current_week.md',
-      desc:     'This week\'s matchup results, waivers, standings, power rankings.',
-      freq:     'Replace every week'
-    },
-    {
-      key:      'predraft',
-      title:    'Pre-Draft Package',
-      filename: 'pre_draft.md',
-      desc:     'Pre-season power rankings + all-time history + last season stats combined.',
-      freq:     'Generate once before the draft'
-    }
-  ];
-
-  const PROMPT_LABELS = {
-    preDraftRecap:    '📰 Pre-Draft Recap',
-    draftGrades:      '📋 Draft Grades',
-    weeklyRecap:      '📅 Weekly Recap',
-    endOfSeasonRecap: '🏆 End of Season Recap'
-  };
-
-  async function generateExport(type) {
-    const snap       = get(teamManagersStore) || {};
-    const yearStr    = currentSeasonYears[0];
-    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-    const activeIds  = (seasonData?.standings || []).map((t) => t.managerId).filter(Boolean);
-
-    let text  = '';
-    let title = '';
-
-    try {
-      if (type === 'context') {
-        text  = exportLeagueContext(snap);
-        title = 'league_context.md';
-
-      } else if (type === 'history') {
-        text = exportAllTimeHistory({
-          allTimeManagerGrades,
-          allTimeSOS,
-          seasonManagerGrades,
-          seasonSOSByYear,
-          allDrafts,
-          draftGradesByYear,
-          managerTradePARBySeason,
-          managerWaiverPARBySeason,
-          managers:        allTimeHistory?.managers || {},
-          managersSnapshot: snap
-        });
-        title = 'all_time_history.md';
-
-      } else if (type === 'season') {
-        text = exportSeasonStats({
-          year:           yearStr,
-          standings:      seasonData?.standings || [],
-          weeklyResults:  allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
-          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
-          seasonSOS:      seasonSOSByYear[yearStr] || null,
-          draftEndOfSeasonGrade: eosCache[yearStr] || null,
-          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
-          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
-          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-          rosterStats,
-          managersSnapshot: snap
-        });
-        title = 'current_season.md';
-
-      } else if (type === 'week') {
-        const weekResults = allTimeHistory?.weeklyResults?.filter(
-          (r) => String(r.year) === yearStr && r.week === exportWeek
-        ) || [];
-        const pr     = weeklyProgressionData[exportWeek] || null;
-        const prevPR = exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
-        text = exportWeeklyData({
-          year:            yearStr,
-          week:            exportWeek,
-          weeklyResults:   weekResults,
-          gradedTransactions,
-          currentStandings: seasonData?.standings || [],
-          powerRankings:    pr,
-          previousPowerRankings: prevPR?.rankings || [],
-          managersSnapshot: snap
-        });
-        title = 'current_week.md';
-
-      } else if (type === 'predraft') {
-        const histText = exportAllTimeHistory({
-          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
-          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
-        });
-        const seasonText = exportSeasonStats({
-          year: yearStr, standings: seasonData?.standings || [],
-          weeklyResults: allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
-          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
-          seasonSOS: seasonSOSByYear[yearStr] || null,
-          draftEndOfSeasonGrade: eosCache[yearStr] || null,
-          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
-          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
-          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-          rosterStats, managersSnapshot: snap
-        });
-        text = exportPreDraftPackage({
-          year:               Number(yearStr) + 1,
-          allTimeExport:      histText,
-          latestSeasonExport: seasonText,
-          preSeasonRankings,
-          managersSnapshot:   snap
-        });
-        title = 'pre_draft.md';
-      }
-
-      exportPreview      = text;
-      exportPreviewTitle = title;
-      exportPreviewType  = type;
-
-      await navigator.clipboard.writeText(text);
-      exportCopied       = { ...exportCopied, [type]: true };
-      setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
-    } catch (e) {
-      console.error('Export error:', e);
-    }
-  }
-
-  async function copyPrompt(key, text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      promptCopied = { ...promptCopied, [key]: true };
-      setTimeout(() => { promptCopied = { ...promptCopied, [key]: false }; }, 2000);
-    } catch {}
-  }
-
-  async function copyPreview() {
-    try {
-      await navigator.clipboard.writeText(exportPreview);
-      mainCopied = true;
-      setTimeout(() => { mainCopied = false; }, 2000);
-    } catch {}
-  }
+  import { teamManagersStore } from '$lib/stores';
 
   // ── Global ─────────────────────────────────────────────────────────────────
   let allTimeHistory  = null;
@@ -203,12 +27,12 @@
   let mainTab         = 'transactions';
 
   // ── Transactions ────────────────────────────────────────────────────────────
-  let transactionHistory       = null;
-  let loadingTransactions      = false;
-  let gradedTransactions       = [];
-  let allTimeTransactionTotals = [];
+  let transactionHistory        = null;
+  let loadingTransactions       = false;
+  let gradedTransactions        = [];
+  let allTimeTransactionTotals  = [];
   let selectedTransactionSeason = '';
-  let seasonTransactionTotals  = [];
+  let seasonTransactionTotals   = [];
   let txFilter         = 'all';
   let showTxDebug      = false;
   let transactionDebug = [];
@@ -225,8 +49,8 @@
   let preSeasonGrade    = null;
   let endOfSeasonGrade  = null;
   let draftActiveTab    = 'end';
-  let draftGradesByYear = {};  // { [year]: { [managerId]: totalAdjustedPAR } }
-  const eosCache        = {};  // end-of-season grade cache
+  let draftGradesByYear = {};
+  const eosCache        = {};
 
   // ── LLM ─────────────────────────────────────────────────────────────────────
   let llmHistoryText  = '';
@@ -253,12 +77,36 @@
   let sosYear         = null;
 
   // ── Power rankings ──────────────────────────────────────────────────────────
-  let powerYear              = null;
-  let loadingPower           = false;
-  let preSeasonRankings      = null;   // week 0
-  let endOfSeasonRankings    = null;   // week 14
-  let weeklyProgressionData  = [];     // [{ week, rankings }] for chart
-  let chartHoverWeek         = null;
+  let powerYear             = null;
+  let loadingPower          = false;
+  let preSeasonRankings     = null;
+  let endOfSeasonRankings   = null;
+  let weeklyProgressionData = [];
+  let chartHoverWeek        = null;
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+  let exportPreview      = '';
+  let exportPreviewTitle = '';
+  let exportPreviewType  = '';
+  let exportCopied       = {};
+  let promptCopied       = {};
+  let mainCopied         = false;
+  let exportWeek         = 1;
+
+  const EXPORT_CONFIGS = [
+    { key: 'context',  title: 'League Context',        filename: 'league_context.md',   desc: 'League rules, scoring, manager roster, metrics glossary.', freq: 'Upload once — re-upload only if rules change' },
+    { key: 'history',  title: 'All-Time History',      filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history by season.', freq: 'Replace once per year after season ends' },
+    { key: 'season',   title: 'Current Season Stats',  filename: 'current_season.md',   desc: 'Full current season: standings, all grades, SOS, draft analysis.', freq: 'Replace weekly with cumulative data' },
+    { key: 'week',     title: 'Current Week',          filename: 'current_week.md',     desc: "This week's matchup results, waivers, standings, power rankings.", freq: 'Replace every week' },
+    { key: 'predraft', title: 'Pre-Draft Package',     filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats combined.', freq: 'Generate once before the draft' }
+  ];
+
+  const PROMPT_LABELS = {
+    preDraftRecap:    '📰 Pre-Draft Recap',
+    draftGrades:      '📋 Draft Grades',
+    weeklyRecap:      '📅 Weekly Recap',
+    endOfSeasonRecap: '🏆 End of Season Recap'
+  };
 
   // ── Reactive ────────────────────────────────────────────────────────────────
   $: currentSeasonYears = allTimeHistory
@@ -274,7 +122,6 @@
     seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
   }
 
-  // Chart: manager names for legend colours
   const CHART_COLORS = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#65a30d','#9333ea','#ea580c','#0d9488','#b45309'];
   $: managerColors = Object.fromEntries(allManagerIds.map((id, i) => [id, CHART_COLORS[i % CHART_COLORS.length]]));
 
@@ -335,13 +182,21 @@
     next.has(id) ? next.delete(id) : next.add(id);
     expandedTx = next;
   }
+
+  async function clipboardCopy(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+  }
   async function copy(text, which) {
-    try {
-      await navigator.clipboard.writeText(text);
-      if (which === 'h') { copiedHistory = true; setTimeout(() => copiedHistory = false, 2000); }
-      if (which === 'c') { copiedCurrent = true; setTimeout(() => copiedCurrent = false, 2000); }
-      if (which === 'p') { copiedPrompt  = true; setTimeout(() => copiedPrompt  = false, 2000); }
-    } catch {}
+    await clipboardCopy(text);
+    if (which === 'h') { copiedHistory = true; setTimeout(() => copiedHistory = false, 2000); }
+    if (which === 'c') { copiedCurrent = true; setTimeout(() => copiedCurrent = false, 2000); }
+    if (which === 'p') { copiedPrompt  = true; setTimeout(() => copiedPrompt  = false, 2000); }
+  }
+
+  // ── Helpers used by export ────────────────────────────────────────────────
+  function getActiveManagerIds(year) {
+    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === String(year));
+    return (seasonData?.standings || []).map((t) => t.managerId).filter(Boolean);
   }
 
   // ── Core loader ──────────────────────────────────────────────────────────────
@@ -371,8 +226,8 @@
       const parTablesBySeason = allTimeHistory.parTablesBySeason || {};
 
       gradedTransactions = txResult.transactions.map((tx) => {
-        const pt  = parTablesBySeason[String(tx.seasonKey || tx.season)];
-        const mn  = (tx.managerIds || []).map((id) => mdn(id));
+        const pt = parTablesBySeason[String(tx.seasonKey || tx.season)];
+        const mn = (tx.managerIds || []).map((id) => mdn(id));
         if (tx.isComposite) return { ...tx, grade: gradeCompositeTrade(tx, pt, playerResults, allPlayersData) };
         if (tx.type === 'trade')  return { ...tx, grade: gradeTradeByPAR(tx, pt, playerResults, allPlayersData, mn) };
         if (tx.type === 'waiver') return { ...tx, grade: gradeWaiverByPAR(tx, pt, playerResults, allPlayersData) };
@@ -418,9 +273,7 @@
       await ensureHistory();
       allDrafts = await getAllDrafts(allTimeHistory.allPlayersData || {});
       draftDebug.push(`Loaded ${allDrafts.length} draft(s): ${allDrafts.map(d=>d.year).join(', ')}`);
-
       for (const draft of allDrafts) await computeEOS(draft.year, true);
-
       if (allDrafts.length) {
         selectedDraftYear = allDrafts[0].year;
         preSeasonGrade    = gradeDraftPreSeason(allDrafts[0]);
@@ -432,9 +285,9 @@
   }
 
   async function computeEOS(year, silent = false) {
-    const ys     = String(year);
-    const draft  = allDrafts.find((d) => d.year === year);
-    const pt     = allTimeHistory?.parTablesBySeason?.[ys];
+    const ys    = String(year);
+    const draft = allDrafts.find((d) => d.year === year);
+    const pt    = allTimeHistory?.parTablesBySeason?.[ys];
     if (!draft || !pt) return null;
 
     const allSeasonStats    = allTimeHistory?.allSeasonStats    || {};
@@ -477,7 +330,9 @@
     const { text } = buildDraftHistoryContext(allDrafts, allTimeHistory?.allSeasonStats || {}, mdn);
     llmHistoryText  = text;
     llmCurrentText  = buildCurrentDraftSummary(allDrafts.find(d=>d.year===Number(year)), mdn);
-    llmPromptText   = DRAFT_GRADING_PROMPT_TEMPLATE.replace('{{HISTORY}}', llmHistoryText).replace('{{CURRENT_DRAFT}}', llmCurrentText);
+    llmPromptText   = DRAFT_GRADING_PROMPT_TEMPLATE
+      .replace('{{HISTORY}}', llmHistoryText)
+      .replace('{{CURRENT_DRAFT}}', llmCurrentText);
     llmSelectedYear = year;
   }
 
@@ -505,13 +360,12 @@
         });
       });
 
-      // SOS
       seasonSOSByYear = {};
       allTimeHistory.seasons.forEach((s) => {
-        const ys         = String(s.year);
-        const standings  = s.standings || [];
-        const wkResults  = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
-        const mgrIds     = standings.map((t) => t.managerId).filter(Boolean);
+        const ys        = String(s.year);
+        const standings = s.standings || [];
+        const wkResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
+        const mgrIds    = standings.map((t) => t.managerId).filter(Boolean);
         if (wkResults.length > 0 && mgrIds.length > 0) {
           seasonSOSByYear[ys] = computeSeasonSOS(wkResults, standings, mgrIds);
           managerDebug.push(`SOS ${ys}: ${Object.keys(seasonSOSByYear[ys]).length} managers`);
@@ -529,85 +383,173 @@
     } finally { loadingManagers = false; }
   }
 
-function recomputeGrades() {
-  seasonManagerGrades = {};
-  currentSeasonYears.forEach((year) => {
-    // Only include managers who actually played this season
-    const seasonData     = allTimeHistory?.seasons?.find((s) => String(s.year) === year);
-    const activeManagerIds = (seasonData?.standings || [])
-      .map((t) => t.managerId)
-      .filter(Boolean);
-
-    if (activeManagerIds.length === 0) return;
-
-    seasonManagerGrades[year] = computeSeasonManagerGrades(
-      year,
-      draftGradesByYear[year]        || {},
-      managerTradePARBySeason[year]  || {},
-      managerWaiverPARBySeason[year] || {},
-      managerLineupIQBySeason[year]  || {},
-      activeManagerIds
-    );
-  });
-  allTimeManagerGrades = computeAllTimeManagerGrades(seasonManagerGrades);
-}
+  // FIX: use active managers per season, not all-time allManagerIds
+  function recomputeGrades() {
+    seasonManagerGrades = {};
+    currentSeasonYears.forEach((year) => {
+      const activeIds = getActiveManagerIds(year);
+      if (activeIds.length === 0) return;
+      seasonManagerGrades[year] = computeSeasonManagerGrades(
+        year,
+        draftGradesByYear[year]        || {},
+        managerTradePARBySeason[year]  || {},
+        managerWaiverPARBySeason[year] || {},
+        managerLineupIQBySeason[year]  || {},
+        activeIds
+      );
+    });
+    allTimeManagerGrades = computeAllTimeManagerGrades(seasonManagerGrades);
+  }
 
   // ── Power rankings ────────────────────────────────────────────────────────────
-async function loadPowerRankings(year) {
-  loadingPower = true;
-  powerYear    = year;
-  preSeasonRankings     = null;
-  endOfSeasonRankings   = null;
-  weeklyProgressionData = [];
-  try {
-    await ensureHistory();
-    const ys         = String(year);
-    const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
-    if (!seasonData) return;
+  // FIX: use active managers per season
+  async function loadPowerRankings(year) {
+    loadingPower = true;
+    powerYear    = year;
+    preSeasonRankings     = null;
+    endOfSeasonRankings   = null;
+    weeklyProgressionData = [];
+    try {
+      await ensureHistory();
+      const ys         = String(year);
+      const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
+      if (!seasonData) return;
 
-    const standings   = seasonData.standings || [];
-    const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
-    const rosterToMgr = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
+      const standings     = seasonData.standings || [];
+      const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
+      const rosterToMgr   = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
 
-    // Only rank managers who played this season
-    const activeManagerIds = standings.map((t) => t.managerId).filter(Boolean);
-    if (activeManagerIds.length === 0) return;
+      // Only managers who played this season
+      const activeManagerIds = standings.map((t) => t.managerId).filter(Boolean);
+      if (activeManagerIds.length === 0) return;
 
-    const mgrGrades = seasonManagerGrades[ys] || {};
+      const mgrGrades = seasonManagerGrades[ys] || {};
 
-    // Pre-season: use grades from seasons BEFORE this one only
-    const sortedYears  = currentSeasonYears.map(Number).sort((a, b) => a - b);
-    const prevYear     = sortedYears.find((y) => y < Number(year));
-    const prevSeason   = prevYear
-      ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear)
-      : null;
-    const prevStandings = prevSeason?.standings || [];
+      const sortedYears  = currentSeasonYears.map(Number).sort((a, b) => a - b);
+      const prevYear     = sortedYears.find((y) => y < Number(year));
+      const prevSeason   = prevYear ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear) : null;
+      const prevStandings = prevSeason?.standings || [];
 
-    const priorSeasonGrades = {};
-    currentSeasonYears
-      .filter((y) => Number(y) < Number(year))
-      .forEach((y) => {
-        if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y];
-      });
-    const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
+      const priorSeasonGrades = {};
+      currentSeasonYears
+        .filter((y) => Number(y) < Number(year))
+        .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
+      const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
 
-    preSeasonRankings = computePreSeasonRankings(
-      year, priorAllTimeGrades, prevStandings, activeManagerIds
-    );
+      preSeasonRankings = computePreSeasonRankings(year, priorAllTimeGrades, prevStandings, activeManagerIds);
 
-    // Weekly progression for active managers only
-    weeklyProgressionData = computeAllWeekRankings(
-      standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr
-    );
-    endOfSeasonRankings = weeklyProgressionData[REGULAR_SEASON_WEEKS];
-  } catch (e) {
-    console.error(e);
-  } finally {
-    loadingPower = false;
+      weeklyProgressionData = computeAllWeekRankings(standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr);
+      endOfSeasonRankings   = weeklyProgressionData[REGULAR_SEASON_WEEKS];
+    } catch (e) {
+      console.error(e);
+    } finally { loadingPower = false; }
   }
-}
 
-  // SVG line chart helpers
+  // ── Export ───────────────────────────────────────────────────────────────────
+  async function generateExport(type) {
+    const snap       = get(teamManagersStore) || {};
+    const yearStr    = currentSeasonYears[0];
+    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+    let text  = '';
+    let title = '';
+
+    try {
+      if (type === 'context') {
+        text  = exportLeagueContext(snap);
+        title = 'league_context.md';
+
+      } else if (type === 'history') {
+        text = exportAllTimeHistory({
+          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
+          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+        });
+        title = 'all_time_history.md';
+
+      } else if (type === 'season') {
+        text = exportSeasonStats({
+          year: yearStr,
+          standings:      seasonData?.standings || [],
+          weeklyResults:  allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
+          seasonSOS:      seasonSOSByYear[yearStr] || null,
+          draftEndOfSeasonGrade: eosCache[yearStr] || null,
+          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
+          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
+          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+          rosterStats, managersSnapshot: snap
+        });
+        title = 'current_season.md';
+
+      } else if (type === 'week') {
+        const weekResults = allTimeHistory?.weeklyResults?.filter(
+          (r) => String(r.year) === yearStr && r.week === exportWeek
+        ) || [];
+        const pr     = weeklyProgressionData[exportWeek] || null;
+        const prevPR = exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
+        text = exportWeeklyData({
+          year: yearStr, week: exportWeek,
+          weeklyResults:   weekResults,
+          gradedTransactions,
+          currentStandings: seasonData?.standings || [],
+          powerRankings:    pr,
+          previousPowerRankings: prevPR?.rankings || [],
+          managersSnapshot: snap
+        });
+        title = 'current_week.md';
+
+      } else if (type === 'predraft') {
+        const histText = exportAllTimeHistory({
+          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
+          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+        });
+        const seasonText = exportSeasonStats({
+          year: yearStr, standings: seasonData?.standings || [],
+          weeklyResults: allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
+          seasonSOS: seasonSOSByYear[yearStr] || null,
+          draftEndOfSeasonGrade: eosCache[yearStr] || null,
+          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
+          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
+          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+          rosterStats, managersSnapshot: snap
+        });
+        text = exportPreDraftPackage({
+          year:               Number(yearStr) + 1,
+          allTimeExport:      histText,
+          latestSeasonExport: seasonText,
+          preSeasonRankings,
+          managersSnapshot:   snap
+        });
+        title = 'pre_draft.md';
+      }
+
+      exportPreview      = text;
+      exportPreviewTitle = title;
+      exportPreviewType  = type;
+
+      await clipboardCopy(text);
+      exportCopied = { ...exportCopied, [type]: true };
+      setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
+    } catch (e) {
+      console.error('Export error:', e);
+    }
+  }
+
+  async function copyPrompt(key, text) {
+    await clipboardCopy(text);
+    promptCopied = { ...promptCopied, [key]: true };
+    setTimeout(() => { promptCopied = { ...promptCopied, [key]: false }; }, 2000);
+  }
+
+  async function copyPreview() {
+    await clipboardCopy(exportPreview);
+    mainCopied = true;
+    setTimeout(() => { mainCopied = false; }, 2000);
+  }
+
+  // SVG chart helper
   function chartPath(managerId, progression, chartW, chartH, numTeams) {
     const points = progression.map((weekData, weekIdx) => {
       const entry = weekData.rankings.find((r) => r.managerId === managerId);
@@ -628,9 +570,16 @@ async function loadPowerRankings(year) {
   <h1>League Analysis Panel</h1>
 
   <div class="main-tabs">
-    {#each [['transactions','💱 Transactions'],['draft','📋 Draft'],['llm','🤖 LLM Context'],['managers','📊 Manager Grades'],['sos','📅 Schedule Strength'],['power','⚡ Power Rankings']] as [tab, label]}
+    {#each [
+      ['transactions','💱 Transactions'],
+      ['draft',       '📋 Draft'],
+      ['llm',         '🤖 LLM Context'],
+      ['managers',    '📊 Manager Grades'],
+      ['sos',         '📅 Schedule Strength'],
+      ['power',       '⚡ Power Rankings'],
+      ['export',      '📤 Export']
+    ] as [tab, label]}
       <button class="tab-btn {mainTab===tab?'active':''}" on:click={() => (mainTab=tab)}>{label}</button>
-<button class="tab-btn {mainTab === 'export' ? 'active' : ''}" on:click={() => (mainTab = 'export')}>📤 Export</button>
     {/each}
   </div>
 
@@ -653,8 +602,13 @@ async function loadPowerRankings(year) {
 
       <h4>Season Totals</h4>
       <div class="control-row">
-        <select bind:value={selectedTransactionSeason} on:change={() => { const s=get(teamManagersStore)||{}; seasonTransactionTotals=getSeasonTransactionTotals(transactionHistory.totals,selectedTransactionSeason,s); }}>
-          {#each Object.keys(transactionHistory.totals.seasons||{}).sort((a,b)=>Number(b)-Number(a)) as yr}<option value={yr}>{yr}</option>{/each}
+        <select bind:value={selectedTransactionSeason} on:change={() => {
+          const s = get(teamManagersStore) || {};
+          seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, s);
+        }}>
+          {#each Object.keys(transactionHistory.totals.seasons||{}).sort((a,b)=>Number(b)-Number(a)) as yr}
+            <option value={yr}>{yr}</option>
+          {/each}
         </select>
       </div>
       {#if seasonTransactionTotals.length}
@@ -666,12 +620,17 @@ async function loadPowerRankings(year) {
 
       <h4>All Transactions <span class="count-badge">{filteredTransactions.length}</span></h4>
       <div class="control-row">
-        <select bind:value={txFilter}><option value="all">All</option><option value="trade">Trades</option><option value="waiver">Waivers</option></select>
+        <select bind:value={txFilter}>
+          <option value="all">All</option>
+          <option value="trade">Trades</option>
+          <option value="waiver">Waivers</option>
+        </select>
       </div>
       {#each filteredTransactions as tx}
         {@const g=tx.grade} {@const isExp=expandedTx.has(tx.id)}
         <div class="tx-card {tx.type} {tx.isComposite?'composite':''}">
-          <div class="tx-summary" on:click={() => toggleTx(tx.id)} role="button" tabindex="0" on:keydown={(e)=>e.key==='Enter'&&toggleTx(tx.id)}>
+          <div class="tx-summary" on:click={() => toggleTx(tx.id)} role="button" tabindex="0"
+            on:keydown={(e)=>e.key==='Enter'&&toggleTx(tx.id)}>
             <div class="tx-meta">
               {#if tx.isComposite}<span class="badge composite">🔀 {tx.teams?.length}-Team</span>
               {:else}<span class="badge {tx.type}">{tx.type}</span>{/if}
@@ -742,7 +701,9 @@ async function loadPowerRankings(year) {
   {:else if mainTab === 'draft'}
     <h2>Draft Analysis</h2>
     <div class="control-row">
-      <button on:click={loadDrafts} disabled={loadingDrafts}>{loadingDrafts?'Loading...':allDrafts.length?'Reload':'Load Draft Data'}</button>
+      <button on:click={loadDrafts} disabled={loadingDrafts}>
+        {loadingDrafts?'Loading...':allDrafts.length?'Reload':'Load Draft Data'}
+      </button>
     </div>
     {#if loadingDrafts}<div class="status-msg">Computing draft grades...</div>
     {:else if allDrafts.length}
@@ -761,9 +722,10 @@ async function loadPowerRankings(year) {
         {#if endOfSeasonGrade}
           <h3>{endOfSeasonGrade.year} Post-Season Draft Grade</h3>
           <div class="explainer">
-            <strong>Adjusted PAR = Actual PAR − Expected PAR.</strong> Actual PAR = actual pts − positional replacement level.
-            Expected PAR = historical avg per round (baseline seasons: {endOfSeasonGrade.baselineSeasons?.join(', ')}).
-            K/DEF: adjustedPAR = actualPAR directly (no round adjustment).
+            <strong>Adjusted PAR = Actual PAR − Expected PAR.</strong>
+            Actual PAR = actual pts − positional replacement level.
+            Expected PAR = historical avg per round (baseline: {endOfSeasonGrade.baselineSeasons?.join(', ')}).
+            K/DEF: adjustedPAR = actualPAR directly.
           </div>
           <div class="ref-grid">
             <div class="ref-panel">
@@ -804,13 +766,15 @@ async function loadPowerRankings(year) {
           <div class="two-col">
             <div>
               <h4>🔥 Biggest Steals</h4>
-              <table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
+              <table class="data-table">
+                <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
                 <tbody>{#each endOfSeasonGrade.leagueTopSteals as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="positive">{signedFp(p.adjustedPAR)}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
               </table>
             </div>
             <div>
               <h4>💀 Biggest Busts</h4>
-              <table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Inj</th><th>Manager</th></tr></thead>
+              <table class="data-table">
+                <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Inj</th><th>Manager</th></tr></thead>
                 <tbody>{#each endOfSeasonGrade.leagueTopBusts as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="negative">{signedFp(p.adjustedPAR)}</td><td>{injIcon(p.injuryFlag)||'—'}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
               </table>
             </div>
@@ -893,7 +857,7 @@ async function loadPowerRankings(year) {
   <!-- ════════ LLM ════════ -->
   {:else if mainTab === 'llm'}
     <h2>LLM Draft Context</h2>
-    <div class="explainer">Generate context for Claude/ChatGPT post-draft qualitative grading. The manager grades tab uses post-season data grades automatically — this is for qualitative narrative grading only.</div>
+    <div class="explainer">Generate context for post-draft qualitative grading. Manager grades use post-season data grades automatically — this is for narrative grading only.</div>
     {#if !allDrafts.length}
       <div class="control-row"><button on:click={loadDrafts} disabled={loadingDrafts}>{loadingDrafts?'Loading...':'Load Draft Data First'}</button></div>
     {:else}
@@ -927,7 +891,7 @@ async function loadPowerRankings(year) {
     <h2>Manager Grades</h2>
     <div class="explainer">
       <strong>Weights:</strong> 40% Draft (post-season adj PAR) · 20% Trades · 20% Waivers · 20% Lineup IQ.<br/>
-      <strong>Scoring:</strong> Z-score centered at 50 (league avg = 50, ±1 std dev = ±25 pts). Zero activity = 50 neutral.
+      <strong>Scoring:</strong> Z-score centered at 50 (league avg = 50, ±1 std dev = ±25 pts). Zero activity = 50 neutral. Only managers active that season are included.
     </div>
     <div class="control-row">
       <button on:click={loadManagerGrades} disabled={loadingManagers}>{loadingManagers?'Loading...':rosterStats?'Reload':'Load Manager Grades'}</button>
@@ -945,20 +909,19 @@ async function loadPowerRankings(year) {
 
       {#if managerGradeYear}
         {@const yg = seasonManagerGrades[String(managerGradeYear)] || {}}
+        {@const activeIds = getActiveManagerIds(managerGradeYear)}
         <h3>{managerGradeYear} Season Grades</h3>
         <table class="data-table">
           <thead>
             <tr>
               <th>Manager</th><th>Overall</th>
-              <th>Draft (40%)<br/><span class="muted">adj PAR score</span></th>
-              <th>Trades (20%)<br/><span class="muted">PAR score</span></th>
-              <th>Waivers (20%)<br/><span class="muted">PAR score</span></th>
-              <th>Lineup IQ (20%)<br/><span class="muted">fpts/ppts score</span></th>
+              <th>Draft (40%)</th><th>Trades (20%)</th>
+              <th>Waivers (20%)</th><th>Lineup IQ (20%)</th>
               <th>Missing</th>
             </tr>
           </thead>
           <tbody>
-            {#each allManagerIds.sort((a,b)=>(yg[b]?.overallGrade??-1)-(yg[a]?.overallGrade??-1)) as mgrId}
+            {#each activeIds.sort((a,b)=>(yg[b]?.overallGrade??-1)-(yg[a]?.overallGrade??-1)) as mgrId}
               {@const r=yg[mgrId]}
               <tr>
                 <td><strong>{mdn(mgrId)}</strong></td>
@@ -986,7 +949,6 @@ async function loadPowerRankings(year) {
         </table>
       {/if}
 
-      <!-- All-time grades with full component breakdown -->
       {#if Object.keys(allTimeManagerGrades).length}
         <h3>All-Time Manager Grades</h3>
         <table class="data-table">
@@ -1001,30 +963,13 @@ async function loadPowerRankings(year) {
             {#each Object.entries(allTimeManagerGrades).sort(([,a],[,b])=>(b.allTimeGrade??-1)-(a.allTimeGrade??-1)) as [mgrId, data]}
               <tr>
                 <td><strong>{mdn(mgrId)}</strong></td>
+                <td>{#if data.allTimeGrade!=null}<span class="score-pill" style="background:{scoreColor(data.allTimeGrade)};">{fp(data.allTimeGrade,0)}</span>{:else}—{/if}</td>
+                <td>{#if data.avgNormDraft!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormDraft)};font-size:0.85em;">{fp(data.avgNormDraft,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawDraftPAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.avgNormTrade!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormTrade)};font-size:0.85em;">{fp(data.avgNormTrade,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawTradePAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.avgNormWaiver!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormWaiver)};font-size:0.85em;">{fp(data.avgNormWaiver,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawWaiverPAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.avgNormLineup!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormLineup)};font-size:0.85em;">{fp(data.avgNormLineup,0)}</span><div class="muted" style="font-size:0.78em;">{pct(data.avgRawLineupIQ)} avg eff.</div>{:else}<span class="muted">—</span>{/if}</td>
                 <td>
-                  {#if data.allTimeGrade!=null}
-                    <span class="score-pill" style="background:{scoreColor(data.allTimeGrade)};">{fp(data.allTimeGrade,0)}</span>
-                  {:else}—{/if}
-                </td>
-                <td>
-                  {#if data.avgNormDraft!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormDraft)};font-size:0.85em;">{fp(data.avgNormDraft,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawDraftPAR)} PAR avg</div>
-                  {:else}<span class="muted">—</span>{/if}
-                </td>
-                <td>
-                  {#if data.avgNormTrade!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormTrade)};font-size:0.85em;">{fp(data.avgNormTrade,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawTradePAR)} PAR avg</div>
-                  {:else}<span class="muted">—</span>{/if}
-                </td>
-                <td>
-                  {#if data.avgNormWaiver!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormWaiver)};font-size:0.85em;">{fp(data.avgNormWaiver,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawWaiverPAR)} PAR avg</div>
-                  {:else}<span class="muted">—</span>{/if}
-                </td>
-                <td>
-                  {#if data.avgNormLineup!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormLineup)};font-size:0.85em;">{fp(data.avgNormLineup,0)}</span><div class="muted" style="font-size:0.78em;">{pct(data.avgRawLineupIQ)} avg eff.</div>
-                  {:else}<span class="muted">—</span>{/if}
-                </td>
-                <td>
-                  <span class="muted">{data.years?.join(', ')}</span><br/>
-                  <!-- Per-season breakdown -->
+                  <span class="muted">{data.years?.join(', ')}</span>
                   {#each (data.perSeason||[]) as s}
                     <div style="font-size:0.76em; color:#888;">{s.year}: {s.overallGrade!=null?fp(s.overallGrade,0):'—'}</div>
                   {/each}
@@ -1047,7 +992,7 @@ async function loadPowerRankings(year) {
     <div class="explainer">
       <strong>Points SOS:</strong> avg points opponents scored against you (regular season only).<br/>
       <strong>Record SOS:</strong> avg final win% of your regular-season opponents.<br/>
-      <strong>Luck:</strong> actual win% minus expected win% (based on how your score compared to every other score each week). Positive = got more wins than your scoring deserved.
+      <strong>Luck:</strong> actual win% minus expected win% based on your score vs all other scores each week.
     </div>
     {#if !rosterStats&&Object.keys(seasonSOSByYear).length===0}
       <div class="control-row"><button on:click={loadManagerGrades} disabled={loadingManagers}>{loadingManagers?'Computing...':'Load Schedule Data'}</button></div>
@@ -1059,7 +1004,6 @@ async function loadPowerRankings(year) {
           {#each Object.keys(seasonSOSByYear).sort((a,b)=>Number(b)-Number(a)) as yr}<option value={yr}>{yr}</option>{/each}
         </select>
       </div>
-
       {#if sosYear == null}
         <h3>All-Time Strength of Schedule</h3>
         <table class="data-table">
@@ -1104,9 +1048,8 @@ async function loadPowerRankings(year) {
   {:else if mainTab === 'power'}
     <h2>Power Rankings</h2>
     <div class="explainer">
-      <strong>Pre-season:</strong> 60% all-time manager grade + 40% previous season's final placement (first season = 100% manager grade).<br/>
-      <strong>In-season (weeks 1-{REGULAR_SEASON_WEEKS}):</strong> blends record, points, recent form, and manager grade. Manager grade weight fades from 40% (early) → 15% (mid) → 5% (late).<br/>
-      <strong>Chart:</strong> rank progression through the regular season. Rank 1 = top of chart.
+      <strong>Pre-season:</strong> 60% all-time manager grade + 40% prior season placement.<br/>
+      <strong>In-season (wks 1-{REGULAR_SEASON_WEEKS}):</strong> record/points/form/manager grade blend. Manager grade fades 40%→15%→5% as season progresses.
     </div>
     <div class="control-row">
       <label><strong>Season:</strong></label>
@@ -1118,15 +1061,14 @@ async function loadPowerRankings(year) {
         {loadingPower?'Computing...':'Compute Rankings'}
       </button>
       {#if !Object.keys(seasonManagerGrades).length}
-        <span class="muted">⚠ Load Manager Grades first for best results.</span>
+        <span class="muted">⚠ Load Manager Grades first.</span>
       {/if}
     </div>
 
     {#if loadingPower}
-      <div class="status-msg">Computing weekly rankings for weeks 0-{REGULAR_SEASON_WEEKS}...</div>
+      <div class="status-msg">Computing weekly rankings...</div>
     {:else if preSeasonRankings || endOfSeasonRankings}
       <div class="rankings-grid">
-        <!-- Pre-season -->
         {#if preSeasonRankings}
           <div class="rankings-card">
             <h3>Pre-Season Rankings ({preSeasonRankings.year})</h3>
@@ -1137,10 +1079,7 @@ async function loadPowerRankings(year) {
                 {#each preSeasonRankings.rankings as team}
                   <tr>
                     <td><strong>#{team.rank}</strong></td>
-                    <td>
-                      <span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>
-                      {mdn(team.managerId)}
-                    </td>
+                    <td><span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>{mdn(team.managerId)}</td>
                     <td><strong>{fp(team.score)}</strong></td>
                     <td class="muted">{team.mgrGrade!=null?fp(team.mgrGrade,0):'—'}</td>
                     <td class="muted">{team.prevPlacement!=null?`#${team.prevPlacement}`:'(first season)'}</td>
@@ -1150,8 +1089,6 @@ async function loadPowerRankings(year) {
             </table>
           </div>
         {/if}
-
-        <!-- End-of-season week 14 -->
         {#if endOfSeasonRankings}
           <div class="rankings-card">
             <h3>End-of-Season Rankings (Week {REGULAR_SEASON_WEEKS})</h3>
@@ -1162,10 +1099,7 @@ async function loadPowerRankings(year) {
                 {#each endOfSeasonRankings.rankings as team}
                   <tr>
                     <td><strong>#{team.rank}</strong></td>
-                    <td>
-                      <span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>
-                      {mdn(team.managerId)}
-                    </td>
+                    <td><span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>{mdn(team.managerId)}</td>
                     <td><strong>{fp(team.compositeScore)}</strong></td>
                     <td>{team.wins}-{team.losses}{team.ties>0?`-${team.ties}`:''}</td>
                     <td>{fp(team.pf)}</td>
@@ -1177,85 +1111,62 @@ async function loadPowerRankings(year) {
         {/if}
       </div>
 
-      <!-- Line chart: rank progression -->
       {#if weeklyProgressionData.length > 1}
         {@const numTeams = weeklyProgressionData[0]?.rankings?.length || 12}
-        {@const chartW = 700} {@const chartH = 320} {@const padL = 36} {@const padR = 12} {@const padT = 12} {@const padB = 32}
-        {@const plotW = chartW - padL - padR} {@const plotH = chartH - padT - padB}
-
+        {@const chartW=700} {@const chartH=320} {@const padL=36} {@const padR=40} {@const padT=12} {@const padB=32}
+        {@const plotW=chartW-padL-padR} {@const plotH=chartH-padT-padB}
         <h3>Season Rank Progression</h3>
-        <p class="sub">Lower rank number = better (rank 1 = top). Hover for week details.</p>
-
+        <p class="sub">Lower = better. Hover for week details.</p>
         <div class="chart-container">
           <svg viewBox="0 0 {chartW} {chartH}" class="rank-chart"
             on:mousemove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
-              const x = e.clientX - rect.left - padL;
-              const weekFrac = x / plotW;
-              const week = Math.round(weekFrac * REGULAR_SEASON_WEEKS);
-              chartHoverWeek = Math.max(0, Math.min(REGULAR_SEASON_WEEKS, week));
+              const x    = e.clientX - rect.left - padL;
+              chartHoverWeek = Math.max(0, Math.min(REGULAR_SEASON_WEEKS, Math.round((x / plotW) * REGULAR_SEASON_WEEKS)));
             }}
             on:mouseleave={() => { chartHoverWeek = null; }}>
-
-            <!-- Y axis labels (ranks) -->
-            {#each Array.from({length: numTeams}, (_, i) => i + 1) as rank}
-              {#if rank === 1 || rank === Math.ceil(numTeams/2) || rank === numTeams}
-                {@const y = padT + ((rank - 1) / (numTeams - 1)) * plotH}
-                <text x={padL - 4} y={y + 4} text-anchor="end" class="axis-label">#{rank}</text>
-                <line x1={padL} y1={y} x2={padL + plotW} y2={y} class="grid-line"/>
+            {#each Array.from({length:numTeams},(_,i)=>i+1) as rnk}
+              {#if rnk===1||rnk===Math.ceil(numTeams/2)||rnk===numTeams}
+                {@const y=padT+((rnk-1)/(numTeams-1))*plotH}
+                <text x={padL-4} y={y+4} text-anchor="end" class="axis-label">#{rnk}</text>
+                <line x1={padL} y1={y} x2={padL+plotW} y2={y} class="grid-line"/>
               {/if}
             {/each}
-
-            <!-- X axis week labels -->
-            {#each [0,2,4,6,8,10,12,14] as week}
-              {#if week <= REGULAR_SEASON_WEEKS}
-                {@const x = padL + (week / REGULAR_SEASON_WEEKS) * plotW}
-                <text x={x} y={padT + plotH + 18} text-anchor="middle" class="axis-label">{week===0?'Pre':'Wk '+week}</text>
+            {#each [0,2,4,6,8,10,12,14] as wk}
+              {#if wk<=REGULAR_SEASON_WEEKS}
+                {@const x=padL+(wk/REGULAR_SEASON_WEEKS)*plotW}
+                <text x={x} y={padT+plotH+18} text-anchor="middle" class="axis-label">{wk===0?'Pre':'Wk '+wk}</text>
                 <line x1={x} y1={padT} x2={x} y2={padT+plotH} class="grid-line light"/>
               {/if}
             {/each}
-
-            <!-- Manager lines -->
             {#each allManagerIds as managerId}
-              {@const color = managerColors[managerId] || '#888'}
-              {@const path = chartPath(managerId, weeklyProgressionData, plotW, plotH, numTeams)}
+              {@const color=managerColors[managerId]||'#888'}
+              {@const path=chartPath(managerId,weeklyProgressionData,plotW,plotH,numTeams)}
               {#if path}
-                <path
-                  d={`M ${path.replace('M ', '')}`.replace('M M', 'M')}
-                  transform="translate({padL},{padT})"
-                  fill="none" stroke={color} stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round"
-                  opacity="0.85"
-                />
+                <path d="M {path.replace(/^M /,'')}" transform="translate({padL},{padT})"
+                  fill="none" stroke={color} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
               {/if}
-              <!-- Endpoint dot + label -->
               {#if weeklyProgressionData[REGULAR_SEASON_WEEKS]}
-                {@const lastEntry = weeklyProgressionData[REGULAR_SEASON_WEEKS].rankings.find(r => r.managerId === managerId)}
+                {@const lastEntry=weeklyProgressionData[REGULAR_SEASON_WEEKS].rankings.find(r=>r.managerId===managerId)}
                 {#if lastEntry}
-                  {@const ex = padL + plotW}
-                  {@const ey = padT + ((lastEntry.rank - 1) / (numTeams - 1)) * plotH}
+                  {@const ex=padL+plotW} {@const ey=padT+((lastEntry.rank-1)/(numTeams-1))*plotH}
                   <circle cx={ex} cy={ey} r="4" fill={color}/>
-                  <text x={ex + 6} y={ey + 4} class="end-label" fill={color}>#{lastEntry.rank}</text>
+                  <text x={ex+6} y={ey+4} class="end-label" fill={color}>#{lastEntry.rank}</text>
                 {/if}
               {/if}
             {/each}
-
-            <!-- Hover line -->
-            {#if chartHoverWeek != null}
-              {@const hx = padL + (chartHoverWeek / REGULAR_SEASON_WEEKS) * plotW}
+            {#if chartHoverWeek!=null}
+              {@const hx=padL+(chartHoverWeek/REGULAR_SEASON_WEEKS)*plotW}
               <line x1={hx} y1={padT} x2={hx} y2={padT+plotH} class="hover-line"/>
-              <!-- Hover dots -->
               {#if weeklyProgressionData[chartHoverWeek]}
                 {#each weeklyProgressionData[chartHoverWeek].rankings as entry}
-                  {@const color = managerColors[entry.managerId] || '#888'}
-                  {@const hy = padT + ((entry.rank - 1) / (numTeams - 1)) * plotH}
+                  {@const color=managerColors[entry.managerId]||'#888'}
+                  {@const hy=padT+((entry.rank-1)/(numTeams-1))*plotH}
                   <circle cx={hx} cy={hy} r="5" fill={color} stroke="white" stroke-width="1.5"/>
                 {/each}
               {/if}
             {/if}
           </svg>
-
-          <!-- Legend -->
           <div class="chart-legend">
             {#each allManagerIds as managerId}
               <div class="legend-item">
@@ -1264,11 +1175,9 @@ async function loadPowerRankings(year) {
               </div>
             {/each}
           </div>
-
-          <!-- Hover tooltip -->
-          {#if chartHoverWeek != null && weeklyProgressionData[chartHoverWeek]}
+          {#if chartHoverWeek!=null&&weeklyProgressionData[chartHoverWeek]}
             <div class="hover-tooltip">
-              <strong>{chartHoverWeek === 0 ? 'Pre-Season' : `Week ${chartHoverWeek}`}</strong>
+              <strong>{chartHoverWeek===0?'Pre-Season':`Week ${chartHoverWeek}`}</strong>
               {#each weeklyProgressionData[chartHoverWeek].rankings as entry}
                 <div class="tooltip-row">
                   <span class="legend-dot" style="background:{managerColors[entry.managerId]||'#888'};"></span>
@@ -1281,77 +1190,47 @@ async function loadPowerRankings(year) {
         </div>
       {/if}
     {/if}
-  {/if}
-<!-- ════════ EXPORT ════════ -->
+
+  <!-- ════════ EXPORT ════════ -->
   {:else if mainTab === 'export'}
     <h2>Export for LLM</h2>
     <div class="explainer">
-      Export your league data as Markdown files to upload into a <strong>Claude Project</strong>.
-      You only ever need 4 files — always overwrite rather than adding new ones so you never hit the file limit.
-      <br/><br/>
-      <strong>Setup:</strong> claude.ai → Projects → New Project → Add content → paste/upload .md files.
-      Then start a conversation in that project with the article prompt below — Claude will have full context.
+      Export league data as Markdown for a <strong>Claude Project</strong> (claude.ai → Projects → New → Add content).
+      Always <strong>overwrite</strong> files rather than adding new ones — you only need 4 files total, regardless of seasons or weeks.
     </div>
 
     {#if !allTimeHistory}
-      <div class="status-msg">
-        Load data first: Transactions → Draft Data → Manager Grades (in that order), then come back here.
-      </div>
+      <div class="status-msg">Load data first: Transactions → Draft Data → Manager Grades (in that order).</div>
     {:else}
-
-      <!-- ── File structure guide ───────────────────────────────────────── -->
       <div class="file-guide">
-        <h4>Recommended Project Structure (4 files, always)</h4>
+        <h4>4 Files, Always (overwrite, never accumulate)</h4>
         <div class="file-grid">
-          <div class="file-pill static">
-            <div class="file-name">league_context.md</div>
-            <div class="file-freq">Upload once</div>
-          </div>
-          <div class="file-pill yearly">
-            <div class="file-name">all_time_history.md</div>
-            <div class="file-freq">Replace each year</div>
-          </div>
-          <div class="file-pill weekly">
-            <div class="file-name">current_season.md</div>
-            <div class="file-freq">Replace each week</div>
-          </div>
-          <div class="file-pill weekly">
-            <div class="file-name">current_week.md</div>
-            <div class="file-freq">Replace each week</div>
-          </div>
+          <div class="file-pill static"><div class="file-name">league_context.md</div><div class="file-freq">Upload once</div></div>
+          <div class="file-pill yearly"><div class="file-name">all_time_history.md</div><div class="file-freq">Replace each year</div></div>
+          <div class="file-pill weekly"><div class="file-name">current_season.md</div><div class="file-freq">Replace each week</div></div>
+          <div class="file-pill weekly"><div class="file-name">current_week.md</div><div class="file-freq">Replace each week</div></div>
         </div>
-        <p class="muted" style="margin-top:0.5rem;">
-          For different article types, create 2-3 Projects using subsets of these same 4 files.
-          Never accumulate — always overwrite.
-        </p>
       </div>
 
-      <!-- ── Week selector (for weekly exports) ────────────────────────── -->
       <div class="control-row">
-        <label><strong>Current week (for weekly exports):</strong></label>
+        <label><strong>Current week:</strong></label>
         <select bind:value={exportWeek}>
-          {#each Array.from({length: 17}, (_, i) => i + 1) as w}
-            <option value={w}>Week {w}</option>
-          {/each}
+          {#each Array.from({length:17},(_,i)=>i+1) as w}<option value={w}>Week {w}</option>{/each}
         </select>
-        <span class="muted">Set this before generating Current Week or Current Season exports.</span>
+        <span class="muted">Set before generating week/season exports.</span>
       </div>
 
-      <!-- ── Export cards ───────────────────────────────────────────────── -->
       <h3>Generate Files</h3>
       <div class="export-card-grid">
         {#each EXPORT_CONFIGS as config}
-          <div class="export-card {exportPreviewType === config.key ? 'active-card' : ''}">
+          <div class="export-card {exportPreviewType===config.key?'active-card':''}">
             <div class="export-card-header">
               <div>
                 <div class="export-card-title">{config.title}</div>
                 <code class="export-filename">{config.filename}</code>
               </div>
-              <button
-                class="copy-btn {exportCopied[config.key] ? 'copied' : ''}"
-                on:click={() => generateExport(config.key)}
-              >
-                {exportCopied[config.key] ? '✓ Copied!' : 'Generate & Copy'}
+              <button class="copy-btn {exportCopied[config.key]?'copied':''}" on:click={() => generateExport(config.key)}>
+                {exportCopied[config.key]?'✓ Copied!':'Generate & Copy'}
               </button>
             </div>
             <p class="export-desc">{config.desc}</p>
@@ -1360,78 +1239,70 @@ async function loadPowerRankings(year) {
         {/each}
       </div>
 
-      <!-- ── Preview panel ──────────────────────────────────────────────── -->
       {#if exportPreview}
         <div class="preview-panel">
           <div class="preview-header">
             <div>
               <h4 style="margin:0;">{exportPreviewTitle}</h4>
-              <span class="muted">{exportPreview.split('\n').length} lines · {Math.round(exportPreview.length / 4)} approx tokens</span>
+              <span class="muted">{exportPreview.split('\n').length} lines · ~{Math.round(exportPreview.length/4)} tokens</span>
             </div>
-            <button class="copy-btn {mainCopied ? 'copied' : ''}" on:click={copyPreview}>
-              {mainCopied ? '✓ Copied!' : 'Copy File Again'}
+            <button class="copy-btn {mainCopied?'copied':''}" on:click={copyPreview}>
+              {mainCopied?'✓ Copied!':'Copy Again'}
             </button>
           </div>
           <pre class="export-preview-text">{exportPreview}</pre>
         </div>
       {/if}
 
-      <!-- ── Project guides ─────────────────────────────────────────────── -->
       <h3>Project Guides</h3>
       <div class="project-guide-grid">
         <div class="project-guide">
-          <div class="pg-title">📅 Weekly Recap Project</div>
+          <div class="pg-title">📅 Weekly Recap</div>
           <div class="pg-files">
             <span class="file-ref">league_context.md</span>
             <span class="file-ref">current_season.md</span>
             <span class="file-ref">current_week.md</span>
           </div>
-          <p class="muted">Replace current_season.md and current_week.md each week.</p>
+          <p class="muted">Replace season + week files each week.</p>
         </div>
         <div class="project-guide">
-          <div class="pg-title">📰 Pre-Draft / End of Season Project</div>
-          <div class="pg-files">
-            <span class="file-ref">league_context.md</span>
-            <span class="file-ref">all_time_history.md</span>
-            <span class="file-ref">pre_draft.md or current_season.md</span>
-          </div>
-          <p class="muted">Replace history and season files once per year.</p>
-        </div>
-        <div class="project-guide">
-          <div class="pg-title">📋 Draft Grades Project</div>
+          <div class="pg-title">📰 Pre-Draft / End of Season</div>
           <div class="pg-files">
             <span class="file-ref">league_context.md</span>
             <span class="file-ref">all_time_history.md</span>
             <span class="file-ref">pre_draft.md</span>
           </div>
-          <p class="muted">Generate pre_draft.md right after the draft completes.</p>
+          <p class="muted">Replace history + pre_draft once per year.</p>
+        </div>
+        <div class="project-guide">
+          <div class="pg-title">📋 Draft Grades</div>
+          <div class="pg-files">
+            <span class="file-ref">league_context.md</span>
+            <span class="file-ref">all_time_history.md</span>
+            <span class="file-ref">pre_draft.md</span>
+          </div>
+          <p class="muted">Generate pre_draft.md right after draft.</p>
         </div>
       </div>
 
-      <!-- ── Article prompts ────────────────────────────────────────────── -->
       <h3>Article Prompts</h3>
       <p class="muted">Paste these as your first message in the relevant Claude Project.</p>
-
       <div class="prompt-list">
         {#each Object.entries(PROMPTS) as [key, prompt]}
-          <div class="prompt-card {promptCopied[key] ? 'prompt-copied' : ''}">
+          <div class="prompt-card">
             <div class="prompt-card-header">
-              <strong>{PROMPT_LABELS[key] || key}</strong>
-              <button
-                class="copy-btn {promptCopied[key] ? 'copied' : ''}"
-                on:click={() => copyPrompt(key, prompt)}
-              >
-                {promptCopied[key] ? '✓ Copied!' : 'Copy Prompt'}
+              <strong>{PROMPT_LABELS[key]||key}</strong>
+              <button class="copy-btn {promptCopied[key]?'copied':''}" on:click={() => copyPrompt(key, prompt)}>
+                {promptCopied[key]?'✓ Copied!':'Copy Prompt'}
               </button>
             </div>
             <pre class="prompt-text">{prompt}</pre>
           </div>
         {/each}
       </div>
-
     {/if}
+  {/if}
 
-  <!-- Global debug -->
   <div class="control-row" style="margin-top:2rem;">
     <button on:click={() => (showGlobalDebug=!showGlobalDebug)}>{showGlobalDebug?'Hide':'Show'} Global Debug</button>
   </div>
@@ -1450,13 +1321,11 @@ async function loadPowerRankings(year) {
   .muted { color: #888; font-size: 0.87em; }
   .explainer { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.87rem; color: #0c4a6e; line-height: 1.6; }
 
-  /* Main tabs */
   .main-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 2rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
-  .tab-group { display: flex; gap: 0.4rem; }
+  .tab-group  { display: flex; gap: 0.4rem; }
   .tab-btn { padding: 0.4rem 0.85rem; border-radius: 6px 6px 0 0; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; font-size: 0.88rem; }
   .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
 
-  /* Tables */
   .data-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.85rem; }
   .data-table.mini { font-size: 0.79rem; }
   .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.3rem 0.45rem; text-align: center; }
@@ -1466,7 +1335,6 @@ async function loadPowerRankings(year) {
   .table-scroll { overflow-x: auto; }
   .totals td { background: #f8fafc; font-weight: 700; }
 
-  /* Transactions */
   .tx-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.6rem; overflow: hidden; }
   .tx-card.trade     { border-left: 4px solid #2563eb; }
   .tx-card.waiver    { border-left: 4px solid #16a34a; }
@@ -1498,7 +1366,6 @@ async function loadPowerRankings(year) {
   .wk-table th, .wk-table td { border: 1px solid #e5e7eb; padding: 0.22rem 0.4rem; text-align: center; }
   .wk-table th { background: #f1f5f9; }
 
-  /* Draft */
   .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
   .ref-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; }
   .ref-title { font-weight: 700; font-size: 0.87em; color: #374151; margin-bottom: 0.5rem; }
@@ -1525,7 +1392,6 @@ async function loadPowerRankings(year) {
   .positive-bg { background: #d1fae5; color: #065f46; }
   .negative-bg { background: #fef2f2; color: #dc2626; }
 
-  /* LLM */
   .llm-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; }
   .llm-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
   .llm-header h4 { margin: 0; }
@@ -1534,23 +1400,19 @@ async function loadPowerRankings(year) {
   .copy-btn { padding: 0.3rem 0.8rem; font-size: 0.83rem; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; }
   .copy-btn.copied { background: #16a34a; }
 
-  /* Manager grades */
   .score-pill { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; color: white; font-weight: 700; font-size: 0.9em; }
 
-  /* SOS */
   .luck-tag { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.8em; font-weight: 600; background: #f3f4f6; color: #374151; }
-  .luck-very-lucky, .luck-consistently-lucky { background: #d1fae5; color: #065f46; }
-  .luck-lucky, .luck-slightly-lucky { background: #e0f2fe; color: #0369a1; }
+  .luck-very-lucky, .luck-consistently-lucky   { background: #d1fae5; color: #065f46; }
+  .luck-lucky, .luck-slightly-lucky            { background: #e0f2fe; color: #0369a1; }
   .luck-very-unlucky, .luck-consistently-unlucky { background: #fef2f2; color: #dc2626; }
-  .luck-unlucky, .luck-slightly-unlucky { background: #fff7ed; color: #c2410c; }
+  .luck-unlucky, .luck-slightly-unlucky        { background: #fff7ed; color: #c2410c; }
 
-  /* Power rankings */
   .rankings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
   .rankings-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; }
   .rankings-card h3 { margin-top: 0; }
   .mgr-color-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
 
-  /* Chart */
   .chart-container { position: relative; margin-bottom: 2rem; }
   .rank-chart { width: 100%; max-width: 760px; display: block; background: white; border: 1px solid #e5e7eb; border-radius: 8px; cursor: crosshair; }
   .axis-label { font-size: 10px; fill: #888; font-family: system-ui, sans-serif; }
@@ -1564,7 +1426,37 @@ async function loadPowerRankings(year) {
   .hover-tooltip { position: absolute; top: 12px; right: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82em; box-shadow: 0 2px 8px rgba(0,0,0,0.12); min-width: 180px; }
   .tooltip-row { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.2rem; justify-content: space-between; }
 
-  /* Badges / colors */
+  /* Export */
+  .file-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+  .file-grid  { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .file-pill  { border-radius: 6px; padding: 0.5rem 0.75rem; min-width: 160px; }
+  .file-pill.static { background: #dbeafe; border: 1px solid #93c5fd; }
+  .file-pill.yearly { background: #d1fae5; border: 1px solid #6ee7b7; }
+  .file-pill.weekly { background: #fef3c7; border: 1px solid #fcd34d; }
+  .file-name  { font-family: monospace; font-size: 0.85em; font-weight: 700; color: #1e293b; }
+  .file-freq  { font-size: 0.76em; color: #64748b; margin-top: 0.15rem; }
+  .export-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .export-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; }
+  .export-card.active-card { border-color: #2563eb; background: #eff6ff; }
+  .export-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.5rem; }
+  .export-card-title { font-weight: 700; font-size: 0.95em; color: #1e293b; }
+  .export-filename { font-size: 0.8em; color: #2563eb; display: block; margin-top: 0.15rem; }
+  .export-desc { font-size: 0.83em; color: #555; margin: 0 0 0.4rem; }
+  .export-freq { font-size: 0.78em; color: #888; font-style: italic; }
+  .preview-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 2rem; }
+  .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .export-preview-text { white-space: pre-wrap; font-family: monospace; font-size: 0.77em; background: #1e1e1e; color: #d4d4d4; padding: 0.75rem; border-radius: 6px; max-height: 500px; overflow-y: auto; margin: 0; }
+  .project-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .project-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
+  .pg-title { font-weight: 700; margin-bottom: 0.4rem; }
+  .pg-files { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .file-ref { background: #e2e8f0; font-family: monospace; font-size: 0.78em; padding: 0.15rem 0.4rem; border-radius: 3px; color: #374151; }
+  .prompt-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
+  .prompt-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
+  .prompt-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .prompt-text { white-space: pre-wrap; font-size: 0.8em; color: #374151; background: #f0f4f8; padding: 0.5rem 0.75rem; border-radius: 4px; margin: 0; max-height: 160px; overflow-y: auto; }
+
+  /* Badges / value labels */
   .badge { padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.72em; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
   .badge.trade     { background: #dbeafe; color: #1d4ed8; }
   .badge.waiver    { background: #dcfce7; color: #15803d; }
@@ -1575,13 +1467,13 @@ async function loadPowerRankings(year) {
   .grade-c { background: #fef3c7; color: #92400e; }
   .grade-d { background: #fed7aa; color: #9a3412; }
   .grade-f { background: #fef2f2; color: #dc2626; }
-  .vl-tag       { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.77em; font-weight: 600; }
-  .vl-steal     { background: #d1fae5; color: #065f46; }
-  .vl-value     { background: #e0f2fe; color: #0369a1; }
-  .vl-neutral   { background: #f3f4f6; color: #6b7280; }
+  .vl-tag        { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.77em; font-weight: 600; }
+  .vl-steal      { background: #d1fae5; color: #065f46; }
+  .vl-value      { background: #e0f2fe; color: #0369a1; }
+  .vl-neutral    { background: #f3f4f6; color: #6b7280; }
   .vl-slight-bust { background: #fff7ed; color: #c2410c; }
-  .vl-bust      { background: #fef2f2; color: #dc2626; }
-  .vl-reach     { background: #fff7ed; color: #c2410c; }
+  .vl-bust       { background: #fef2f2; color: #dc2626; }
+  .vl-reach      { background: #fff7ed; color: #c2410c; }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
   .positive { color: #16a34a; font-weight: 700; }
   .negative { color: #dc2626; font-weight: 700; }
@@ -1589,38 +1481,4 @@ async function loadPowerRankings(year) {
   .debug-terminal h4 { margin: 0 0 0.5rem; color: #fff; }
   .debug-terminal ul { margin: 0; padding-left: 1.2rem; }
   .debug-terminal li { margin-bottom: 0.18rem; }
-/* ── Export tab ──────────────────────────────────────────────────────── */
-  .file-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
-  .file-grid  { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
-  .file-pill  { border-radius: 6px; padding: 0.5rem 0.75rem; min-width: 160px; }
-  .file-pill.static  { background: #dbeafe; border: 1px solid #93c5fd; }
-  .file-pill.yearly  { background: #d1fae5; border: 1px solid #6ee7b7; }
-  .file-pill.weekly  { background: #fef3c7; border: 1px solid #fcd34d; }
-  .file-name  { font-family: monospace; font-size: 0.85em; font-weight: 700; color: #1e293b; }
-  .file-freq  { font-size: 0.76em; color: #64748b; margin-top: 0.15rem; }
-
-  .export-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-  .export-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; transition: border-color 0.15s; }
-  .export-card.active-card { border-color: #2563eb; background: #eff6ff; }
-  .export-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.5rem; }
-  .export-card-title { font-weight: 700; font-size: 0.95em; color: #1e293b; }
-  .export-filename { font-size: 0.8em; color: #2563eb; display: block; margin-top: 0.15rem; }
-  .export-desc { font-size: 0.83em; color: #555; margin: 0 0 0.4rem; }
-  .export-freq { font-size: 0.78em; color: #888; font-style: italic; }
-
-  .preview-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 2rem; }
-  .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-  .export-preview-text { white-space: pre-wrap; font-family: monospace; font-size: 0.77em; background: #1e1e1e; color: #d4d4d4; padding: 0.75rem; border-radius: 6px; max-height: 500px; overflow-y: auto; margin: 0; }
-
-  .project-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 1rem; margin-bottom: 2rem; }
-  .project-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
-  .pg-title { font-weight: 700; margin-bottom: 0.4rem; }
-  .pg-files { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
-  .file-ref { background: #e2e8f0; font-family: monospace; font-size: 0.78em; padding: 0.15rem 0.4rem; border-radius: 3px; color: #374151; }
-
-  .prompt-list { display: flex; flex-direction: column; gap: 1rem; }
-  .prompt-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
-  .prompt-card.prompt-copied { border-color: #16a34a; }
-  .prompt-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-  .prompt-text { white-space: pre-wrap; font-size: 0.8em; color: #374151; background: #f0f4f8; padding: 0.5rem 0.75rem; border-radius: 4px; margin: 0; max-height: 160px; overflow-y: auto; }
 </style>
