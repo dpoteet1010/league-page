@@ -126,6 +126,39 @@
   $: managerColors = Object.fromEntries(allManagerIds.map((id, i) => [id, CHART_COLORS[i % CHART_COLORS.length]]));
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
+  // Replace the clipboard-only approach with download + clipboard
+function downloadMarkdown(content, filename) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Update generateExport() — replace the end of the function:
+async function generateExport(type) {
+  // ... all existing generation logic stays the same ...
+  // Replace the final block at the bottom with this:
+
+  exportPreview      = text;
+  exportPreviewTitle = title;
+  exportPreviewType  = type;
+
+  // Download the file directly — no paste step needed
+  downloadMarkdown(text, title);
+
+  // Also copy to clipboard as a backup
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {}
+
+  exportCopied = { ...exportCopied, [type]: true };
+  setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
+}
   function mdn(managerId) {
     if (!managerId) return '?';
     return get(teamManagersStore)?.users?.[managerId]?.display_name || `Manager ${managerId}`;
@@ -1229,8 +1262,12 @@
                 <div class="export-card-title">{config.title}</div>
                 <code class="export-filename">{config.filename}</code>
               </div>
-              <button class="copy-btn {exportCopied[config.key]?'copied':''}" on:click={() => generateExport(config.key)}>
-                {exportCopied[config.key]?'✓ Copied!':'Generate & Copy'}
+              <!-- In the export card, change the button label -->
+              <button
+                class="copy-btn {exportCopied[config.key]?'copied':''}"
+                on:click={() => generateExport(config.key)}
+              >
+                {exportCopied[config.key] ? '✓ Downloaded!' : 'Download & Copy'}
               </button>
             </div>
             <p class="export-desc">{config.desc}</p>
@@ -1246,8 +1283,13 @@
               <h4 style="margin:0;">{exportPreviewTitle}</h4>
               <span class="muted">{exportPreview.split('\n').length} lines · ~{Math.round(exportPreview.length/4)} tokens</span>
             </div>
-            <button class="copy-btn {mainCopied?'copied':''}" on:click={copyPreview}>
-              {mainCopied?'✓ Copied!':'Copy Again'}
+            <button class="copy-btn {mainCopied?'copied':''}" on:click={() => {
+              downloadMarkdown(exportPreview, exportPreviewTitle);
+              clipboardCopy(exportPreview);
+              mainCopied = true;
+              setTimeout(() => { mainCopied = false; }, 2000);
+            }}>
+              {mainCopied ? '✓ Downloaded!' : 'Download Again'}
             </button>
           </div>
           <pre class="export-preview-text">{exportPreview}</pre>
