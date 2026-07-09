@@ -56,56 +56,76 @@ function computeRecentForm(managerWeeklyResults, throughWeek, lookback = 3) {
 }
 
 /**
- * Computes pre-season rankings for a given year, blending manager grade history
- * with the previous season's final standings.
+ * Computes pre-season rankings for a given year.
+ *
+ * Formula: 50% all-time manager grade + 25% prior regular season standing
+ *          + 25% prior post-season (final placement) standing
+ *
+ * Both standing components convert rank to 0-100 where #1 = 100, last = 0.
+ * First-season managers (no prior data) receive 50 for missing components.
  *
  * @param {string|number} year              - season to rank for
- * @param {Object}        allTimeGradesUpTo - all-time grades computed from seasons BEFORE this year
- * @param {Array}         prevStandings     - standings array from the previous season (with managerId + finalPlacement)
- * @param {Array}         allManagerIds
+ * @param {Object}        allTimeGradesUpTo - all-time grades from seasons BEFORE this year
+ * @param {Array}         prevStandings     - standings from the immediately prior season
+ * @param {Array}         allManagerIds     - active managers this season
  */
 export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings, allManagerIds) {
+  const numTeams        = allManagerIds.length || 12;
   const hasPrevStandings = prevStandings && prevStandings.length > 0;
 
-  // Normalize previous placement: 1st = 100, last = 0
-  const placements     = hasPrevStandings
-    ? prevStandings.map((t) => t.finalPlacement).filter((v) => v != null)
+  // Convert a 1-based rank (1 = best) to a 0-100 score
+  function rankToScore(rank, total) {
+    if (rank == null || total <= 1) return 50;
+    return ((total - rank) / (total - 1)) * 100;
+  }
+
+  // Build regular season rank from prevStandings (sort by wins then PF)
+  const prevRegularSorted = hasPrevStandings
+    ? [...prevStandings].sort((a, b) => {
+        const wa = a.regularSeason?.wins || 0;
+        const wb = b.regularSeason?.wins || 0;
+        if (wb !== wa) return wb - wa;
+        return (b.regularSeason?.fptsFor || 0) - (a.regularSeason?.fptsFor || 0);
+      })
     : [];
-  const maxPlacement   = placements.length > 0 ? Math.max(...placements) : 1;
-  const minPlacement   = placements.length > 0 ? Math.min(...placements) : 1;
 
-  const placementScore = (placement) => {
-    if (!placement) return 50;
-    if (maxPlacement === minPlacement) return 50;
-    // Invert: lower placement number (1st) = 100
-    return ((maxPlacement - placement) / (maxPlacement - minPlacement)) * 100;
-  };
+  const prevRegularRankByManager    = {};
+  const prevPostSeasonRankByManager = {};
 
-  const prevPlacementByManager = {};
-  (prevStandings || []).forEach((t) => {
-    if (t.managerId) prevPlacementByManager[t.managerId] = t.finalPlacement;
+  prevRegularSorted.forEach((team, idx) => {
+    if (team.managerId) prevRegularRankByManager[team.managerId] = idx + 1;
   });
 
-  const ranked = allManagerIds.map((managerId) => {
-    const mgrGrade = allTimeGradesUpTo?.[managerId]?.allTimeGrade ?? null;
-    const prevPlacement = prevPlacementByManager[managerId] ?? null;
-    const prevScore     = prevPlacement != null ? placementScore(prevPlacement) : 50;
-
-    let score;
-    if (!hasPrevStandings || mgrGrade == null) {
-      // First season or no grade history: use grade only (or 50 if no grade)
-      score = mgrGrade ?? 50;
-    } else {
-      // 60% all-time manager grade, 40% previous season's placement
-      score = mgrGrade * 0.60 + prevScore * 0.40;
+  prevStandings?.forEach((team) => {
+    if (team.managerId && team.finalPlacement != null) {
+      prevPostSeasonRankByManager[team.managerId] = team.finalPlacement;
     }
+  });
+
+  const totalPrev = prevStandings?.length || numTeams;
+
+  const ranked = allManagerIds.map((managerId) => {
+    const mgrGrade      = allTimeGradesUpTo?.[managerId]?.allTimeGrade ?? null;
+    const prevRegRank   = prevRegularRankByManager[managerId]    ?? null;
+    const prevPostRank  = prevPostSeasonRankByManager[managerId] ?? null;
+
+    // Convert each component to 0-100
+    const mgrScore     = mgrGrade != null ? mgrGrade : 50;
+    const regScore     = hasPrevStandings && prevRegRank  != null ? rankToScore(prevRegRank,  totalPrev) : 50;
+    const postScore    = hasPrevStandings && prevPostRank != null ? rankToScore(prevPostRank, totalPrev) : 50;
+
+    // 50% manager grade + 25% regular season standing + 25% post-season standing
+    const score = mgrScore * 0.50 + regScore * 0.25 + postScore * 0.25;
 
     return {
       managerId,
       score:         Number(score.toFixed(1)),
       mgrGrade,
-      prevPlacement,
-      prevScore:     Number(prevScore.toFixed(1))
+      prevRegRank,
+      prevPostRank,
+      regScore:      Number(regScore.toFixed(1)),
+      postScore:     Number(postScore.toFixed(1)),
+      isFirstSeason: !hasPrevStandings || (prevRegRank == null && prevPostRank == null)
     };
   }).sort((a, b) => b.score - a.score);
 
