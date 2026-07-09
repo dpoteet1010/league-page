@@ -439,7 +439,7 @@ function downloadMarkdown(content, filename) {
       const mgrGrades = seasonManagerGrades[ys] || {};
 
       const sortedYears  = currentSeasonYears.map(Number).sort((a, b) => a - b);
-      const prevYear     = sortedYears.find((y) => y < Number(year));
+      const prevYear     = [...sortedYears].reverse().find((y) => y < Number(year));
       const prevSeason   = prevYear ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear) : null;
       const prevStandings = prevSeason?.standings || [];
 
@@ -1086,26 +1086,61 @@ function downloadMarkdown(content, filename) {
       <div class="status-msg">Computing weekly rankings...</div>
     {:else if preSeasonRankings || endOfSeasonRankings}
       <div class="rankings-grid">
-        {#if preSeasonRankings}
-          <div class="rankings-card">
-            <h3>Pre-Season Rankings ({preSeasonRankings.year})</h3>
-            <p class="sub">60% manager history + 40% prior season placement</p>
-            <table class="data-table">
-              <thead><tr><th>#</th><th>Manager</th><th>Score</th><th>Mgr Grade</th><th>Prev Placement</th></tr></thead>
-              <tbody>
-                {#each preSeasonRankings.rankings as team}
-                  <tr>
-                    <td><strong>#{team.rank}</strong></td>
-                    <td><span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>{mdn(team.managerId)}</td>
-                    <td><strong>{fp(team.score)}</strong></td>
-                    <td class="muted">{team.mgrGrade!=null?fp(team.mgrGrade,0):'—'}</td>
-                    <td class="muted">{team.prevPlacement!=null?`#${team.prevPlacement}`:'(first season)'}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {/if}
+{#if preSeasonRankings}
+  <div class="rankings-card">
+    <h3>Pre-Season Rankings ({preSeasonRankings.year})</h3>
+    <p class="sub">50% all-time manager grade + 25% prior regular season standing + 25% prior post-season standing</p>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Manager</th>
+          <th>Score</th>
+          <th>All-Time Grade</th>
+          <th>Prior Reg Season</th>
+          <th>Prior Post-Season</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each preSeasonRankings.rankings as team}
+          <tr>
+            <td><strong>#{team.rank}</strong></td>
+            <td>
+              <span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>
+              {mdn(team.managerId)}
+            </td>
+            <td><strong>{fp(team.score)}</strong></td>
+            <td class="muted">
+              {#if team.mgrGrade != null}
+                {fp(team.mgrGrade, 0)}
+              {:else}
+                <span class="muted">—</span>
+              {/if}
+            </td>
+            <td class="muted">
+              {#if team.isFirstSeason}
+                <span class="muted">(first season)</span>
+              {:else if team.prevRegRank != null}
+                #{team.prevRegRank}
+              {:else}
+                <span class="muted">—</span>
+              {/if}
+            </td>
+            <td class="muted">
+              {#if team.isFirstSeason}
+                <span class="muted">(first season)</span>
+              {:else if team.prevPostRank != null}
+                #{team.prevPostRank}
+              {:else}
+                <span class="muted">—</span>
+              {/if}
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
+{/if}
         {#if endOfSeasonRankings}
           <div class="rankings-card">
             <h3>End-of-Season Rankings (Week {REGULAR_SEASON_WEEKS})</h3>
