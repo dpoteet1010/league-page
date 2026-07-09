@@ -139,26 +139,6 @@ function downloadMarkdown(content, filename) {
   URL.revokeObjectURL(url);
 }
 
-// Update generateExport() — replace the end of the function:
-async function generateExport(type) {
-  // ... all existing generation logic stays the same ...
-  // Replace the final block at the bottom with this:
-
-  exportPreview      = text;
-  exportPreviewTitle = title;
-  exportPreviewType  = type;
-
-  // Download the file directly — no paste step needed
-  downloadMarkdown(text, title);
-
-  // Also copy to clipboard as a backup
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {}
-
-  exportCopied = { ...exportCopied, [type]: true };
-  setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
-}
   function mdn(managerId) {
     if (!managerId) return '?';
     return get(teamManagersStore)?.users?.[managerId]?.display_name || `Manager ${managerId}`;
@@ -557,12 +537,16 @@ async function generateExport(type) {
         });
         title = 'pre_draft.md';
       }
-
       exportPreview      = text;
       exportPreviewTitle = title;
       exportPreviewType  = type;
 
-      await clipboardCopy(text);
+      // Download file directly to user's computer
+      downloadMarkdown(text, title);
+
+      // Also copy to clipboard as backup
+      try { await navigator.clipboard.writeText(text); } catch {}
+
       exportCopied = { ...exportCopied, [type]: true };
       setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
     } catch (e) {
