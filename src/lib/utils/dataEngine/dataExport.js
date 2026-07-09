@@ -23,24 +23,39 @@ function mgrName(managerId, snap) {
 }
 
 /**
- * Converts a 0-100 numeric grade to a letter grade.
- * Used throughout exports so the LLM reads "A+" instead of "87.3".
+ * Converts a 0-100 z-score normalized grade to a letter grade.
+ * Anchored so that 50 (league average) = C.
+ * ±1 std dev (25 points) spans roughly two full letter grades.
+ *
+ *  75+ = A+   (top ~2% of performances)
+ *  70+ = A
+ *  65+ = A-
+ *  62+ = B+
+ *  58+ = B    (+1/3 std dev above avg)
+ *  55+ = B-
+ *  52+ = C+
+ *  48+ = C    (league average band)
+ *  45+ = C-
+ *  42+ = D+
+ *  38+ = D    (-1/3 std dev below avg)
+ *  35+ = D-
+ *  below 35 = F  (significantly below average)
  */
 function toLetter(score) {
   const n = typeof score === 'string' ? parseFloat(score) : score;
   if (typeof n !== 'number' || isNaN(n)) return '—';
-  if (n >= 93) return 'A+';
-  if (n >= 87) return 'A';
-  if (n >= 80) return 'A-';
-  if (n >= 77) return 'B+';
-  if (n >= 73) return 'B';
-  if (n >= 70) return 'B-';
-  if (n >= 67) return 'C+';
-  if (n >= 63) return 'C';
-  if (n >= 60) return 'C-';
-  if (n >= 57) return 'D+';
-  if (n >= 53) return 'D';
-  if (n >= 50) return 'D-';
+  if (n >= 75) return 'A+';
+  if (n >= 70) return 'A';
+  if (n >= 65) return 'A-';
+  if (n >= 62) return 'B+';
+  if (n >= 58) return 'B';
+  if (n >= 55) return 'B-';
+  if (n >= 52) return 'C+';
+  if (n >= 48) return 'C';
+  if (n >= 45) return 'C-';
+  if (n >= 42) return 'D+';
+  if (n >= 38) return 'D';
+  if (n >= 35) return 'D-';
   return 'F';
 }
 
