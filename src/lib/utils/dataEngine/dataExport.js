@@ -619,17 +619,16 @@ export function exportPreDraftPackage({
   lines.push('*These are the actual computed rankings — use them directly, do not recalculate.*');
   lines.push('');
 
-  if (preSeasonRankings?.rankings?.length) {
-    lines.push('| Rank | Manager | Score | All-Time Grade | Prior Season Finish |');
-    lines.push('|------|---------|-------|----------------|---------------------|');
-    preSeasonRankings.rankings.forEach(team => {
-      const gradeStr  = team.mgrGrade != null ? toLetter(team.mgrGrade) : '—';
-      const placement = team.prevPlacement != null ? `#${team.prevPlacement}` : '(first season)';
-      lines.push(`| #${team.rank} | ${mn(team.managerId)} | ${fp(team.score)} | ${gradeStr} | ${placement} |`);
-    });
-  } else {
-    lines.push('*Pre-draft rankings not computed. Load Manager Grades and compute Power Rankings before exporting.*');
-  }
+if (preSeasonRankings?.rankings?.length) {
+  lines.push('| Rank | Manager | Score | All-Time Grade | Prior Reg Season | Prior Post-Season |');
+  lines.push('|------|---------|-------|----------------|------------------|-------------------|');
+  preSeasonRankings.rankings.forEach(team => {
+    const gradeStr   = team.mgrGrade != null ? toLetter(team.mgrGrade) : '—';
+    const regRank    = team.isFirstSeason ? '(first season)' : team.prevRegRank  != null ? `#${team.prevRegRank}`  : '—';
+    const postRank   = team.isFirstSeason ? '(first season)' : team.prevPostRank != null ? `#${team.prevPostRank}` : '—';
+    lines.push(`| #${team.rank} | ${mn(team.managerId)} | ${fp(team.score)} | ${gradeStr} | ${regRank} | ${postRank} |`);
+  });
+}
 
   lines.push('');
   lines.push('---');
