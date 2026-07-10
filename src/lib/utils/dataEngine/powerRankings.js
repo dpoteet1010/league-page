@@ -67,6 +67,11 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
   const numTeams         = allManagerIds.length || 12;
   const hasPrevStandings = prevStandings && prevStandings.length > 0;
 
+  function rankToScore(rank, total) {
+    if (rank == null || total <= 1) return 50;
+    return ((total - rank) / (total - 1)) * 100;
+  }
+
   // Regular season rank: sort by wins then PF
   const prevRegularSorted = hasPrevStandings
     ? [...prevStandings].sort((a, b) => {
@@ -85,11 +90,27 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
     if (team.managerId) prevRegularRankByManager[team.managerId] = idx + 1;
   });
 
+  // Post-season: use finalPlacement directly from standings
+  // If finalPlacement is missing, fall back to regular season rank
   prevStandings?.forEach((team) => {
-    if (team.managerId && team.finalPlacement != null) {
+    if (!team.managerId) return;
+    if (team.finalPlacement != null) {
       prevPostSeasonRankByManager[team.managerId] = team.finalPlacement;
+    } else {
+      // Fallback: use regular season rank as proxy
+      prevPostSeasonRankByManager[team.managerId] = prevRegularRankByManager[team.managerId] ?? null;
     }
   });
+
+  // Build debug info for validation
+  const standingsDebug = hasPrevStandings ? prevRegularSorted.map((team, idx) => ({
+    managerId:      team.managerId,
+    regRank:        idx + 1,
+    wins:           team.regularSeason?.wins,
+    losses:         team.regularSeason?.losses,
+    pf:             team.regularSeason?.fptsFor,
+    finalPlacement: team.finalPlacement
+  })) : [];
 
   const ranked = allManagerIds.map((managerId) => {
     const gradeData    = allTimeGradesUpTo?.[managerId];
@@ -108,7 +129,6 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
       managerId,
       score:         Number(score.toFixed(1)),
       mgrGrade,
-      // Component grades for table display
       avgNormDraft:  gradeData?.avgNormDraft  ?? null,
       avgNormTrade:  gradeData?.avgNormTrade  ?? null,
       avgNormWaiver: gradeData?.avgNormWaiver ?? null,
@@ -122,7 +142,7 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
   }).sort((a, b) => b.score - a.score);
 
   ranked.forEach((t, idx) => { t.rank = idx + 1; });
-  return { year, rankings: ranked };
+  return { year, rankings: ranked, standingsDebug };
 }
 
 /**
