@@ -1,19 +1,15 @@
 // powerRankings.js
 //
-// PRE-SEASON RANKINGS:
-//   Year 1: 100% all-time manager grade (only 1 season available or first ever)
-//   Year 2+: 60% all-time manager grade (prior seasons only) + 40% previous
-//            season's final placement (normalized, best placement = highest score)
+// PRE-SEASON RANKINGS: 60% all-time manager grade + 20% prior regular season
+//   standing + 20% prior post-season (final placement) standing.
+//   First-season managers receive 50 (neutral) for missing components.
 //
-// IN-SEASON RANKINGS (weeks 1–14 only — regular season):
-//   Weeks 1-3:  40% manager grade, 30% record, 20% points, 10% recent form
-//   Weeks 4-8:  15% manager grade, 40% record, 25% points, 20% recent form
-//   Weeks 9-14: 5% manager grade,  45% record, 25% points, 25% recent form
-//
-// PROGRESSION: computeAllWeekRankings builds rankings for all 14 regular-season
-// weeks (plus week 0 pre-season) so a line chart can show rank over time.
+// IN-SEASON RANKINGS (weeks 1-14):
+//   Early  (1-3):  40% manager grade, 30% record, 20% points, 10% form
+//   Mid    (4-8):  15% manager grade, 40% record, 25% points, 20% form
+//   Late   (9-14): 5%  manager grade, 45% record, 25% points, 25% form
 
-export const REGULAR_SEASON_WEEKS = 14; // weeks used for ranking (no playoffs)
+export const REGULAR_SEASON_WEEKS = 14;
 
 const PHASE_WEIGHTS = {
   preseason: { record: 0,    points: 0,    recentForm: 0,    managerGrade: 1.0 },
@@ -23,9 +19,9 @@ const PHASE_WEIGHTS = {
 };
 
 function getPhase(week) {
-  if (!week || week <= 0)  return 'preseason';
-  if (week <= 3)           return 'early';
-  if (week <= 8)           return 'mid';
+  if (!week || week <= 0) return 'preseason';
+  if (week <= 3)          return 'early';
+  if (week <= 8)          return 'mid';
   return 'late';
 }
 
@@ -44,42 +40,34 @@ function computeRecentForm(managerWeeklyResults, throughWeek, lookback = 3) {
     .sort((a, b) => b.week - a.week);
 
   if (recent.length === 0) return null;
-
   let score = 0;
   recent.forEach((r, idx) => {
-    const weight  = 1 - idx * 0.2;
-    const margin  = r.pointsFor - r.pointsAgainst;
-    const winPts  = r.result === 'W' ? 1 : r.result === 'T' ? 0.5 : 0;
+    const weight = 1 - idx * 0.2;
+    const margin = r.pointsFor - r.pointsAgainst;
+    const winPts = r.result === 'W' ? 1 : r.result === 'T' ? 0.5 : 0;
     score += (winPts * 10 + margin * 0.1) * weight;
   });
   return score;
 }
 
 /**
+ * Converts a 1-based rank to a 0-100 score (1st = 100, last = 0).
+ */
+function rankToScore(rank, total) {
+  if (rank == null || total <= 1) return 50;
+  return ((total - rank) / (total - 1)) * 100;
+}
+
+/**
  * Computes pre-season rankings for a given year.
- *
- * Formula: 50% all-time manager grade + 25% prior regular season standing
- *          + 25% prior post-season (final placement) standing
- *
- * Both standing components convert rank to 0-100 where #1 = 100, last = 0.
- * First-season managers (no prior data) receive 50 for missing components.
- *
- * @param {string|number} year              - season to rank for
- * @param {Object}        allTimeGradesUpTo - all-time grades from seasons BEFORE this year
- * @param {Array}         prevStandings     - standings from the immediately prior season
- * @param {Array}         allManagerIds     - active managers this season
+ * Formula: 60% all-time manager grade + 20% prior regular season + 20% prior post-season.
+ * Component grades (draft/trade/waiver/lineupIQ) are included in output for table display.
  */
 export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings, allManagerIds) {
-  const numTeams        = allManagerIds.length || 12;
+  const numTeams         = allManagerIds.length || 12;
   const hasPrevStandings = prevStandings && prevStandings.length > 0;
 
-  // Convert a 1-based rank (1 = best) to a 0-100 score
-  function rankToScore(rank, total) {
-    if (rank == null || total <= 1) return 50;
-    return ((total - rank) / (total - 1)) * 100;
-  }
-
-  // Build regular season rank from prevStandings (sort by wins then PF)
+  // Regular season rank: sort by wins then PF
   const prevRegularSorted = hasPrevStandings
     ? [...prevStandings].sort((a, b) => {
         const wa = a.regularSeason?.wins || 0;
@@ -91,6 +79,7 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
 
   const prevRegularRankByManager    = {};
   const prevPostSeasonRankByManager = {};
+  const totalPrev = prevStandings?.length || numTeams;
 
   prevRegularSorted.forEach((team, idx) => {
     if (team.managerId) prevRegularRankByManager[team.managerId] = idx + 1;
@@ -102,25 +91,28 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
     }
   });
 
-  const totalPrev = prevStandings?.length || numTeams;
-
   const ranked = allManagerIds.map((managerId) => {
-    const mgrGrade      = allTimeGradesUpTo?.[managerId]?.allTimeGrade ?? null;
-    const prevRegRank   = prevRegularRankByManager[managerId]    ?? null;
-    const prevPostRank  = prevPostSeasonRankByManager[managerId] ?? null;
+    const gradeData    = allTimeGradesUpTo?.[managerId];
+    const mgrGrade     = gradeData?.allTimeGrade ?? null;
+    const prevRegRank  = prevRegularRankByManager[managerId]    ?? null;
+    const prevPostRank = prevPostSeasonRankByManager[managerId] ?? null;
 
-    // Convert each component to 0-100
-    const mgrScore     = mgrGrade != null ? mgrGrade : 50;
-    const regScore     = hasPrevStandings && prevRegRank  != null ? rankToScore(prevRegRank,  totalPrev) : 50;
-    const postScore    = hasPrevStandings && prevPostRank != null ? rankToScore(prevPostRank, totalPrev) : 50;
+    const mgrScore  = mgrGrade != null ? mgrGrade : 50;
+    const regScore  = hasPrevStandings && prevRegRank  != null ? rankToScore(prevRegRank,  totalPrev) : 50;
+    const postScore = hasPrevStandings && prevPostRank != null ? rankToScore(prevPostRank, totalPrev) : 50;
 
-    // 50% manager grade + 25% regular season standing + 25% post-season standing
-    const score = mgrScore * 0.50 + regScore * 0.25 + postScore * 0.25;
+    // 60% manager grade + 20% regular season + 20% post-season
+    const score = mgrScore * 0.60 + regScore * 0.20 + postScore * 0.20;
 
     return {
       managerId,
       score:         Number(score.toFixed(1)),
       mgrGrade,
+      // Component grades for table display
+      avgNormDraft:  gradeData?.avgNormDraft  ?? null,
+      avgNormTrade:  gradeData?.avgNormTrade  ?? null,
+      avgNormWaiver: gradeData?.avgNormWaiver ?? null,
+      avgNormLineup: gradeData?.avgNormLineup ?? null,
       prevRegRank,
       prevPostRank,
       regScore:      Number(regScore.toFixed(1)),
@@ -134,15 +126,13 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
 }
 
 /**
- * Computes in-season power rankings for one specific week (1-14).
- * Returns null for week > REGULAR_SEASON_WEEKS.
+ * Computes in-season power rankings for one week (1-14).
  */
 export function computePowerRankings(currentWeek, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
-  const week = Math.min(Number(currentWeek || 0), REGULAR_SEASON_WEEKS);
+  const week    = Math.min(Number(currentWeek || 0), REGULAR_SEASON_WEEKS);
   const phase   = getPhase(week);
   const weights = PHASE_WEIGHTS[phase];
 
-  // Only count regular season weeks up to the cap
   const regularResults = weeklyResults.filter((r) => !r.isPlayoffs && r.week <= REGULAR_SEASON_WEEKS);
 
   const teamData = standings.map((team) => {
@@ -156,9 +146,9 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
     const gp     = wins + losses + ties;
     const recordPct = gp > 0 ? (wins + ties * 0.5) / gp : null;
 
-    const recentForm  = week > 0 ? computeRecentForm(myResults, week) : null;
-    const mgrGrade    = managerGradesThisSeason?.[managerId]?.overallGrade ??
-                        allTimeManagerGrades?.[managerId]?.allTimeGrade ?? null;
+    const recentForm = week > 0 ? computeRecentForm(myResults, week) : null;
+    const mgrGrade   = managerGradesThisSeason?.[managerId]?.overallGrade ??
+                       allTimeManagerGrades?.[managerId]?.allTimeGrade ?? null;
 
     return { rosterId: team.rosterId, managerId, name: team.name, wins, losses, ties, pf, gp, recordPct, recentForm, mgrGrade };
   });
@@ -169,10 +159,10 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
   const allMgrGrade   = teamData.map((t) => t.mgrGrade);
 
   const ranked = teamData.map((t) => {
-    const rScore   = normalize(t.recordPct,   allRecordPct);
-    const pScore   = normalize(t.pf,          allPF);
-    const fScore   = normalize(t.recentForm,  allRecentForm);
-    const mScore   = normalize(t.mgrGrade,    allMgrGrade);
+    const rScore = normalize(t.recordPct,  allRecordPct);
+    const pScore = normalize(t.pf,         allPF);
+    const fScore = normalize(t.recentForm, allRecentForm);
+    const mScore = normalize(t.mgrGrade,   allMgrGrade);
 
     const composite =
       rScore * weights.record +
@@ -195,8 +185,7 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
 }
 
 /**
- * Computes rankings for ALL weeks 0-14, returning an array indexed by week.
- * Week 0 = pre-season. Used to build the progression line chart.
+ * Computes rankings for ALL weeks 0-14 for the line chart.
  */
 export function computeAllWeekRankings(standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
   const all = [];
