@@ -1157,6 +1157,44 @@ function scoreToLetter(score) {
     </div>
   </div>
 {/if}
+<!-- Standings validation panel — shows raw data to verify correctness -->
+{#if preSeasonRankings?.standingsDebug?.length}
+  <details style="margin-top:1rem;">
+    <summary class="muted" style="cursor:pointer; font-size:0.87em;">
+      🔍 Verify: Prior Season Standings Used for Rankings (click to expand)
+    </summary>
+    <div style="margin-top:0.5rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:0.75rem;">
+      <p class="muted" style="margin:0 0 0.5rem;">
+        These are the exact standings values used to compute the pre-season rankings above.
+        Verify that Reg Rank order and Final Placement match the actual prior season results.
+        If they're wrong, the issue is in the playoff bracket data from Sleeper.
+      </p>
+      <table class="data-table mini">
+        <thead>
+          <tr><th>Reg Rank</th><th>Manager</th><th>W</th><th>L</th><th>PF</th><th>Final Placement (post-season)</th></tr>
+        </thead>
+        <tbody>
+          {#each preSeasonRankings.standingsDebug as row}
+            <tr>
+              <td>#{row.regRank}</td>
+              <td>{mdn(row.managerId)}</td>
+              <td>{row.wins}</td>
+              <td>{row.losses}</td>
+              <td>{fp(row.pf)}</td>
+              <td>
+                {#if row.finalPlacement != null}
+                  #{row.finalPlacement}
+                {:else}
+                  <span style="color:#dc2626;">⚠ Missing — using reg rank as fallback</span>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  </details>
+{/if}
         {#if endOfSeasonRankings}
           <div class="rankings-card">
             <h3>End-of-Season Rankings (Week {REGULAR_SEASON_WEEKS})</h3>
