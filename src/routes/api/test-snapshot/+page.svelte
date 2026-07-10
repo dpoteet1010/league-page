@@ -785,21 +785,25 @@ function scoreToLetter(score) {
           </div>
           <h4>Team Grades</h4>
           <table class="data-table">
-            <thead><tr><th>#</th><th>Manager</th><th>Grade</th><th>Adj PAR</th><th>Excl Inj</th><th>Actual Pts</th><th>🤕</th><th>Best Pick</th><th>Worst Pick</th></tr></thead>
-            <tbody>
-              {#each endOfSeasonGrade.teamRankings as team, i}
-                <tr>
-                  <td>#{i+1}</td><td><strong>{mdn(team.managerId)}</strong></td>
-                  <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
-                  <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
-                  <td class="{parClass(team.injuryExcludedPAR)}">{signedFp(team.injuryExcludedPAR)}</td>
-                  <td>{fp(team.totalActualPts)}</td>
-                  <td>{team.injured.length||'—'}</td>
-                  <td>{team.bestPick?`${team.bestPick.playerName} R${team.bestPick.round}`:''}</td>
-                  <td>{team.worstPick?`${team.worstPick.playerName} R${team.worstPick.round} ${injIcon(team.worstPick.injuryFlag)}`:''}</td>
-                </tr>
-              {/each}
-            </tbody>
+ <thead>
+  <tr>
+    <th>#</th><th>Manager</th><th>Grade</th>
+    <th>Adj PAR</th><th>Actual Pts</th>
+    <th>Best Pick</th><th>Worst Pick</th>
+  </tr>
+</thead>
+<tbody>
+  {#each endOfSeasonGrade.teamRankings as team, i}
+    <tr>
+      <td>#{i+1}</td><td><strong>{mdn(team.managerId)}</strong></td>
+      <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
+      <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
+      <td>{fp(team.totalActualPts)}</td>
+      <td>{team.bestPick?`${team.bestPick.playerName} R${team.bestPick.round}`:''}</td>
+      <td>{team.worstPick?`${team.worstPick.playerName} R${team.worstPick.round}`:''}</td>
+    </tr>
+  {/each}
+</tbody>
           </table>
           <div class="two-col">
             <div>
@@ -825,12 +829,16 @@ function scoreToLetter(score) {
                 <strong>{mdn(team.managerId)}</strong>
                 <span class="header-stat">Adj PAR: <span class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</span></span>
                 <span class="header-stat muted">{fp(team.totalActualPts)} pts</span>
-                {#if team.injured.length}<span class="header-stat muted">🤕 {team.injured.length} · excl: <span class="{parClass(team.injuryExcludedPAR)}">{signedFp(team.injuryExcludedPAR)}</span></span>{/if}
               </div>
               <div class="table-scroll">
                 <table class="data-table mini">
-                  <thead><tr><th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th><th>Actual</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Games</th><th>Label</th></tr></thead>
-                  <tbody>
+                    <thead>
+                      <tr>
+                        <th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th>
+                        <th>Actual</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Label</th>
+                      </tr>
+                    </thead>                  
+                    <tbody>
                     {#each team.picks as p}
                       <tr>
                         <td>{p.round}</td><td>#{p.pickNo}</td>
