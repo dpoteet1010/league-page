@@ -127,6 +127,8 @@ export function exportSeasonStats({
 
   lines.push(`# ${year} Season — Full Data`);
   lines.push('');
+
+  // ── Season outcomes ─────────────────────────────────────────────────────
   lines.push('## Season Outcomes');
   if (outcomes?.champion)           lines.push(`- 🏆 **Champion**: ${outcomes.champion.displayName}`);
   else                              lines.push('- 🏆 **Champion**: Not yet determined');
@@ -137,28 +139,59 @@ export function exportSeasonStats({
     lines.push(`- 💀 **Regular Season Last Place**: ${l.displayName} (${l.wins}-${l.losses}, ${fp(l.pf)} pts)`);
   }
   if (outcomes?.loserBracketWinner) lines.push(`- 🎯 **Draft Order Bowl Winner**: ${outcomes.loserBracketWinner.displayName}`);
-  else                              lines.push('- 🎯 **Draft Order Bowl Winner**: Not available (consolation bracket)');
+  else                              lines.push('- 🎯 **Draft Order Bowl Winner**: Not available in data');
 
+  // ── Regular season standings (explicit numbered list for LLM clarity) ──
   lines.push('');
   lines.push('## Final Regular Season Standings (Weeks 1-14)');
+  lines.push('*This is the definitive regular season order sorted by wins then points scored.*');
   lines.push('');
-  lines.push('| Rank | Manager | W | L | T | PF | PA | Diff | Playoffs? |');
-  lines.push('|------|---------|---|---|---|----|----|------|-----------|');
+  lines.push('| Reg Rank | Manager | W | L | T | PF | PA | Made Playoffs? |');
+  lines.push('|----------|---------|---|---|---|----|----|----------------|');
 
-  const sortedStandings = [...(standings || [])].sort((a, b) => {
+  const sortedByRegSeason = [...(standings || [])].sort((a, b) => {
     const wa = a.regularSeason?.wins || 0;
     const wb = b.regularSeason?.wins || 0;
     if (wb !== wa) return wb - wa;
     return (b.regularSeason?.fptsFor || 0) - (a.regularSeason?.fptsFor || 0);
   });
 
-  sortedStandings.forEach((team, idx) => {
+  sortedByRegSeason.forEach((team, idx) => {
     const rs   = team.regularSeason || {};
     const diff = (rs.fptsFor || 0) - (rs.fptsAgainst || 0);
-    const made = (team.finalPlacement || 99) <= 6 ? '✓ Playoffs' : 'Loser Bowl';
-    lines.push(`| #${idx+1} | ${mn(team.managerId)} | ${rs.wins||0} | ${rs.losses||0} | ${rs.ties||0} | ${fp(rs.fptsFor)} | ${fp(rs.fptsAgainst)} | ${signedFp(diff)} | ${made} |`);
+    const made = (team.finalPlacement || 99) <= 6 ? '✓ Playoffs (seed #' + (idx + 1) + ')' : 'Loser Bowl';
+    lines.push(`| #${idx+1} | **${mn(team.managerId)}** | ${rs.wins||0} | ${rs.losses||0} | ${rs.ties||0} | ${fp(rs.fptsFor)} | ${fp(rs.fptsAgainst)} | ${made} |`);
   });
 
+  // ── Post-season standings (explicit numbered list) ─────────────────────
+  lines.push('');
+  lines.push('## Final Post-Season Standings (Including Playoffs + Consolation Bracket)');
+  lines.push('*finalPlacement = overall finish for the entire season including playoffs.*');
+  lines.push('');
+
+  const sortedByFinalPlacement = [...(standings || [])]
+    .filter(t => t.finalPlacement != null)
+    .sort((a, b) => (a.finalPlacement || 99) - (b.finalPlacement || 99));
+
+  if (sortedByFinalPlacement.length > 0) {
+    lines.push('| Final Place | Manager | Notes |');
+    lines.push('|-------------|---------|-------|');
+    sortedByFinalPlacement.forEach((team) => {
+      const note = team.finalPlacement === 1  ? '🏆 Champion'
+                 : team.finalPlacement === 2  ? '🥈 Runner-Up'
+                 : team.finalPlacement === 3  ? '🥉 Third Place'
+                 : team.finalPlacement === 7  ? '🎯 Draft Order Bowl Winner'
+                 : team.finalPlacement === 12 ? '💀 Last Place'
+                 : '';
+      lines.push(`| #${team.finalPlacement} | **${mn(team.managerId)}** | ${note} |`);
+    });
+  } else {
+    lines.push('*Post-season placements not available — playoffs may not have completed or bracket data missing.*');
+    lines.push('');
+    lines.push('In the absence of playoff data, use regular season seeding as a proxy for post-season finish.');
+  }
+
+  // ── Manager grades ───────────────────────────────────────────────────────
   lines.push('');
   lines.push('## Manager Grades');
   lines.push('*C = league average. Weights: Draft 40% · Trades 20% · Waivers 20% · Lineup IQ 20%*');
@@ -166,7 +199,7 @@ export function exportSeasonStats({
   lines.push('| Manager | Overall | Draft | Trades | Waivers | Lineup IQ |');
   lines.push('|---------|---------|-------|--------|---------|-----------|');
 
-  const activeIds = sortedStandings.map(t => t.managerId).filter(Boolean);
+  const activeIds = sortedByRegSeason.map(t => t.managerId).filter(Boolean);
   activeIds.forEach(id => {
     const g = seasonManagerGrades?.[id];
     if (!g) return;
@@ -468,6 +501,7 @@ export function exportWeeklyData({
   return lines.join('\n');
 }
 
+
 export function exportPreDraftPackage({
   year, allTimeExport, latestSeasonExport, preSeasonRankings, managersSnapshot
 }) {
@@ -476,22 +510,37 @@ export function exportPreDraftPackage({
 
   lines.push(`# ${year} NFLL Pre-Draft Package`);
   lines.push('');
+  lines.push(`## IMPORTANT: How to Use Pre-Draft Power Rankings`);
+  lines.push('The pre-draft power rankings below are PRE-COMPUTED from actual data.');
+  lines.push('Formula: **60% all-time manager grade + 20% prior regular season finish + 20% prior post-season finish**.');
+  lines.push('DO NOT recalculate these. The Prior Reg and Prior Post columns show the actual standings from the prior season.');
+  lines.push('');
 
   lines.push('## Pre-Draft Power Rankings');
-  lines.push('*Formula: 60% all-time manager grade + 20% prior regular season standing + 20% prior post-season standing.*');
-  lines.push('*These are pre-computed — use them directly.*');
   lines.push('');
 
   if (preSeasonRankings?.rankings?.length) {
-    lines.push('| Rank | Manager | All-Time | Draft | Trades | Waivers | Lineup IQ | Prior Reg | Prior Post |');
-    lines.push('|------|---------|----------|-------|--------|---------|-----------|-----------|------------|');
+    lines.push('| Rank | Manager | Overall | Draft | Trades | Waivers | Lineup IQ | Prior Reg Finish | Prior Post Finish |');
+    lines.push('|------|---------|---------|-------|--------|---------|-----------|-----------------|-------------------|');
     preSeasonRankings.rankings.forEach(team => {
-      const regRank  = team.isFirstSeason ? '(new)' : team.prevRegRank  != null ? `#${team.prevRegRank}`  : '—';
-      const postRank = team.isFirstSeason ? '(new)' : team.prevPostRank != null ? `#${team.prevPostRank}` : '—';
-      lines.push(`| #${team.rank} | ${mn(team.managerId)} | ${toLetter(team.mgrGrade)} | ${toLetter(team.avgNormDraft)} | ${toLetter(team.avgNormTrade)} | ${toLetter(team.avgNormWaiver)} | ${toLetter(team.avgNormLineup)} | ${regRank} | ${postRank} |`);
+      const regRank  = team.isFirstSeason ? '(new)'
+                     : team.prevRegRank  != null ? `#${team.prevRegRank}`  : '—';
+      const postRank = team.isFirstSeason ? '(new)'
+                     : team.prevPostRank != null ? `#${team.prevPostRank}` : '—';
+      lines.push([
+        `#${team.rank}`,
+        mn(team.managerId),
+        toLetter(team.mgrGrade),
+        toLetter(team.avgNormDraft),
+        toLetter(team.avgNormTrade),
+        toLetter(team.avgNormWaiver),
+        toLetter(team.avgNormLineup),
+        regRank,
+        postRank
+      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |'));
     });
   } else {
-    lines.push('*Load Manager Grades and compute Power Rankings before exporting.*');
+    lines.push('*Rankings not computed. Load Manager Grades then compute Power Rankings before exporting.*');
   }
 
   lines.push('');
@@ -505,7 +554,6 @@ export function exportPreDraftPackage({
 
   return lines.join('\n');
 }
-
 export const PROMPTS = {
   preDraftRecap: `
 You are writing the Pre-Draft Preview article for the National Liver Failure League (NFLL) newsletter.
