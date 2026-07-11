@@ -94,11 +94,11 @@
   let exportWeek         = 1;
 
   const EXPORT_CONFIGS = [
-    { key: 'context',  title: 'League Context',        filename: 'league_context.md',   desc: 'League rules, scoring, manager roster, metrics glossary.', freq: 'Upload once — re-upload only if rules change' },
-    { key: 'history',  title: 'All-Time History',      filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history by season.', freq: 'Replace once per year after season ends' },
-    { key: 'season',   title: 'Current Season Stats',  filename: 'current_season.md',   desc: 'Full current season: standings, all grades, SOS, draft analysis.', freq: 'Replace weekly with cumulative data' },
-    { key: 'week',     title: 'Current Week',          filename: 'current_week.md',     desc: "This week's matchup results, waivers, standings, power rankings.", freq: 'Replace every week' },
-    { key: 'predraft', title: 'Pre-Draft Package',     filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats combined.', freq: 'Generate once before the draft' }
+    { key: 'context',  title: 'League Context',       filename: 'league_context.md',   desc: 'League rules, scoring, manager roster, glossary.', freq: 'Upload once' },
+    { key: 'history',  title: 'All-Time History',     filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history.', freq: 'Replace each year' },
+    { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Full current season stats, grades, SOS, draft analysis.', freq: 'Replace each week' },
+    { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "This week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
+    { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats.', freq: 'Generate before the draft' }
   ];
 
   const PROMPT_LABELS = {
@@ -108,11 +108,22 @@
     endOfSeasonRecap: '🏆 End of Season Recap'
   };
 
-
   // ── Reactive ────────────────────────────────────────────────────────────────
   $: currentSeasonYears = allTimeHistory
     ? Object.keys(allTimeHistory.parTablesBySeason || {}).sort((a, b) => Number(b) - Number(a))
     : [];
+
+  // Next season = most recent completed season + 1
+  // Appears in power rankings dropdown even before Sleeper activates it
+  $: nextSeasonYear = currentSeasonYears.length
+    ? String(Math.max(...currentSeasonYears.map(Number)) + 1)
+    : null;
+
+  // All years available for power rankings: actual seasons + next season
+  $: powerRankingYears = nextSeasonYear
+    ? [nextSeasonYear, ...currentSeasonYears]
+    : currentSeasonYears;
+
   $: allManagerIds = allTimeHistory ? Object.keys(allTimeHistory.managers || {}) : [];
   $: draftYearOptions = allDrafts.map((d) => d.year).sort((a, b) => b - a);
   $: filteredTransactions = gradedTransactions
@@ -120,26 +131,17 @@
     .filter((tx) => txFilter === 'all' || tx.type === txFilter);
   $: if (transactionHistory && selectedTransactionSeason) {
     const snap = get(teamManagersStore) || {};
-    seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
+    seasonTransactionTotals = getSeasonTransactionTotals(
+      transactionHistory.totals, selectedTransactionSeason, snap
+    );
   }
 
   const CHART_COLORS = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#65a30d','#9333ea','#ea580c','#0d9488','#b45309'];
-  $: managerColors = Object.fromEntries(allManagerIds.map((id, i) => [id, CHART_COLORS[i % CHART_COLORS.length]]));
+  $: managerColors = Object.fromEntries(
+    allManagerIds.map((id, i) => [id, CHART_COLORS[i % CHART_COLORS.length]])
+  );
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
-  // Replace the clipboard-only approach with download + clipboard
-function downloadMarkdown(content, filename) {
-  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
   function mdn(managerId) {
     if (!managerId) return '?';
     return get(teamManagersStore)?.users?.[managerId]?.display_name || `Manager ${managerId}`;
@@ -179,6 +181,23 @@ function downloadMarkdown(content, filename) {
     if (n >= 30) return '#dc6803';
     return '#dc2626';
   }
+  function scoreToLetter(score) {
+    const n = parseFloat(score);
+    if (isNaN(n)) return '—';
+    if (n >= 75) return 'A+';
+    if (n >= 70) return 'A';
+    if (n >= 65) return 'A-';
+    if (n >= 62) return 'B+';
+    if (n >= 58) return 'B';
+    if (n >= 55) return 'B-';
+    if (n >= 52) return 'C+';
+    if (n >= 48) return 'C';
+    if (n >= 45) return 'C-';
+    if (n >= 42) return 'D+';
+    if (n >= 38) return 'D';
+    if (n >= 35) return 'D-';
+    return 'F';
+  }
   function valueLabelClass(label) {
     if (!label) return '';
     if (label.includes('steal') || label === 'value') return 'vl-steal';
@@ -189,7 +208,6 @@ function downloadMarkdown(content, filename) {
   }
   function waiverEmoji(l) { return { elite:'🔥', strong:'✅', solid:'👍', breakeven:'➖', poor:'❌' }[l] || '?'; }
   function tradeEmoji(g)  { return { lopsided:'💥', clear:'✅', close:'⚖️', even:'🤝' }[g] || '?'; }
-  function injIcon(f)     { return f === 'major-injury' ? '🚑' : f === 'injury' ? '🤕' : ''; }
 
   function toggleTx(id) {
     const next = new Set(expandedTx);
@@ -197,38 +215,45 @@ function downloadMarkdown(content, filename) {
     expandedTx = next;
   }
 
+  function getActiveManagerIds(year) {
+    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === String(year));
+    return (seasonData?.standings || []).map((t) => t.managerId).filter(Boolean);
+  }
+
   async function clipboardCopy(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
   }
-  async function copy(text, which) {
+  async function llmCopy(text, which) {
     await clipboardCopy(text);
     if (which === 'h') { copiedHistory = true; setTimeout(() => copiedHistory = false, 2000); }
     if (which === 'c') { copiedCurrent = true; setTimeout(() => copiedCurrent = false, 2000); }
     if (which === 'p') { copiedPrompt  = true; setTimeout(() => copiedPrompt  = false, 2000); }
   }
 
-  // ── Helpers used by export ────────────────────────────────────────────────
-  function getActiveManagerIds(year) {
-    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === String(year));
-    return (seasonData?.standings || []).map((t) => t.managerId).filter(Boolean);
+  function downloadMarkdown(content, filename) {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
   }
 
-  // ── Core loader ──────────────────────────────────────────────────────────────
+  // ── Core loader ───────────────────────────────────────────────────────────────
   async function ensureHistory() {
     if (allTimeHistory) return;
     globalDebug.push('Loading all-time history...');
     globalDebug = [...globalDebug];
     await getLeagueTeamManagers();
     allTimeHistory = await getAllSeasonsHistory();
-    globalDebug.push(`Seasons: ${currentSeasonYears.join(', ')} | Players: ${Object.keys(allTimeHistory.allPlayersData||{}).length}`);
+    globalDebug.push(`Seasons: ${currentSeasonYears.join(', ')} | Next season: ${nextSeasonYear} | Players: ${Object.keys(allTimeHistory.allPlayersData||{}).length}`);
     globalDebug = [...globalDebug];
   }
 
-  // ── Transactions ─────────────────────────────────────────────────────────────
+  // ── Transactions ──────────────────────────────────────────────────────────────
   async function loadTransactions() {
     loadingTransactions = true;
-    transactionDebug = [];
-    gradedTransactions = [];
+    transactionDebug = []; gradedTransactions = [];
     try {
       await ensureHistory();
       const txResult = await getTransactionHistory(undefined, allTimeHistory.playerResults || []);
@@ -280,7 +305,7 @@ function downloadMarkdown(content, filename) {
     } finally { loadingTransactions = false; }
   }
 
-  // ── Drafts ───────────────────────────────────────────────────────────────────
+  // ── Drafts ────────────────────────────────────────────────────────────────────
   async function loadDrafts() {
     loadingDrafts = true; draftDebug = [];
     try {
@@ -298,37 +323,36 @@ function downloadMarkdown(content, filename) {
     } finally { loadingDrafts = false; }
   }
 
-async function computeEOS(year, silent = false) {
-  const ys    = String(year);
-  const draft = allDrafts.find((d) => d.year === year);
-  const pt    = allTimeHistory?.parTablesBySeason?.[ys];
-  if (!draft || !pt) return null;
+  async function computeEOS(year, silent = false) {
+    const ys    = String(year);
+    const draft = allDrafts.find((d) => d.year === year);
+    const pt    = allTimeHistory?.parTablesBySeason?.[ys];
+    if (!draft || !pt) return null;
 
-  const allSeasonStats    = allTimeHistory?.allSeasonStats    || {};
-  const parTablesBySeason = allTimeHistory?.parTablesBySeason || {};
-  const allPlayersData    = allTimeHistory?.allPlayersData    || {};
+    const allSeasonStats    = allTimeHistory?.allSeasonStats    || {};
+    const parTablesBySeason = allTimeHistory?.parTablesBySeason || {};
+    const allPlayersData    = allTimeHistory?.allPlayersData    || {};
 
-  const baselines = computeRoundBaselines(year, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData);
-  if (!baselines) return null;
+    const baselines = computeRoundBaselines(year, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData);
+    if (!baselines) return null;
 
-  const sr = await getSeasonStatTotals(year, allTimeHistory?.sharedScoringSettings).catch(() => null);
-  if (!sr) return null;
+    const sr = await getSeasonStatTotals(year, allTimeHistory?.sharedScoringSettings).catch(() => null);
+    if (!sr) return null;
 
-  // Note: gamesPlayed removed — injury tracking no longer used
-  const grade = gradeDraftEndOfSeason(draft, sr.totals, baselines, pt, allPlayersData);
-  if (grade) {
-    eosCache[ys] = grade;
-    draftGradesByYear[ys] = {};
-    Object.entries(grade.byRoster || {}).forEach(([, team]) => {
-      if (team.managerId && team.totalAdjustedPAR != null) {
-        draftGradesByYear[ys][team.managerId] = parseFloat(team.totalAdjustedPAR);
-      }
-    });
-    draftGradesByYear = { ...draftGradesByYear };
-    if (!silent) draftDebug.push(`${year} EOS grade computed.`);
+    const grade = gradeDraftEndOfSeason(draft, sr.totals, baselines, pt, allPlayersData);
+    if (grade) {
+      eosCache[ys] = grade;
+      draftGradesByYear[ys] = {};
+      Object.entries(grade.byRoster || {}).forEach(([, team]) => {
+        if (team.managerId && team.totalAdjustedPAR != null) {
+          draftGradesByYear[ys][team.managerId] = parseFloat(team.totalAdjustedPAR);
+        }
+      });
+      draftGradesByYear = { ...draftGradesByYear };
+      if (!silent) draftDebug.push(`${year} EOS grade computed.`);
+    }
+    return grade;
   }
-  return grade;
-}
 
   async function selectDraft(year) {
     selectedDraftYear = year;
@@ -384,8 +408,6 @@ async function computeEOS(year, silent = false) {
         if (wkResults.length > 0 && mgrIds.length > 0) {
           seasonSOSByYear[ys] = computeSeasonSOS(wkResults, standings, mgrIds);
           managerDebug.push(`SOS ${ys}: ${Object.keys(seasonSOSByYear[ys]).length} managers`);
-        } else {
-          managerDebug.push(`SOS ${ys}: skipped — wkResults=${wkResults.length} mgrIds=${mgrIds.length}`);
         }
       });
       allTimeSOS = computeAllTimeSOS(seasonSOSByYear, allManagerIds);
@@ -398,7 +420,6 @@ async function computeEOS(year, silent = false) {
     } finally { loadingManagers = false; }
   }
 
-  // FIX: use active managers per season, not all-time allManagerIds
   function recomputeGrades() {
     seasonManagerGrades = {};
     currentSeasonYears.forEach((year) => {
@@ -417,62 +438,86 @@ async function computeEOS(year, silent = false) {
   }
 
   // ── Power rankings ────────────────────────────────────────────────────────────
-async function loadPowerRankings(year) {
-  loadingPower = true;
-  powerYear    = year;
-  preSeasonRankings     = null;
-  endOfSeasonRankings   = null;
-  weeklyProgressionData = [];
-  try {
-    await ensureHistory();
-    const ys         = String(year);
-    const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
-    if (!seasonData) return;
+  async function loadPowerRankings(year) {
+    loadingPower = true;
+    powerYear    = String(year);
+    preSeasonRankings     = null;
+    endOfSeasonRankings   = null;
+    weeklyProgressionData = [];
 
-    const standings     = seasonData.standings || [];
-    const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
-    const rosterToMgr   = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
+    try {
+      await ensureHistory();
+      const ys = String(year);
 
-    const activeManagerIds = standings.map((t) => t.managerId).filter(Boolean);
-    if (activeManagerIds.length === 0) return;
+      // Determine whether this is a future/next season (not yet in Sleeper)
+      const isNextSeason = !currentSeasonYears.includes(ys);
 
-    const mgrGrades = seasonManagerGrades[ys] || {};
+      // Always find the most recent completed season before this year
+      const sortedYears = currentSeasonYears.map(Number).sort((a, b) => a - b);
+      const prevYear    = [...sortedYears].reverse().find((y) => y < Number(year));
+      const prevSeason  = prevYear
+        ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear)
+        : null;
+      const prevStandings = prevSeason?.standings || [];
 
-    // FIX: find the most recent year BEFORE this one (not the oldest)
-    const sortedYears = currentSeasonYears.map(Number).sort((a, b) => a - b);
-    const prevYear    = [...sortedYears].reverse().find((y) => y < Number(year));
+      // Log what we found for validation
+      if (prevYear) {
+        globalDebug.push(`[Power ${ys}] Using ${prevYear} as prior season (${prevStandings.length} teams in standings)`);
+        prevStandings.forEach((t, i) => {
+          globalDebug.push(`  Prior reg #${i+1}: ${mdn(t.managerId)} (finalPlacement: ${t.finalPlacement ?? 'null'})`);
+        });
+      } else {
+        globalDebug.push(`[Power ${ys}] No prior season found — first season mode`);
+      }
+      globalDebug = [...globalDebug];
 
-    const prevSeason    = prevYear ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear) : null;
-    const prevStandings = prevSeason?.standings || [];
+      // All-time grades from completed seasons only (before this year)
+      const priorSeasonGrades = {};
+      currentSeasonYears
+        .filter((y) => Number(y) < Number(year))
+        .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
+      const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
 
-    const priorSeasonGrades = {};
-    currentSeasonYears
-      .filter((y) => Number(y) < Number(year))
-      .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
-    const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
+      // For next season: use previous season's managers; for existing seasons: use that season's managers
+      const activeManagerIds = isNextSeason
+        ? (prevStandings.length ? prevStandings.map((t) => t.managerId).filter(Boolean) : allManagerIds)
+        : getActiveManagerIds(ys);
 
-    preSeasonRankings = computePreSeasonRankings(year, priorAllTimeGrades, prevStandings, activeManagerIds);
+      preSeasonRankings = computePreSeasonRankings(
+        year, priorAllTimeGrades, prevStandings, activeManagerIds
+      );
 
-    weeklyProgressionData = computeAllWeekRankings(standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr);
-    endOfSeasonRankings   = weeklyProgressionData[REGULAR_SEASON_WEEKS];
-  } catch (e) {
-    console.error(e);
-  } finally { loadingPower = false; }
-}
+      // In-season data only available for actual completed/active seasons
+      if (!isNextSeason) {
+        const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
+        if (seasonData) {
+          const standings     = seasonData.standings || [];
+          const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
+          const rosterToMgr   = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
+          const mgrGrades     = seasonManagerGrades[ys] || {};
 
-  // ── Export ───────────────────────────────────────────────────────────────────
+          weeklyProgressionData = computeAllWeekRankings(
+            standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr
+          );
+          endOfSeasonRankings = weeklyProgressionData[REGULAR_SEASON_WEEKS];
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally { loadingPower = false; }
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────────
   async function generateExport(type) {
     const snap       = get(teamManagersStore) || {};
     const yearStr    = currentSeasonYears[0];
     const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-    let text  = '';
-    let title = '';
+    let text = '', title = '';
 
     try {
       if (type === 'context') {
         text  = exportLeagueContext(snap);
         title = 'league_context.md';
-
       } else if (type === 'history') {
         text = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
@@ -480,7 +525,6 @@ async function loadPowerRankings(year) {
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap
         });
         title = 'all_time_history.md';
-
       } else if (type === 'season') {
         text = exportSeasonStats({
           year: yearStr,
@@ -495,7 +539,6 @@ async function loadPowerRankings(year) {
           rosterStats, managersSnapshot: snap
         });
         title = 'current_season.md';
-
       } else if (type === 'week') {
         const weekResults = allTimeHistory?.weeklyResults?.filter(
           (r) => String(r.year) === yearStr && r.week === exportWeek
@@ -512,7 +555,6 @@ async function loadPowerRankings(year) {
           managersSnapshot: snap
         });
         title = 'current_week.md';
-
       } else if (type === 'predraft') {
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
@@ -539,36 +581,25 @@ async function loadPowerRankings(year) {
         });
         title = 'pre_draft.md';
       }
+
       exportPreview      = text;
       exportPreviewTitle = title;
       exportPreviewType  = type;
 
-      // Download file directly to user's computer
       downloadMarkdown(text, title);
-
-      // Also copy to clipboard as backup
-      try { await navigator.clipboard.writeText(text); } catch {}
+      await clipboardCopy(text);
 
       exportCopied = { ...exportCopied, [type]: true };
       setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
-    } catch (e) {
-      console.error('Export error:', e);
-    }
+    } catch (e) { console.error('Export error:', e); }
   }
 
-  async function copyPrompt(key, text) {
+  async function copyPromptFn(key, text) {
     await clipboardCopy(text);
     promptCopied = { ...promptCopied, [key]: true };
     setTimeout(() => { promptCopied = { ...promptCopied, [key]: false }; }, 2000);
   }
 
-  async function copyPreview() {
-    await clipboardCopy(exportPreview);
-    mainCopied = true;
-    setTimeout(() => { mainCopied = false; }, 2000);
-  }
-
-  // SVG chart helper
   function chartPath(managerId, progression, chartW, chartH, numTeams) {
     const points = progression.map((weekData, weekIdx) => {
       const entry = weekData.rankings.find((r) => r.managerId === managerId);
@@ -583,25 +614,6 @@ async function loadPowerRankings(year) {
   onMount(async () => {
     await getLeagueTeamManagers().catch(() => {});
   });
-
-// Add this helper (same scale as toLetter in dataExport.js):
-function scoreToLetter(score) {
-  const n = parseFloat(score);
-  if (isNaN(n)) return '—';
-  if (n >= 75) return 'A+';
-  if (n >= 70) return 'A';
-  if (n >= 65) return 'A-';
-  if (n >= 62) return 'B+';
-  if (n >= 58) return 'B';
-  if (n >= 55) return 'B-';
-  if (n >= 52) return 'C+';
-  if (n >= 48) return 'C';
-  if (n >= 45) return 'C-';
-  if (n >= 42) return 'D+';
-  if (n >= 38) return 'D';
-  if (n >= 35) return 'D-';
-  return 'F';
-}
 </script>
 
 <main class="container">
@@ -610,12 +622,12 @@ function scoreToLetter(score) {
   <div class="main-tabs">
     {#each [
       ['transactions','💱 Transactions'],
-      ['draft',       '📋 Draft'],
-      ['llm',         '🤖 LLM Context'],
-      ['managers',    '📊 Manager Grades'],
-      ['sos',         '📅 Schedule Strength'],
-      ['power',       '⚡ Power Rankings'],
-      ['export',      '📤 Export']
+      ['draft','📋 Draft'],
+      ['llm','🤖 LLM Context'],
+      ['managers','📊 Manager Grades'],
+      ['sos','📅 Schedule Strength'],
+      ['power','⚡ Power Rankings'],
+      ['export','📤 Export']
     ] as [tab, label]}
       <button class="tab-btn {mainTab===tab?'active':''}" on:click={() => (mainTab=tab)}>{label}</button>
     {/each}
@@ -626,7 +638,7 @@ function scoreToLetter(score) {
     <h2>Transaction Analysis</h2>
     <div class="control-row">
       <button on:click={loadTransactions} disabled={loadingTransactions}>
-        {loadingTransactions ? 'Loading...' : transactionHistory ? 'Reload' : 'Load Transactions'}
+        {loadingTransactions?'Loading...':transactionHistory?'Reload':'Load Transactions'}
       </button>
     </div>
     {#if loadingTransactions}
@@ -637,11 +649,10 @@ function scoreToLetter(score) {
         <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
         <tbody>{#each allTimeTransactionTotals as m}<tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>{/each}</tbody>
       </table>
-
       <h4>Season Totals</h4>
       <div class="control-row">
         <select bind:value={selectedTransactionSeason} on:change={() => {
-          const s = get(teamManagersStore) || {};
+          const s = get(teamManagersStore)||{};
           seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, s);
         }}>
           {#each Object.keys(transactionHistory.totals.seasons||{}).sort((a,b)=>Number(b)-Number(a)) as yr}
@@ -655,13 +666,10 @@ function scoreToLetter(score) {
           <tbody>{#each seasonTransactionTotals as m}<tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>{/each}</tbody>
         </table>
       {/if}
-
       <h4>All Transactions <span class="count-badge">{filteredTransactions.length}</span></h4>
       <div class="control-row">
         <select bind:value={txFilter}>
-          <option value="all">All</option>
-          <option value="trade">Trades</option>
-          <option value="waiver">Waivers</option>
+          <option value="all">All</option><option value="trade">Trades</option><option value="waiver">Waivers</option>
         </select>
       </div>
       {#each filteredTransactions as tx}
@@ -755,7 +763,6 @@ function scoreToLetter(score) {
           <button class="tab-btn {draftActiveTab==='pre'?'active':''}" on:click={() => (draftActiveTab='pre')}>Pre-Season</button>
         </div>
       </div>
-
       {#if draftActiveTab === 'end'}
         {#if endOfSeasonGrade}
           <h3>{endOfSeasonGrade.year} Post-Season Draft Grade</h3>
@@ -763,7 +770,6 @@ function scoreToLetter(score) {
             <strong>Adjusted PAR = Actual PAR − Expected PAR.</strong>
             Actual PAR = actual pts − positional replacement level.
             Expected PAR = historical avg per round (baseline: {endOfSeasonGrade.baselineSeasons?.join(', ')}).
-            K/DEF: adjustedPAR = actualPAR directly.
           </div>
           <div class="ref-grid">
             <div class="ref-panel">
@@ -785,25 +791,19 @@ function scoreToLetter(score) {
           </div>
           <h4>Team Grades</h4>
           <table class="data-table">
- <thead>
-  <tr>
-    <th>#</th><th>Manager</th><th>Grade</th>
-    <th>Adj PAR</th><th>Actual Pts</th>
-    <th>Best Pick</th><th>Worst Pick</th>
-  </tr>
-</thead>
-<tbody>
-  {#each endOfSeasonGrade.teamRankings as team, i}
-    <tr>
-      <td>#{i+1}</td><td><strong>{mdn(team.managerId)}</strong></td>
-      <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
-      <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
-      <td>{fp(team.totalActualPts)}</td>
-      <td>{team.bestPick?`${team.bestPick.playerName} R${team.bestPick.round}`:''}</td>
-      <td>{team.worstPick?`${team.worstPick.playerName} R${team.worstPick.round}`:''}</td>
-    </tr>
-  {/each}
-</tbody>
+            <thead><tr><th>#</th><th>Manager</th><th>Grade</th><th>Adj PAR</th><th>Actual Pts</th><th>Best Pick</th><th>Worst Pick</th></tr></thead>
+            <tbody>
+              {#each endOfSeasonGrade.teamRankings as team, i}
+                <tr>
+                  <td>#{i+1}</td><td><strong>{mdn(team.managerId)}</strong></td>
+                  <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
+                  <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
+                  <td>{fp(team.totalActualPts)}</td>
+                  <td>{team.bestPick?`${team.bestPick.playerName} R${team.bestPick.round}`:''}</td>
+                  <td>{team.worstPick?`${team.worstPick.playerName} R${team.worstPick.round}`:''}</td>
+                </tr>
+              {/each}
+            </tbody>
           </table>
           <div class="two-col">
             <div>
@@ -816,8 +816,8 @@ function scoreToLetter(score) {
             <div>
               <h4>💀 Biggest Busts</h4>
               <table class="data-table">
-                <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Inj</th><th>Manager</th></tr></thead>
-                <tbody>{#each endOfSeasonGrade.leagueTopBusts as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="negative">{signedFp(p.adjustedPAR)}</td><td>{injIcon(p.injuryFlag)||'—'}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
+                <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
+                <tbody>{#each endOfSeasonGrade.leagueTopBusts as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="negative">{signedFp(p.adjustedPAR)}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
               </table>
             </div>
           </div>
@@ -832,13 +832,8 @@ function scoreToLetter(score) {
               </div>
               <div class="table-scroll">
                 <table class="data-table mini">
-                    <thead>
-                      <tr>
-                        <th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th>
-                        <th>Actual</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Label</th>
-                      </tr>
-                    </thead>                  
-                    <tbody>
+                  <thead><tr><th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th><th>Actual</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Label</th></tr></thead>
+                  <tbody>
                     {#each team.picks as p}
                       <tr>
                         <td>{p.round}</td><td>#{p.pickNo}</td>
@@ -873,7 +868,6 @@ function scoreToLetter(score) {
             </div>
           {/each}
         {:else}<div class="status-msg">Load Draft Data to see grades.</div>{/if}
-
       {:else if draftActiveTab === 'pre'}
         {#if preSeasonGrade}
           <h3>{preSeasonGrade.year} Pre-Season Grade</h3>
@@ -902,7 +896,7 @@ function scoreToLetter(score) {
   <!-- ════════ LLM ════════ -->
   {:else if mainTab === 'llm'}
     <h2>LLM Draft Context</h2>
-    <div class="explainer">Generate context for post-draft qualitative grading. Manager grades use post-season data grades automatically — this is for narrative grading only.</div>
+    <div class="explainer">Generate context for post-draft qualitative grading. Manager grades use post-season data automatically.</div>
     {#if !allDrafts.length}
       <div class="control-row"><button on:click={loadDrafts} disabled={loadingDrafts}>{loadingDrafts?'Loading...':'Load Draft Data First'}</button></div>
     {:else}
@@ -915,16 +909,16 @@ function scoreToLetter(score) {
       </div>
       {#if llmPromptText}
         <div class="llm-section">
-          <div class="llm-header"><h4>Full Prompt</h4><button class="copy-btn {copiedPrompt?'copied':''}" on:click={() => copy(llmPromptText,'p')}>{copiedPrompt?'✓ Copied!':'Copy'}</button></div>
+          <div class="llm-header"><h4>Full Prompt</h4><button class="copy-btn {copiedPrompt?'copied':''}" on:click={() => llmCopy(llmPromptText,'p')}>{copiedPrompt?'✓ Copied!':'Copy'}</button></div>
           <pre class="llm-text">{llmPromptText}</pre>
         </div>
         <div class="two-col" style="margin-top:1rem;">
           <div class="llm-section">
-            <div class="llm-header"><h4>History</h4><button class="copy-btn {copiedHistory?'copied':''}" on:click={() => copy(llmHistoryText,'h')}>{copiedHistory?'✓':'Copy'}</button></div>
+            <div class="llm-header"><h4>History</h4><button class="copy-btn {copiedHistory?'copied':''}" on:click={() => llmCopy(llmHistoryText,'h')}>{copiedHistory?'✓':'Copy'}</button></div>
             <pre class="llm-text small">{llmHistoryText}</pre>
           </div>
           <div class="llm-section">
-            <div class="llm-header"><h4>Current Draft</h4><button class="copy-btn {copiedCurrent?'copied':''}" on:click={() => copy(llmCurrentText,'c')}>{copiedCurrent?'✓':'Copy'}</button></div>
+            <div class="llm-header"><h4>Current Draft</h4><button class="copy-btn {copiedCurrent?'copied':''}" on:click={() => llmCopy(llmCurrentText,'c')}>{copiedCurrent?'✓':'Copy'}</button></div>
             <pre class="llm-text small">{llmCurrentText}</pre>
           </div>
         </div>
@@ -935,15 +929,14 @@ function scoreToLetter(score) {
   {:else if mainTab === 'managers'}
     <h2>Manager Grades</h2>
     <div class="explainer">
-      <strong>Weights:</strong> 40% Draft (post-season adj PAR) · 20% Trades · 20% Waivers · 20% Lineup IQ.<br/>
-      <strong>Scoring:</strong> Z-score centered at 50 (league avg = 50, ±1 std dev = ±25 pts). Zero activity = 50 neutral. Only managers active that season are included.
+      <strong>Weights:</strong> 40% Draft · 20% Trades · 20% Waivers · 20% Lineup IQ.<br/>
+      <strong>Scoring:</strong> Z-score centered at C (league average). Only managers active that season are included.
     </div>
     <div class="control-row">
       <button on:click={loadManagerGrades} disabled={loadingManagers}>{loadingManagers?'Loading...':rosterStats?'Reload':'Load Manager Grades'}</button>
       {#if !transactionHistory}<span class="muted">⚠ Load Transactions first.</span>{/if}
       {#if !allDrafts.length}<span class="muted">⚠ Load Draft Data first.</span>{/if}
     </div>
-
     {#if Object.keys(seasonManagerGrades).length}
       <div class="control-row">
         <label><strong>Season:</strong></label>
@@ -951,40 +944,34 @@ function scoreToLetter(score) {
           {#each currentSeasonYears as yr}<option value={yr}>{yr}</option>{/each}
         </select>
       </div>
-
       {#if managerGradeYear}
         {@const yg = seasonManagerGrades[String(managerGradeYear)] || {}}
         {@const activeIds = getActiveManagerIds(managerGradeYear)}
         <h3>{managerGradeYear} Season Grades</h3>
         <table class="data-table">
           <thead>
-            <tr>
-              <th>Manager</th><th>Overall</th>
-              <th>Draft (40%)</th><th>Trades (20%)</th>
-              <th>Waivers (20%)</th><th>Lineup IQ (20%)</th>
-              <th>Missing</th>
-            </tr>
+            <tr><th>Manager</th><th>Overall</th><th>Draft (40%)</th><th>Trades (20%)</th><th>Waivers (20%)</th><th>Lineup IQ (20%)</th><th>Missing</th></tr>
           </thead>
           <tbody>
             {#each activeIds.sort((a,b)=>(yg[b]?.overallGrade??-1)-(yg[a]?.overallGrade??-1)) as mgrId}
               {@const r=yg[mgrId]}
               <tr>
                 <td><strong>{mdn(mgrId)}</strong></td>
-                <td>{#if r?.overallGrade!=null}<span class="score-pill" style="background:{scoreColor(r.overallGrade)};">{fp(r.overallGrade,0)}</span>{:else}—{/if}</td>
+                <td>{#if r?.overallGrade!=null}<span class="score-pill" style="background:{scoreColor(r.overallGrade)};">{scoreToLetter(r.overallGrade)}</span>{:else}—{/if}</td>
                 <td>
-                  {#if r?.normDraft!=null}<span class="score-pill" style="background:{scoreColor(r.normDraft)};">{fp(r.normDraft,0)}</span><div class="muted" style="font-size:0.8em;">{signedFp(r.rawDraftPAR)} adj PAR</div>
+                  {#if r?.normDraft!=null}<span class="score-pill" style="background:{scoreColor(r.normDraft)};">{scoreToLetter(r.normDraft)}</span><div class="muted" style="font-size:0.8em;">{signedFp(r.rawDraftPAR)} adj PAR</div>
                   {:else}<span class="muted">—</span>{/if}
                 </td>
                 <td>
-                  <span class="score-pill" style="background:{scoreColor(r?.normTrade)};">{fp(r?.normTrade,0)}</span>
+                  <span class="score-pill" style="background:{scoreColor(r?.normTrade)};">{scoreToLetter(r?.normTrade)}</span>
                   <div class="muted" style="font-size:0.8em;">{r?.rawTradePAR!=null?signedFp(r.rawTradePAR)+' PAR':'no trades'}</div>
                 </td>
                 <td>
-                  <span class="score-pill" style="background:{scoreColor(r?.normWaiver)};">{fp(r?.normWaiver,0)}</span>
+                  <span class="score-pill" style="background:{scoreColor(r?.normWaiver)};">{scoreToLetter(r?.normWaiver)}</span>
                   <div class="muted" style="font-size:0.8em;">{r?.rawWaiverPAR!=null?signedFp(r.rawWaiverPAR)+' PAR':'no waivers'}</div>
                 </td>
                 <td>
-                  {#if r?.normLineup!=null}<span class="score-pill" style="background:{scoreColor(r.normLineup)};">{fp(r.normLineup,0)}</span><div class="muted" style="font-size:0.8em;">{pct(r.rawLineupIQ)} eff.</div>
+                  {#if r?.normLineup!=null}<span class="score-pill" style="background:{scoreColor(r.normLineup)};">{scoreToLetter(r.normLineup)}</span><div class="muted" style="font-size:0.8em;">{pct(r.rawLineupIQ)} eff.</div>
                   {:else}<span class="muted">—</span>{/if}
                 </td>
                 <td class="muted">{r?.missingComponents?.join(', ')||'—'}</td>
@@ -993,30 +980,25 @@ function scoreToLetter(score) {
           </tbody>
         </table>
       {/if}
-
       {#if Object.keys(allTimeManagerGrades).length}
         <h3>All-Time Manager Grades</h3>
         <table class="data-table">
           <thead>
-            <tr>
-              <th>Manager</th><th>All-Time Grade</th>
-              <th>Avg Draft</th><th>Avg Trades</th><th>Avg Waivers</th><th>Avg Lineup IQ</th>
-              <th>Seasons</th>
-            </tr>
+            <tr><th>Manager</th><th>All-Time</th><th>Avg Draft</th><th>Avg Trades</th><th>Avg Waivers</th><th>Avg Lineup IQ</th><th>Seasons</th></tr>
           </thead>
           <tbody>
             {#each Object.entries(allTimeManagerGrades).sort(([,a],[,b])=>(b.allTimeGrade??-1)-(a.allTimeGrade??-1)) as [mgrId, data]}
               <tr>
                 <td><strong>{mdn(mgrId)}</strong></td>
-                <td>{#if data.allTimeGrade!=null}<span class="score-pill" style="background:{scoreColor(data.allTimeGrade)};">{fp(data.allTimeGrade,0)}</span>{:else}—{/if}</td>
-                <td>{#if data.avgNormDraft!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormDraft)};font-size:0.85em;">{fp(data.avgNormDraft,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawDraftPAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>{#if data.avgNormTrade!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormTrade)};font-size:0.85em;">{fp(data.avgNormTrade,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawTradePAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>{#if data.avgNormWaiver!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormWaiver)};font-size:0.85em;">{fp(data.avgNormWaiver,0)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawWaiverPAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>{#if data.avgNormLineup!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormLineup)};font-size:0.85em;">{fp(data.avgNormLineup,0)}</span><div class="muted" style="font-size:0.78em;">{pct(data.avgRawLineupIQ)} avg eff.</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.allTimeGrade!=null}<span class="score-pill" style="background:{scoreColor(data.allTimeGrade)};">{scoreToLetter(data.allTimeGrade)}</span>{:else}—{/if}</td>
+                <td>{#if data.avgNormDraft!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormDraft)};font-size:0.85em;">{scoreToLetter(data.avgNormDraft)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawDraftPAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.avgNormTrade!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormTrade)};font-size:0.85em;">{scoreToLetter(data.avgNormTrade)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawTradePAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.avgNormWaiver!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormWaiver)};font-size:0.85em;">{scoreToLetter(data.avgNormWaiver)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawWaiverPAR)} PAR avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                <td>{#if data.avgNormLineup!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormLineup)};font-size:0.85em;">{scoreToLetter(data.avgNormLineup)}</span><div class="muted" style="font-size:0.78em;">{pct(data.avgRawLineupIQ)} avg eff.</div>{:else}<span class="muted">—</span>{/if}</td>
                 <td>
                   <span class="muted">{data.years?.join(', ')}</span>
                   {#each (data.perSeason||[]) as s}
-                    <div style="font-size:0.76em; color:#888;">{s.year}: {s.overallGrade!=null?fp(s.overallGrade,0):'—'}</div>
+                    <div style="font-size:0.76em;color:#888;">{s.year}: {s.overallGrade!=null?scoreToLetter(s.overallGrade):'—'}</div>
                   {/each}
                 </td>
               </tr>
@@ -1024,7 +1006,6 @@ function scoreToLetter(score) {
           </tbody>
         </table>
       {/if}
-
       <div class="control-row" style="margin-top:1rem;">
         <button on:click={() => (showManagerDebug=!showManagerDebug)}>{showManagerDebug?'Hide':'Show'} Debug</button>
       </div>
@@ -1036,7 +1017,6 @@ function scoreToLetter(score) {
     <h2>Strength of Schedule</h2>
     <div class="explainer">
       <strong>Points SOS:</strong> avg points opponents scored against you (regular season only).<br/>
-      <strong>Record SOS:</strong> avg final win% of your regular-season opponents.<br/>
       <strong>Luck:</strong> actual win% minus expected win% based on your score vs all other scores each week.
     </div>
     {#if !rosterStats&&Object.keys(seasonSOSByYear).length===0}
@@ -1052,7 +1032,7 @@ function scoreToLetter(score) {
       {#if sosYear == null}
         <h3>All-Time Strength of Schedule</h3>
         <table class="data-table">
-          <thead><tr><th>Manager</th><th>Avg Opp Pts</th><th>Avg Opp Win%</th><th>Avg Luck</th><th>Luck Label</th><th>Seasons</th></tr></thead>
+          <thead><tr><th>Manager</th><th>Avg Opp Pts</th><th>Avg Opp Win%</th><th>Avg Luck</th><th>Label</th><th>Seasons</th></tr></thead>
           <tbody>
             {#each Object.entries(allTimeSOS).sort(([,a],[,b])=>b.avgOpponentPts-a.avgOpponentPts) as [mgrId,data]}
               <tr>
@@ -1093,14 +1073,19 @@ function scoreToLetter(score) {
   {:else if mainTab === 'power'}
     <h2>Power Rankings</h2>
     <div class="explainer">
-      <strong>Pre-season:</strong> 60% all-time manager grade + 40% prior season placement.<br/>
-      <strong>In-season (wks 1-{REGULAR_SEASON_WEEKS}):</strong> record/points/form/manager grade blend. Manager grade fades 40%→15%→5% as season progresses.
+      <strong>Pre-season:</strong> 60% all-time manager grade + 20% prior regular season + 20% prior post-season.<br/>
+      <strong>In-season (wks 1-{REGULAR_SEASON_WEEKS}):</strong> record/points/form/manager grade blend fading over time.<br/>
+      <strong>Next season ({nextSeasonYear}):</strong> available now using completed {currentSeasonYears[0]} standings.
     </div>
     <div class="control-row">
       <label><strong>Season:</strong></label>
       <select bind:value={powerYear}>
         <option value={null}>Select...</option>
-        {#each currentSeasonYears as yr}<option value={yr}>{yr}</option>{/each}
+        {#each powerRankingYears as yr}
+          <option value={yr}>
+            {yr}{yr === nextSeasonYear ? ' (Next Season — Pre-Draft)' : ''}
+          </option>
+        {/each}
       </select>
       <button on:click={() => powerYear&&loadPowerRankings(powerYear)} disabled={loadingPower||!powerYear}>
         {loadingPower?'Computing...':'Compute Rankings'}
@@ -1111,189 +1096,205 @@ function scoreToLetter(score) {
     </div>
 
     {#if loadingPower}
-      <div class="status-msg">Computing weekly rankings...</div>
+      <div class="status-msg">Computing rankings...</div>
     {:else if preSeasonRankings || endOfSeasonRankings}
-      <div class="rankings-grid">
-{#if preSeasonRankings}
-  <div class="rankings-card" style="grid-column: 1 / -1;">
-    <h3>Pre-Season Rankings ({preSeasonRankings.year})</h3>
-    <p class="sub">60% all-time manager grade + 20% prior regular season + 20% prior post-season</p>
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>#</th><th>Manager</th>
-            <th>Overall</th><th>Draft</th><th>Trades</th><th>Waivers</th><th>Lineup IQ</th>
-            <th>Prior Reg Season</th><th>Prior Post-Season</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each preSeasonRankings.rankings as team}
-            <tr>
-              <td><strong>#{team.rank}</strong></td>
-              <td>
-                <span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>
-                {mdn(team.managerId)}
-              </td>
-              <td>
-                {#if team.mgrGrade != null}
-                  <span class="score-pill" style="background:{scoreColor(team.mgrGrade)};">{scoreToLetter(team.mgrGrade)}</span>
-                {:else}<span class="muted">—</span>{/if}
-              </td>
-              <td class="muted">{team.avgNormDraft  != null ? scoreToLetter(team.avgNormDraft)  : '—'}</td>
-              <td class="muted">{team.avgNormTrade  != null ? scoreToLetter(team.avgNormTrade)  : '—'}</td>
-              <td class="muted">{team.avgNormWaiver != null ? scoreToLetter(team.avgNormWaiver) : '—'}</td>
-              <td class="muted">{team.avgNormLineup != null ? scoreToLetter(team.avgNormLineup) : '—'}</td>
-              <td class="muted">
-                {team.isFirstSeason ? '(first season)' : team.prevRegRank  != null ? `#${team.prevRegRank}`  : '—'}
-              </td>
-              <td class="muted">
-                {team.isFirstSeason ? '(first season)' : team.prevPostRank != null ? `#${team.prevPostRank}` : '—'}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </div>
-{/if}
-<!-- Standings validation panel — shows raw data to verify correctness -->
-{#if preSeasonRankings?.standingsDebug?.length}
-  <details style="margin-top:1rem;">
-    <summary class="muted" style="cursor:pointer; font-size:0.87em;">
-      🔍 Verify: Prior Season Standings Used for Rankings (click to expand)
-    </summary>
-    <div style="margin-top:0.5rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:0.75rem;">
-      <p class="muted" style="margin:0 0 0.5rem;">
-        These are the exact standings values used to compute the pre-season rankings above.
-        Verify that Reg Rank order and Final Placement match the actual prior season results.
-        If they're wrong, the issue is in the playoff bracket data from Sleeper.
-      </p>
-      <table class="data-table mini">
-        <thead>
-          <tr><th>Reg Rank</th><th>Manager</th><th>W</th><th>L</th><th>PF</th><th>Final Placement (post-season)</th></tr>
-        </thead>
-        <tbody>
-          {#each preSeasonRankings.standingsDebug as row}
-            <tr>
-              <td>#{row.regRank}</td>
-              <td>{mdn(row.managerId)}</td>
-              <td>{row.wins}</td>
-              <td>{row.losses}</td>
-              <td>{fp(row.pf)}</td>
-              <td>
-                {#if row.finalPlacement != null}
-                  #{row.finalPlacement}
-                {:else}
-                  <span style="color:#dc2626;">⚠ Missing — using reg rank as fallback</span>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </details>
-{/if}
-        {#if endOfSeasonRankings}
-          <div class="rankings-card">
-            <h3>End-of-Season Rankings (Week {REGULAR_SEASON_WEEKS})</h3>
-            <p class="sub">Phase: <strong>{endOfSeasonRankings.phase}</strong></p>
-            <table class="data-table">
-              <thead><tr><th>#</th><th>Manager</th><th>Score</th><th>Record</th><th>PF</th></tr></thead>
-              <tbody>
-                {#each endOfSeasonRankings.rankings as team}
-                  <tr>
-                    <td><strong>#{team.rank}</strong></td>
-                    <td><span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>{mdn(team.managerId)}</td>
-                    <td><strong>{fp(team.compositeScore)}</strong></td>
-                    <td>{team.wins}-{team.losses}{team.ties>0?`-${team.ties}`:''}</td>
-                    <td>{fp(team.pf)}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {/if}
-      </div>
 
-      {#if weeklyProgressionData.length > 1}
-        {@const numTeams = weeklyProgressionData[0]?.rankings?.length || 12}
-        {@const chartW=700} {@const chartH=320} {@const padL=36} {@const padR=40} {@const padT=12} {@const padB=32}
-        {@const plotW=chartW-padL-padR} {@const plotH=chartH-padT-padB}
-        <h3>Season Rank Progression</h3>
-        <p class="sub">Lower = better. Hover for week details.</p>
-        <div class="chart-container">
-          <svg viewBox="0 0 {chartW} {chartH}" class="rank-chart"
-            on:mousemove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x    = e.clientX - rect.left - padL;
-              chartHoverWeek = Math.max(0, Math.min(REGULAR_SEASON_WEEKS, Math.round((x / plotW) * REGULAR_SEASON_WEEKS)));
-            }}
-            on:mouseleave={() => { chartHoverWeek = null; }}>
-            {#each Array.from({length:numTeams},(_,i)=>i+1) as rnk}
-              {#if rnk===1||rnk===Math.ceil(numTeams/2)||rnk===numTeams}
-                {@const y=padT+((rnk-1)/(numTeams-1))*plotH}
-                <text x={padL-4} y={y+4} text-anchor="end" class="axis-label">#{rnk}</text>
-                <line x1={padL} y1={y} x2={padL+plotW} y2={y} class="grid-line"/>
-              {/if}
-            {/each}
-            {#each [0,2,4,6,8,10,12,14] as wk}
-              {#if wk<=REGULAR_SEASON_WEEKS}
-                {@const x=padL+(wk/REGULAR_SEASON_WEEKS)*plotW}
-                <text x={x} y={padT+plotH+18} text-anchor="middle" class="axis-label">{wk===0?'Pre':'Wk '+wk}</text>
-                <line x1={x} y1={padT} x2={x} y2={padT+plotH} class="grid-line light"/>
-              {/if}
-            {/each}
-            {#each allManagerIds as managerId}
-              {@const color=managerColors[managerId]||'#888'}
-              {@const path=chartPath(managerId,weeklyProgressionData,plotW,plotH,numTeams)}
-              {#if path}
-                <path d="M {path.replace(/^M /,'')}" transform="translate({padL},{padT})"
-                  fill="none" stroke={color} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-              {/if}
-              {#if weeklyProgressionData[REGULAR_SEASON_WEEKS]}
-                {@const lastEntry=weeklyProgressionData[REGULAR_SEASON_WEEKS].rankings.find(r=>r.managerId===managerId)}
-                {#if lastEntry}
-                  {@const ex=padL+plotW} {@const ey=padT+((lastEntry.rank-1)/(numTeams-1))*plotH}
-                  <circle cx={ex} cy={ey} r="4" fill={color}/>
-                  <text x={ex+6} y={ey+4} class="end-label" fill={color}>#{lastEntry.rank}</text>
-                {/if}
-              {/if}
-            {/each}
-            {#if chartHoverWeek!=null}
-              {@const hx=padL+(chartHoverWeek/REGULAR_SEASON_WEEKS)*plotW}
-              <line x1={hx} y1={padT} x2={hx} y2={padT+plotH} class="hover-line"/>
-              {#if weeklyProgressionData[chartHoverWeek]}
-                {#each weeklyProgressionData[chartHoverWeek].rankings as entry}
-                  {@const color=managerColors[entry.managerId]||'#888'}
-                  {@const hy=padT+((entry.rank-1)/(numTeams-1))*plotH}
-                  <circle cx={hx} cy={hy} r="5" fill={color} stroke="white" stroke-width="1.5"/>
-                {/each}
-              {/if}
-            {/if}
-          </svg>
-          <div class="chart-legend">
-            {#each allManagerIds as managerId}
-              <div class="legend-item">
-                <span class="legend-dot" style="background:{managerColors[managerId]||'#888'};"></span>
-                <span>{mdn(managerId)}</span>
-              </div>
-            {/each}
-          </div>
-          {#if chartHoverWeek!=null&&weeklyProgressionData[chartHoverWeek]}
-            <div class="hover-tooltip">
-              <strong>{chartHoverWeek===0?'Pre-Season':`Week ${chartHoverWeek}`}</strong>
-              {#each weeklyProgressionData[chartHoverWeek].rankings as entry}
-                <div class="tooltip-row">
-                  <span class="legend-dot" style="background:{managerColors[entry.managerId]||'#888'};"></span>
-                  <span>#{entry.rank} {mdn(entry.managerId)}</span>
-                  <span class="muted">{fp(entry.compositeScore)}</span>
-                </div>
+      <!-- Pre-season rankings (full width, always shown) -->
+      {#if preSeasonRankings}
+        <h3>
+          {powerYear === nextSeasonYear ? `${nextSeasonYear} Pre-Draft Power Rankings` : `${powerYear} Pre-Season Rankings`}
+          {#if powerYear === nextSeasonYear}
+            <span class="season-badge new">Next Season</span>
+          {/if}
+        </h3>
+        <p class="sub">
+          60% all-time manager grade + 20% {currentSeasonYears[0]} regular season finish + 20% {currentSeasonYears[0]} post-season finish.
+          {#if powerYear === nextSeasonYear}
+            These are the rankings used in the pre-draft export.
+          {/if}
+        </p>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Manager</th>
+                <th>Overall</th><th>Draft</th><th>Trades</th><th>Waivers</th><th>Lineup IQ</th>
+                <th>{currentSeasonYears[0]} Reg Finish</th>
+                <th>{currentSeasonYears[0]} Post Finish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each preSeasonRankings.rankings as team}
+                <tr>
+                  <td><strong>#{team.rank}</strong></td>
+                  <td>
+                    <span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>
+                    {mdn(team.managerId)}
+                  </td>
+                  <td>
+                    {#if team.mgrGrade != null}
+                      <span class="score-pill" style="background:{scoreColor(team.mgrGrade)};">{scoreToLetter(team.mgrGrade)}</span>
+                    {:else}<span class="muted">—</span>{/if}
+                  </td>
+                  <td class="muted">{team.avgNormDraft  != null ? scoreToLetter(team.avgNormDraft)  : '—'}</td>
+                  <td class="muted">{team.avgNormTrade  != null ? scoreToLetter(team.avgNormTrade)  : '—'}</td>
+                  <td class="muted">{team.avgNormWaiver != null ? scoreToLetter(team.avgNormWaiver) : '—'}</td>
+                  <td class="muted">{team.avgNormLineup != null ? scoreToLetter(team.avgNormLineup) : '—'}</td>
+                  <td class="muted">
+                    {team.isFirstSeason ? '(new)' : team.prevRegRank  != null ? `#${team.prevRegRank}`  : '—'}
+                  </td>
+                  <td class="muted">
+                    {team.isFirstSeason ? '(new)' : team.prevPostRank != null ? `#${team.prevPostRank}` : '—'}
+                  </td>
+                </tr>
               {/each}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Standings validation panel -->
+        {#if preSeasonRankings.standingsDebug?.length}
+          <details style="margin-top:0.75rem; margin-bottom:1.5rem;">
+            <summary class="muted" style="cursor:pointer; font-size:0.87em;">
+              🔍 Validate: Prior Season Standings Used (click to verify correctness)
+            </summary>
+            <div style="margin-top:0.5rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:0.75rem;">
+              <p class="muted" style="margin:0 0 0.5rem; font-size:0.84em;">
+                These are the exact standings values fed into the rankings formula.
+                Verify Reg Rank order and Final Placement match actual prior season results.
+                If Final Placement shows ⚠ for all rows, playoff bracket data is missing from Sleeper.
+              </p>
+              <table class="data-table mini">
+                <thead>
+                  <tr><th>Reg Rank</th><th>Manager</th><th>W</th><th>L</th><th>PF</th><th>Final Placement (post-season)</th></tr>
+                </thead>
+                <tbody>
+                  {#each preSeasonRankings.standingsDebug as row}
+                    <tr>
+                      <td>#{row.regRank}</td>
+                      <td><strong>{mdn(row.managerId)}</strong></td>
+                      <td>{row.wins}</td>
+                      <td>{row.losses}</td>
+                      <td>{fp(row.pf)}</td>
+                      <td>
+                        {#if row.finalPlacement != null}
+                          <span class="positive">#{row.finalPlacement}</span>
+                        {:else}
+                          <span style="color:#dc2626;">⚠ Missing — using reg rank as fallback</span>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        {/if}
+      {/if}
+
+      <!-- End-of-season + progression only shown for actual seasons -->
+      {#if powerYear !== nextSeasonYear}
+        <div class="rankings-grid">
+          {#if endOfSeasonRankings}
+            <div class="rankings-card">
+              <h3>End-of-Season Rankings (Week {REGULAR_SEASON_WEEKS})</h3>
+              <p class="sub">Phase: <strong>{endOfSeasonRankings.phase}</strong></p>
+              <table class="data-table">
+                <thead><tr><th>#</th><th>Manager</th><th>Score</th><th>Record</th><th>PF</th></tr></thead>
+                <tbody>
+                  {#each endOfSeasonRankings.rankings as team}
+                    <tr>
+                      <td><strong>#{team.rank}</strong></td>
+                      <td><span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>{mdn(team.managerId)}</td>
+                      <td><strong>{fp(team.compositeScore)}</strong></td>
+                      <td>{team.wins}-{team.losses}{team.ties>0?`-${team.ties}`:''}</td>
+                      <td>{fp(team.pf)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
             </div>
           {/if}
         </div>
+
+        {#if weeklyProgressionData.length > 1}
+          {@const numTeams = weeklyProgressionData[0]?.rankings?.length || 12}
+          {@const chartW=700} {@const chartH=320} {@const padL=36} {@const padR=40} {@const padT=12} {@const padB=32}
+          {@const plotW=chartW-padL-padR} {@const plotH=chartH-padT-padB}
+          <h3>Season Rank Progression</h3>
+          <p class="sub">Lower = better. Hover for week details.</p>
+          <div class="chart-container">
+            <svg viewBox="0 0 {chartW} {chartH}" class="rank-chart"
+              on:mousemove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left - padL;
+                chartHoverWeek = Math.max(0, Math.min(REGULAR_SEASON_WEEKS, Math.round((x/plotW)*REGULAR_SEASON_WEEKS)));
+              }}
+              on:mouseleave={() => { chartHoverWeek = null; }}>
+              {#each Array.from({length:numTeams},(_,i)=>i+1) as rnk}
+                {#if rnk===1||rnk===Math.ceil(numTeams/2)||rnk===numTeams}
+                  {@const y=padT+((rnk-1)/(numTeams-1))*plotH}
+                  <text x={padL-4} y={y+4} text-anchor="end" class="axis-label">#{rnk}</text>
+                  <line x1={padL} y1={y} x2={padL+plotW} y2={y} class="grid-line"/>
+                {/if}
+              {/each}
+              {#each [0,2,4,6,8,10,12,14] as wk}
+                {#if wk<=REGULAR_SEASON_WEEKS}
+                  {@const x=padL+(wk/REGULAR_SEASON_WEEKS)*plotW}
+                  <text x={x} y={padT+plotH+18} text-anchor="middle" class="axis-label">{wk===0?'Pre':'Wk '+wk}</text>
+                  <line x1={x} y1={padT} x2={x} y2={padT+plotH} class="grid-line light"/>
+                {/if}
+              {/each}
+              {#each allManagerIds as managerId}
+                {@const color=managerColors[managerId]||'#888'}
+                {@const path=chartPath(managerId,weeklyProgressionData,plotW,plotH,numTeams)}
+                {#if path}
+                  <path d="M {path.replace(/^M /,'')}" transform="translate({padL},{padT})"
+                    fill="none" stroke={color} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+                {/if}
+                {#if weeklyProgressionData[REGULAR_SEASON_WEEKS]}
+                  {@const lastEntry=weeklyProgressionData[REGULAR_SEASON_WEEKS].rankings.find(r=>r.managerId===managerId)}
+                  {#if lastEntry}
+                    {@const ex=padL+plotW} {@const ey=padT+((lastEntry.rank-1)/(numTeams-1))*plotH}
+                    <circle cx={ex} cy={ey} r="4" fill={color}/>
+                    <text x={ex+6} y={ey+4} class="end-label" fill={color}>#{lastEntry.rank}</text>
+                  {/if}
+                {/if}
+              {/each}
+              {#if chartHoverWeek!=null}
+                {@const hx=padL+(chartHoverWeek/REGULAR_SEASON_WEEKS)*plotW}
+                <line x1={hx} y1={padT} x2={hx} y2={padT+plotH} class="hover-line"/>
+                {#if weeklyProgressionData[chartHoverWeek]}
+                  {#each weeklyProgressionData[chartHoverWeek].rankings as entry}
+                    {@const color=managerColors[entry.managerId]||'#888'}
+                    {@const hy=padT+((entry.rank-1)/(numTeams-1))*plotH}
+                    <circle cx={hx} cy={hy} r="5" fill={color} stroke="white" stroke-width="1.5"/>
+                  {/each}
+                {/if}
+              {/if}
+            </svg>
+            <div class="chart-legend">
+              {#each allManagerIds as managerId}
+                <div class="legend-item">
+                  <span class="legend-dot" style="background:{managerColors[managerId]||'#888'};"></span>
+                  <span>{mdn(managerId)}</span>
+                </div>
+              {/each}
+            </div>
+            {#if chartHoverWeek!=null&&weeklyProgressionData[chartHoverWeek]}
+              <div class="hover-tooltip">
+                <strong>{chartHoverWeek===0?'Pre-Season':`Week ${chartHoverWeek}`}</strong>
+                {#each weeklyProgressionData[chartHoverWeek].rankings as entry}
+                  <div class="tooltip-row">
+                    <span class="legend-dot" style="background:{managerColors[entry.managerId]||'#888'};"></span>
+                    <span>#{entry.rank} {mdn(entry.managerId)}</span>
+                    <span class="muted">{fp(entry.compositeScore)}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/if}
     {/if}
 
@@ -1302,14 +1303,14 @@ function scoreToLetter(score) {
     <h2>Export for LLM</h2>
     <div class="explainer">
       Export league data as Markdown for a <strong>Claude Project</strong> (claude.ai → Projects → New → Add content).
-      Always <strong>overwrite</strong> files rather than adding new ones — you only need 4 files total, regardless of seasons or weeks.
+      Always <strong>overwrite</strong> — 4 files total, never accumulate.
+      Files download automatically and are also copied to clipboard.
     </div>
-
     {#if !allTimeHistory}
-      <div class="status-msg">Load data first: Transactions → Draft Data → Manager Grades (in that order).</div>
+      <div class="status-msg">Load data first: Transactions → Draft Data → Manager Grades → compute Power Rankings for {nextSeasonYear}.</div>
     {:else}
       <div class="file-guide">
-        <h4>4 Files, Always (overwrite, never accumulate)</h4>
+        <h4>4 Files, Always (overwrite, never add new ones)</h4>
         <div class="file-grid">
           <div class="file-pill static"><div class="file-name">league_context.md</div><div class="file-freq">Upload once</div></div>
           <div class="file-pill yearly"><div class="file-name">all_time_history.md</div><div class="file-freq">Replace each year</div></div>
@@ -1317,6 +1318,18 @@ function scoreToLetter(score) {
           <div class="file-pill weekly"><div class="file-name">current_week.md</div><div class="file-freq">Replace each week</div></div>
         </div>
       </div>
+
+      {#if !preSeasonRankings && nextSeasonYear}
+        <div class="warn-banner">
+          ⚠ <strong>Pre-draft rankings not computed.</strong>
+          Go to Power Rankings tab → select <strong>{nextSeasonYear} (Next Season)</strong> → click Compute Rankings.
+          Then come back here to export the pre_draft.md file.
+        </div>
+      {:else if preSeasonRankings}
+        <div class="info-banner">
+          ✓ Pre-draft rankings ready for {nextSeasonYear} ({preSeasonRankings.rankings?.length} managers).
+        </div>
+      {/if}
 
       <div class="control-row">
         <label><strong>Current week:</strong></label>
@@ -1335,12 +1348,8 @@ function scoreToLetter(score) {
                 <div class="export-card-title">{config.title}</div>
                 <code class="export-filename">{config.filename}</code>
               </div>
-              <!-- In the export card, change the button label -->
-              <button
-                class="copy-btn {exportCopied[config.key]?'copied':''}"
-                on:click={() => generateExport(config.key)}
-              >
-                {exportCopied[config.key] ? '✓ Downloaded!' : 'Download & Copy'}
+              <button class="copy-btn {exportCopied[config.key]?'copied':''}" on:click={() => generateExport(config.key)}>
+                {exportCopied[config.key]?'✓ Downloaded!':'Download & Copy'}
               </button>
             </div>
             <p class="export-desc">{config.desc}</p>
@@ -1359,10 +1368,9 @@ function scoreToLetter(score) {
             <button class="copy-btn {mainCopied?'copied':''}" on:click={() => {
               downloadMarkdown(exportPreview, exportPreviewTitle);
               clipboardCopy(exportPreview);
-              mainCopied = true;
-              setTimeout(() => { mainCopied = false; }, 2000);
+              mainCopied=true; setTimeout(()=>mainCopied=false,2000);
             }}>
-              {mainCopied ? '✓ Downloaded!' : 'Download Again'}
+              {mainCopied?'✓ Downloaded!':'Download Again'}
             </button>
           </div>
           <pre class="export-preview-text">{exportPreview}</pre>
@@ -1387,7 +1395,7 @@ function scoreToLetter(score) {
             <span class="file-ref">all_time_history.md</span>
             <span class="file-ref">pre_draft.md</span>
           </div>
-          <p class="muted">Replace history + pre_draft once per year.</p>
+          <p class="muted">Compute {nextSeasonYear} power rankings first, then export pre_draft.md.</p>
         </div>
         <div class="project-guide">
           <div class="pg-title">📋 Draft Grades</div>
@@ -1396,18 +1404,18 @@ function scoreToLetter(score) {
             <span class="file-ref">all_time_history.md</span>
             <span class="file-ref">pre_draft.md</span>
           </div>
-          <p class="muted">Generate pre_draft.md right after draft.</p>
+          <p class="muted">Re-export pre_draft.md right after the draft completes.</p>
         </div>
       </div>
 
       <h3>Article Prompts</h3>
-      <p class="muted">Paste these as your first message in the relevant Claude Project.</p>
+      <p class="muted">Paste as your first message in the relevant Claude Project.</p>
       <div class="prompt-list">
         {#each Object.entries(PROMPTS) as [key, prompt]}
           <div class="prompt-card">
             <div class="prompt-card-header">
               <strong>{PROMPT_LABELS[key]||key}</strong>
-              <button class="copy-btn {promptCopied[key]?'copied':''}" on:click={() => copyPrompt(key, prompt)}>
+              <button class="copy-btn {promptCopied[key]?'copied':''}" on:click={() => copyPromptFn(key, prompt)}>
                 {promptCopied[key]?'✓ Copied!':'Copy Prompt'}
               </button>
             </div>
@@ -1435,18 +1443,21 @@ function scoreToLetter(score) {
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; margin-bottom: 1rem; }
   .muted { color: #888; font-size: 0.87em; }
   .explainer { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.87rem; color: #0c4a6e; line-height: 1.6; }
+  .warn-banner { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.87rem; color: #9a3412; }
+  .info-banner { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.87rem; color: #14532d; }
 
   .main-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 2rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
-  .tab-group  { display: flex; gap: 0.4rem; }
+  .tab-group { display: flex; gap: 0.4rem; }
   .tab-btn { padding: 0.4rem 0.85rem; border-radius: 6px 6px 0 0; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; font-size: 0.88rem; }
   .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+  .season-badge { display: inline-block; margin-left: 0.5rem; background: #dbeafe; color: #1d4ed8; font-size: 0.72em; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; vertical-align: middle; }
+  .season-badge.new { background: #d1fae5; color: #065f46; }
 
   .data-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.85rem; }
   .data-table.mini { font-size: 0.79rem; }
   .data-table th, .data-table td { border: 1px solid #ddd; padding: 0.3rem 0.45rem; text-align: center; }
   .data-table th { background: #f5f5f5; font-weight: 600; }
   .data-table td:first-child, .data-table th:first-child { text-align: left; }
-  .injury-row { background: #fff7ed; }
   .table-scroll { overflow-x: auto; }
   .totals td { background: #f8fafc; font-weight: 700; }
 
@@ -1541,7 +1552,6 @@ function scoreToLetter(score) {
   .hover-tooltip { position: absolute; top: 12px; right: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82em; box-shadow: 0 2px 8px rgba(0,0,0,0.12); min-width: 180px; }
   .tooltip-row { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.2rem; justify-content: space-between; }
 
-  /* Export */
   .file-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
   .file-grid  { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
   .file-pill  { border-radius: 6px; padding: 0.5rem 0.75rem; min-width: 160px; }
@@ -1571,7 +1581,6 @@ function scoreToLetter(score) {
   .prompt-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
   .prompt-text { white-space: pre-wrap; font-size: 0.8em; color: #374151; background: #f0f4f8; padding: 0.5rem 0.75rem; border-radius: 4px; margin: 0; max-height: 160px; overflow-y: auto; }
 
-  /* Badges / value labels */
   .badge { padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.72em; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
   .badge.trade     { background: #dbeafe; color: #1d4ed8; }
   .badge.waiver    { background: #dcfce7; color: #15803d; }
