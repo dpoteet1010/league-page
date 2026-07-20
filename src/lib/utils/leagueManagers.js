@@ -69,8 +69,37 @@ export const MANAGERS = {
   },
 };
 
+// ── Per-season rivalries ───────────────────────────────────────────────────────
+// Rivals are set at each year's draft. Add a new entry each season.
+// Each rivalry is one object: two manager IDs + what they bet.
+// The bet field is freeform — put whatever they actually agreed to.
+//
+// Format:
+// {
+//   managers: ['sleeperIdA', 'sleeperIdB'],
+//   bet: 'Loser wears rival's team jersey to the draft banquet',
+// }
+
+export const SEASON_RIVALRIES = {
+  // 2023: [
+  //   { managers: ['123456789012345678', '234567890123456789'], bet: 'Loser buys dinner at the draft banquet' },
+  //   { managers: ['345678901234567890', '456789012345678901'], bet: 'Loser wears a Packers jersey for a week' },
+  //   // ... one entry per rivalry pair
+  // ],
+  // 2024: [
+  //   { managers: ['123456789012345678', '345678901234567890'], bet: 'Loser has to draft the winner\'s first pick next year' },
+  //   // rivals can change year to year
+  // ],
+  // 2025: [
+  //   // fill in after your 2025 draft
+  // ],
+};
+
+// ── Helper functions ──────────────────────────────────────────────────────────
+
 /**
- * Returns the real name for a manager, falling back to Sleeper display name.
+ * Returns the real name for a manager.
+ * Falls back to Sleeper display name if not mapped.
  */
 export function getRealName(managerId, managersSnapshot) {
   if (!managerId) return '?';
@@ -79,19 +108,51 @@ export function getRealName(managerId, managersSnapshot) {
 }
 
 /**
- * Returns the nickname (for casual mentions), falling back to real name.
+ * Returns rivalry data for a specific season.
+ * Each entry includes both manager names and the bet.
+ * Used in LLM exports so the article can reference rivalry results and stakes.
  */
-export function getNickname(managerId, managersSnapshot) {
-  if (!managerId) return '?';
-  if (MANAGERS[managerId]?.nickname) return MANAGERS[managerId].nickname;
-  return getRealName(managerId, managersSnapshot);
+export function getSeasonRivalries(year, managersSnapshot) {
+  const rivalries = SEASON_RIVALRIES[String(year)] || [];
+  return rivalries.map(r => ({
+    managerA:   getRealName(r.managers[0], managersSnapshot),
+    managerB:   getRealName(r.managers[1], managersSnapshot),
+    managerAId: r.managers[0],
+    managerBId: r.managers[1],
+    bet:        r.bet || 'No bet recorded',
+  }));
 }
 
 /**
- * Builds a manager roster section for LLM exports.
- * Includes real name, Sleeper username, bio, and rival name.
+ * Returns the rival name and bet for a specific manager in a specific season.
+ * Returns null if no rivalry found.
  */
-export function buildManagerRosterSection(managersSnapshot) {
+export function getManagerRival(managerId, year, managersSnapshot) {
+  const rivalries = SEASON_RIVALRIES[String(year)] || [];
+  for (const r of rivalries) {
+    if (r.managers[0] === managerId) {
+      return {
+        rivalId:   r.managers[1],
+        rivalName: getRealName(r.managers[1], managersSnapshot),
+        bet:       r.bet || 'No bet recorded',
+      };
+    }
+    if (r.managers[1] === managerId) {
+      return {
+        rivalId:   r.managers[0],
+        rivalName: getRealName(r.managers[0], managersSnapshot),
+        bet:       r.bet || 'No bet recorded',
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Builds the full manager roster + bio section for LLM exports.
+ * Includes real names, bios, and rivalry context for the given season.
+ */
+export function buildManagerRosterSection(managersSnapshot, year) {
   const lines = [];
   lines.push('## Manager Roster & Bios');
   lines.push('*Use these real names and personal details to make recaps specific and personal.*');
@@ -101,24 +162,43 @@ export function buildManagerRosterSection(managersSnapshot) {
 
   Object.entries(users).forEach(([id, user]) => {
     const data        = MANAGERS[id];
-    const realName    = data?.name     || user.display_name;
-    const nickname    = data?.nickname || realName;
-    const bio         = data?.bio      || null;
+    const realName    = data?.name || user.display_name;
+    const bio         = data?.bio  || null;
     const sleeperName = user.display_name;
-    const rivalId     = data?.rivalId  || null;
-    const rivalName   = rivalId ? (MANAGERS[rivalId]?.name || users[rivalId]?.display_name || '?') : null;
 
     lines.push(`### ${realName}`);
-    if (nickname !== realName) lines.push(`**Nickname**: ${nickname}`);
-    lines.push(`**Sleeper username**: ${sleeperName}`);
-    if (rivalName) lines.push(`**Rival**: ${rivalName}`);
+    if (realName !== sleeperName) lines.push(`**Sleeper username**: ${sleeperName}`);
+
     if (bio) {
       lines.push(`**Bio**: ${bio}`);
     } else {
-      lines.push(`**Bio**: No bio provided.`);
+      lines.push(`**Bio**: No bio provided — use Sleeper username "${sleeperName}" as fallback.`);
     }
+
+    // Add rivalry info for this season if available
+    if (year) {
+      const rival = getManagerRival(id, year, managersSnapshot);
+      if (rival) {
+        lines.push(`**${year} Rival**: ${rival.rivalName} | **Rivalry Bet**: ${rival.bet}`);
+      }
+    }
+
     lines.push('');
   });
+
+  // If year provided, also list all rivalries together for quick reference
+  if (year) {
+    const rivalries = getSeasonRivalries(year, managersSnapshot);
+    if (rivalries.length > 0) {
+      lines.push('## Rivalry Week Stakes');
+      lines.push(`*${year} rivalry matchups and bets — reference these when covering rivalry week results.*`);
+      lines.push('');
+      rivalries.forEach(r => {
+        lines.push(`- **${r.managerA} vs ${r.managerB}**: ${r.bet}`);
+      });
+      lines.push('');
+    }
+  }
 
   return lines.join('\n');
 }
