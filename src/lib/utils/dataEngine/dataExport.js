@@ -1,7 +1,4 @@
 // dataExport.js
-//
-// Serializes computed NLFL league data into Markdown for Claude Projects.
-// Always 4 files, always overwrite. Never accumulate.
 
 import { getRealName, buildManagerRosterSection, getSeasonRivalries } from '$lib/utils/leagueManagers.js';
 
@@ -43,26 +40,17 @@ function toLetter(score) {
 }
 
 /**
- * Computes standings through a specific week from individual game results.
- * This is the correct approach for both test mode AND live exports — it
- * guarantees standings reflect exactly what happened through that week,
- * regardless of whether the season is complete.
- *
- * Returns sorted array of { managerId, wins, losses, ties, pf, pa }.
+ * Computes standings from individual game results through a specific week.
+ * Always accurate regardless of whether the season is complete.
  */
 function buildStandingsThroughWeek(allWeeklyResults, year, throughWeek) {
   const results = (allWeeklyResults || []).filter(
     r => String(r.year) === String(year) && !r.isPlayoffs && r.week <= throughWeek
   );
-
   const records = {};
   results.forEach(r => {
     if (!records[r.managerId]) {
-      records[r.managerId] = {
-        managerId: r.managerId,
-        wins: 0, losses: 0, ties: 0,
-        pf: 0,   pa: 0
-      };
+      records[r.managerId] = { managerId: r.managerId, wins: 0, losses: 0, ties: 0, pf: 0, pa: 0 };
     }
     const rec = records[r.managerId];
     if      (r.result === 'W') rec.wins++;
@@ -71,7 +59,6 @@ function buildStandingsThroughWeek(allWeeklyResults, year, throughWeek) {
     rec.pf += r.pointsFor    || 0;
     rec.pa += r.pointsAgainst || 0;
   });
-
   return Object.values(records).sort((a, b) => {
     const wa = a.wins + a.ties * 0.5;
     const wb = b.wins + b.ties * 0.5;
@@ -81,15 +68,13 @@ function buildStandingsThroughWeek(allWeeklyResults, year, throughWeek) {
 }
 
 /**
- * Extracts matchup pairs for a specific week from weekly results.
- * Used to auto-populate next week's matchup preview.
- * Returns array of { homeId, awayId }.
+ * Extracts matchup pairs for a specific week.
  */
 function extractMatchupsForWeek(allWeeklyResults, year, week) {
   const results = (allWeeklyResults || []).filter(
     r => String(r.year) === String(year) && !r.isPlayoffs && r.week === week
   );
-  const seen     = new Set();
+  const seen = new Set();
   const matchups = [];
   results.forEach(r => {
     const key = [r.managerId, r.opponentManagerId].sort().join('-');
@@ -99,6 +84,39 @@ function extractMatchupsForWeek(allWeeklyResults, year, week) {
     }
   });
   return matchups;
+}
+
+/**
+ * Computes all-time head-to-head record between two managers across all seasons.
+ * Regular season only (no playoffs) — what they actually owe each other.
+ */
+function computeHeadToHead(allTimeWeeklyResults, managerAId, managerBId) {
+  if (!allTimeWeeklyResults || !managerAId || !managerBId) {
+    return { wins: 0, losses: 0, ties: 0, gamesPlayed: 0 };
+  }
+  const games = allTimeWeeklyResults.filter(
+    r => r.managerId === managerAId &&
+         r.opponentManagerId === managerBId &&
+         !r.isPlayoffs
+  );
+  const wins   = games.filter(r => r.result === 'W').length;
+  const losses = games.filter(r => r.result === 'L').length;
+  const ties   = games.filter(r => r.result === 'T').length;
+  return { wins, losses, ties, gamesPlayed: wins + losses + ties };
+}
+
+/**
+ * Formats a H2H record as a readable string.
+ * Returns null if no games played (new matchup).
+ */
+function formatH2H(h2h, managerAName, managerBName) {
+  if (!h2h || h2h.gamesPlayed === 0) return 'First ever matchup';
+  const dominant = h2h.wins > h2h.losses ? managerAName
+                 : h2h.losses > h2h.wins  ? managerBName
+                 : null;
+  const recStr = `${h2h.wins}-${h2h.losses}${h2h.ties > 0 ? `-${h2h.ties}` : ''}`;
+  if (dominant) return `${managerAName} leads all-time ${recStr}`;
+  return `All-time series tied ${recStr}`;
 }
 
 function deriveSeasonOutcomes(standings, weeklyResults, snap) {
@@ -114,7 +132,7 @@ function deriveSeasonOutcomes(standings, weeklyResults, snap) {
   const regularOnly = (weeklyResults || []).filter(r => !r.isPlayoffs && r.week <= 14);
   const regRecords  = {};
   regularOnly.forEach(r => {
-    if (!regRecords[r.managerId]) regRecords[r.managerId] = { wins: 0, losses: 0, ties: 0, pf: 0 };
+    if (!regRecords[r.managerId]) regRecords[r.managerId] = { wins:0, losses:0, ties:0, pf:0 };
     const rec = regRecords[r.managerId];
     if      (r.result === 'W') rec.wins++;
     else if (r.result === 'L') rec.losses++;
@@ -164,8 +182,8 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Regular season: weeks 1-14 (standings, power rankings, seeding)');
   lines.push('- Playoffs: weeks 15-17, top 6 teams by record/points');
   lines.push('- **Champion**: wins the playoff bracket');
-  lines.push('- **Last Place Award**: worst record/points through week 14 (regular season loser)');
-  lines.push('- **Draft Order Bowl**: bottom 6 teams compete in a consolation bracket; winner sets next season\'s draft order');
+  lines.push('- **Last Place Award**: worst record/points through week 14');
+  lines.push('- **Draft Order Bowl**: bottom 6 teams; winner sets next season\'s draft order');
   lines.push('- **Rivalry Week**: each manager has a designated rival set at the draft; results carry extra bragging rights and a bet is placed between rivals');
   lines.push('');
   lines.push('## Roster Settings (2024 onward)');
@@ -178,7 +196,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Write like you\'re in a group chat with your boys, not a sports column');
   lines.push('- Call people out BY REAL NAME with specific scores and stats');
   lines.push('- Trash talk the losers, hype up the winners, question everyone\'s life choices');
-  lines.push('- Profanity is fine and expected — "ass cheeks", "suck my nutz", "dogshit" are all appropriate');
+  lines.push('- Profanity is fine and expected — "ass cheeks", "suck my nutz", "dogshit", "what the fuck" are all appropriate');
   lines.push('- Reference specific players, scores, and stats from the data to back up every claim');
   lines.push('- Inside jokes and callbacks to prior seasons or bio details make it hit harder');
   lines.push('- Keep sentences short and punchy. No flowery sports journalism language.');
@@ -210,12 +228,12 @@ export function exportSeasonStats({
   lines.push(`# NLFL ${year} Season — Full Data`);
   lines.push('');
   lines.push('## Season Outcomes');
-  lines.push('*Derived from final placements and regular-season records. Use these as ground truth.*');
+  lines.push('*Derived from final placements and regular-season records. Use as ground truth.*');
   lines.push('');
   if (outcomes?.champion)
     lines.push(`- 🏆 **Champion**: ${outcomes.champion.displayName}`);
   else
-    lines.push('- 🏆 **Champion**: Not yet determined (season may be in progress)');
+    lines.push('- 🏆 **Champion**: Not yet determined');
   if (outcomes?.runnerUp)
     lines.push(`- 🥈 **Runner-Up**: ${outcomes.runnerUp.displayName}`);
   if (outcomes?.thirdPlace)
@@ -225,15 +243,14 @@ export function exportSeasonStats({
     lines.push(`- 💀 **Regular Season Last Place**: ${l.displayName} (${l.wins}-${l.losses}${l.ties > 0 ? `-${l.ties}` : ''}, ${fp(l.pf)} pts)`);
   }
   if (outcomes?.loserBracketWinner)
-    lines.push(`- 🎯 **Draft Order Bowl Winner** (sets next season's draft order): ${outcomes.loserBracketWinner.displayName}`);
+    lines.push(`- 🎯 **Draft Order Bowl Winner**: ${outcomes.loserBracketWinner.displayName}`);
   else
-    lines.push('- 🎯 **Draft Order Bowl Winner**: Not available in data (consolation bracket result)');
+    lines.push('- 🎯 **Draft Order Bowl Winner**: Not available in data');
 
   const rivalries = getSeasonRivalries(year, managersSnapshot);
   if (rivalries.length > 0) {
     lines.push('');
     lines.push('## Rivalry Week Stakes');
-    lines.push('*Reference when covering rivalry week results — loser owes the bet.*');
     lines.push('');
     rivalries.forEach(r => {
       lines.push(`- **${r.managerA} vs ${r.managerB}**: ${r.bet}`);
@@ -242,7 +259,6 @@ export function exportSeasonStats({
 
   lines.push('');
   lines.push('## Final Regular Season Standings (Weeks 1-14)');
-  lines.push('*Sorted by wins then points scored.*');
   lines.push('');
   lines.push('| Reg Rank | Manager | W | L | T | PF | PA | Diff | Made Playoffs? |');
   lines.push('|----------|---------|---|---|---|----|----|------|----------------|');
@@ -265,7 +281,6 @@ export function exportSeasonStats({
 
   lines.push('');
   lines.push('## Final Post-Season Standings');
-  lines.push('*finalPlacement = overall finish including playoffs and consolation bracket.*');
   lines.push('');
   const sortedByFinal = [...(standings || [])]
     .filter(t => t.finalPlacement != null)
@@ -289,7 +304,7 @@ export function exportSeasonStats({
 
   lines.push('');
   lines.push('## Manager Grades');
-  lines.push('*Letter grades only — C = league average. Weights: Draft 40% · Trades 20% · Waivers 20% · Lineup IQ 20%.*');
+  lines.push('*Letter grades only — C = league average.*');
   lines.push('');
   lines.push('| Manager | Overall | Draft | Trades | Waivers | Lineup IQ |');
   lines.push('|---------|---------|-------|--------|---------|-----------|');
@@ -328,7 +343,7 @@ export function exportSeasonStats({
   if (draftEndOfSeasonGrade) {
     lines.push('');
     lines.push('## Post-Season Draft Grades');
-    lines.push(`*Baseline seasons: ${draftEndOfSeasonGrade.baselineSeasons?.join(', ')}*`);
+    lines.push(`*Baseline: ${draftEndOfSeasonGrade.baselineSeasons?.join(', ')}*`);
     lines.push('');
     lines.push('| Rank | Manager | Grade | Adj PAR | Best Pick | Worst Pick |');
     lines.push('|------|---------|-------|---------|-----------|------------|');
@@ -455,7 +470,6 @@ export function exportAllTimeHistory({
   if (Object.keys(draftGradesByYear).length > 0) {
     lines.push('');
     lines.push('## Draft Performance by Season (Adjusted PAR)');
-    lines.push('*Positive = outperformed historical round expectations. Negative = underperformed.*');
     lines.push('');
     const draftYears = Object.keys(draftGradesByYear).sort((a,b) => Number(a)-Number(b));
     lines.push(['| Manager', ...draftYears, '|'].join(' | '));
@@ -512,23 +526,16 @@ export function exportAllTimeHistory({
 // ── Weekly data export ────────────────────────────────────────────────────────
 
 /**
- * This week's data — matchup results, waivers, standings, power rankings.
- * Upload as current_week.md, replace every week.
- *
- * @param {Array}   allSeasonWeeklyResults  All weekly results for this season.
- *   When provided (recommended for both live and test exports):
- *   - Standings are computed from actual game results through `week` — correct for any point in time
- *   - Next week matchups are auto-extracted if not explicitly passed
- *   When omitted: falls back to `currentStandings` (backward compat).
- *
- * @param {boolean} isTestMode  Adds a disclaimer that PAR values are full-season
- *   (since we can't recompute partial-season PAR in test mode).
+ * @param {Array}   allSeasonWeeklyResults   All game results for this season (for standings + next week extraction)
+ * @param {Array}   allTimeWeeklyResults     All game results across ALL seasons (for H2H records)
+ * @param {boolean} isTestMode               Adds PAR disclaimer in test mode
  */
 export function exportWeeklyData({
   year,
   week,
   weeklyResults,
   allSeasonWeeklyResults,
+  allTimeWeeklyResults,
   gradedTransactions,
   currentStandings,
   powerRankings,
@@ -546,19 +553,12 @@ export function exportWeeklyData({
   // ── Test mode disclaimer ────────────────────────────────────────────────────
   if (isTestMode) {
     lines.push('> **⚠ TEST MODE — HISTORICAL DATA**');
-    lines.push(`> This file simulates what a Week ${week} export would have looked like during the ${year} season.`);
+    lines.push(`> Simulates a Week ${week} export from the ${year} season.`);
     lines.push('> ');
-    lines.push('> **What is accurate:**');
-    lines.push(`> - Matchup results are real Week ${week} scores`);
-    lines.push(`> - Waiver moves are real Week ${week} transactions`);
-    lines.push(`> - Standings reflect records through Week ${week} only`);
-    lines.push(`> - Next week matchups are real Week ${week + 1} pairings`);
+    lines.push('> **Accurate**: matchup results, waiver moves, standings through this week, next week matchups, H2H records.');
     lines.push('> ');
-    lines.push('> **Known limitation:**');
-    lines.push('> - Waiver PAR values reflect the **full-season** value from the pickup date, not just performance through this week.');
-    lines.push(`>   Example: a player picked up in Week ${week} and held all season shows their total PAR for the entire hold period.`);
-    lines.push('>   This is an inherent constraint of backtesting — partial-season PAR would require recomputing the grading engine at a specific cutoff.');
-    lines.push('>   Use the PAR values as relative ranking signals (who added the most vs least value) rather than absolute week-specific numbers.');
+    lines.push('> **Known limitation**: Waiver PAR reflects full-season value from pickup date, not just performance through this week.');
+    lines.push('>   Use PAR as relative ranking (who added most vs least value) rather than absolute week-specific numbers.');
     lines.push('');
   }
 
@@ -577,41 +577,67 @@ export function exportWeeklyData({
     lines.push('*No matchup data found for this week.*');
   } else {
     matchups.forEach(r => {
-      const winner = r.result === 'W' ? mn(r.managerId)         : mn(r.opponentManagerId);
-      const loser  = r.result === 'W' ? mn(r.opponentManagerId) : mn(r.managerId);
-      const wScore = r.result === 'W' ? r.pointsFor    : r.pointsAgainst;
-      const lScore = r.result === 'W' ? r.pointsAgainst : r.pointsFor;
-      const margin = Math.abs(wScore - lScore);
-      lines.push(`- **${winner} ${fp(wScore)}** def. ${loser} ${fp(lScore)} (margin: ${fp(margin)})`);
+      const winner   = r.result === 'W' ? mn(r.managerId)         : mn(r.opponentManagerId);
+      const loser    = r.result === 'W' ? mn(r.opponentManagerId) : mn(r.managerId);
+      const winnerId = r.result === 'W' ? r.managerId             : r.opponentManagerId;
+      const loserId  = r.result === 'W' ? r.opponentManagerId     : r.managerId;
+      const wScore   = r.result === 'W' ? r.pointsFor    : r.pointsAgainst;
+      const lScore   = r.result === 'W' ? r.pointsAgainst : r.pointsFor;
+      const margin   = Math.abs(wScore - lScore);
+
+      // Include H2H if available
+      const h2h = allTimeWeeklyResults
+        ? computeHeadToHead(allTimeWeeklyResults, winnerId, loserId)
+        : null;
+      const h2hStr = h2h && h2h.gamesPlayed > 0
+        ? ` | H2H: ${formatH2H(h2h, winner, loser)}`
+        : '';
+
+      lines.push(`- **${winner} ${fp(wScore)}** def. ${loser} ${fp(lScore)} (margin: ${fp(margin)}${h2hStr})`);
     });
   }
 
-  // ── Waiver moves ─────────────────────────────────────────────────────────────
+  // ── Waiver moves — top 3 pickups from this week ───────────────────────────
+  // PAR is computed over the full hold period (set at end of season).
+  // We filter to pickups made this week and rank by PAR — the relative
+  // ordering is still meaningful for identifying best/worst moves.
   const weekWaivers = (gradedTransactions||[]).filter(tx =>
     tx.type === 'waiver' &&
     !tx.isPartOfComposite &&
     Number(tx.leg) === week &&
     String(tx.seasonKey||tx.season) === String(year) &&
     tx.grade?.par != null
-  );
+  ).sort((a, b) => (b.grade?.par||0) - (a.grade?.par||0));
 
   if (weekWaivers.length > 0) {
-    const sorted = [...weekWaivers].sort((a,b) => (b.grade?.par||0) - (a.grade?.par||0));
     lines.push('');
-    lines.push('## Waiver Moves This Week (sorted by PAR value)');
+    lines.push('## Best Waiver Pickups This Week (Top 3)');
     if (isTestMode) {
-      lines.push('*Note: PAR values are full-season — see test mode disclaimer above.*');
+      lines.push('*PAR = full-season value from pickup date onward — see test mode disclaimer.*');
+    } else {
+      lines.push('*PAR = Points Above Replacement over the hold period. Higher = more value added.*');
     }
     lines.push('');
-    sorted.forEach(tx => {
-      const g = tx.grade;
-      lines.push(`- **${mn(tx.managerIds?.[0])}**: +${g.name} (${g.position})${g.droppedName?` / -${g.droppedName}`:''} — ${signedFp(g.par)} PAR vs replacement (${g.repName}), ${g.gradeLabel}`);
+
+    const top3 = weekWaivers.slice(0, 3);
+    top3.forEach((tx, i) => {
+      const g      = tx.grade;
+      const mgr    = mn(tx.managerIds?.[0]);
+      const medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+      const drop   = g.droppedName ? ` (dropped ${g.droppedName})` : '';
+      lines.push(`${medal} **${mgr}** — +${g.name} (${g.position})${drop}`);
+      lines.push(`   PAR: ${signedFp(g.par)} vs replacement ${g.repName} | Grade: ${g.gradeLabel}`);
+      lines.push('');
     });
-    lines.push('');
-    lines.push(`**Best pickup**: ${mn(sorted[0].managerIds?.[0])} added ${sorted[0].grade.name} (${signedFp(sorted[0].grade.par)} PAR)`);
-    if (sorted.length > 1) {
-      const worst = sorted[sorted.length - 1];
-      lines.push(`**Worst pickup**: ${mn(worst.managerIds?.[0])} added ${worst.grade.name} (${signedFp(worst.grade.par)} PAR)`);
+
+    // If there were more moves, list them briefly
+    if (weekWaivers.length > 3) {
+      lines.push('**Other moves this week:**');
+      weekWaivers.slice(3).forEach(tx => {
+        const g = tx.grade;
+        lines.push(`- ${mn(tx.managerIds?.[0])}: +${g.name} (${g.position})${g.droppedName?` / -${g.droppedName}`:''} — ${signedFp(g.par)} PAR`);
+      });
+      lines.push('');
     }
   }
 
@@ -625,30 +651,26 @@ export function exportWeeklyData({
   if (weekTrades.length > 0) {
     lines.push('');
     lines.push('## Trades This Week');
-    lines.push('*(Grades not available until end of season — list factually only)*');
+    lines.push('*(Grades not available until end of season)*');
     lines.push('');
     weekTrades.forEach(tx => {
       lines.push(`- **${mn(tx.managerIds?.[0])} ↔ ${mn(tx.managerIds?.[1])}**`);
     });
   }
 
-  // ── Standings — computed from weekly results through this week ──────────────
+  // ── Standings — computed from game results through this week ─────────────────
   lines.push('');
   lines.push(`## Standings Through Week ${week}`);
   lines.push('');
   lines.push('| Rank | Manager | W | L | T | PF | PA |');
   lines.push('|------|---------|---|---|---|----|----|');
 
-  // Prefer computed standings from game results (accurate for any point in time)
-  // Fall back to currentStandings only if allSeasonWeeklyResults not available
   if (allSeasonWeeklyResults) {
     const computed = buildStandingsThroughWeek(allSeasonWeeklyResults, year, week);
     computed.forEach((rec, idx) => {
       lines.push(`| #${idx+1} | ${mn(rec.managerId)} | ${rec.wins} | ${rec.losses} | ${rec.ties} | ${fp(rec.pf)} | ${fp(rec.pa)} |`);
     });
   } else {
-    // Backward compat: use passed-in standings
-    // Note: regularSeason totals will be full-season if the season is over
     (currentStandings||[]).forEach((team, idx) => {
       const rs = team.regularSeason || {};
       lines.push(`| #${idx+1} | ${mn(team.managerId)} | ${rs.wins||0} | ${rs.losses||0} | ${rs.ties||0} | ${fp(rs.fptsFor)} | ${fp(rs.fptsAgainst)} |`);
@@ -659,7 +681,7 @@ export function exportWeeklyData({
   if (powerRankings) {
     lines.push('');
     lines.push(`## Power Rankings — Week ${week}`);
-    lines.push(`*Phase: ${powerRankings.phase} | Weights: Record ${(powerRankings.weights.record*100).toFixed(0)}% / Pts ${(powerRankings.weights.points*100).toFixed(0)}% / Form ${(powerRankings.weights.recentForm*100).toFixed(0)}% / Mgr Grade ${(powerRankings.weights.managerGrade*100).toFixed(0)}%*`);
+    lines.push(`*Phase: ${powerRankings.phase} | Record ${(powerRankings.weights.record*100).toFixed(0)}% / Pts ${(powerRankings.weights.points*100).toFixed(0)}% / Form ${(powerRankings.weights.recentForm*100).toFixed(0)}% / Mgr Grade ${(powerRankings.weights.managerGrade*100).toFixed(0)}%*`);
     lines.push('');
     const prevMap = {};
     (previousPowerRankings||[]).forEach(t => { prevMap[t.managerId] = t.rank; });
@@ -674,11 +696,10 @@ export function exportWeeklyData({
   } else if (isTestMode) {
     lines.push('');
     lines.push(`## Power Rankings — Week ${week}`);
-    lines.push('*Not available in test mode. Power rankings require real-time computation and are not reconstructed for historical weeks.*');
+    lines.push('*Not reconstructed in test mode.*');
   }
 
-  // ── Next week matchups ────────────────────────────────────────────────────────
-  // Auto-extract from allSeasonWeeklyResults if not explicitly provided
+  // ── Next week matchups with H2H records ───────────────────────────────────────
   const nextWeek = week + 1;
   const resolvedNextWeekMatchups = nextWeekMatchups?.length
     ? nextWeekMatchups
@@ -686,21 +707,33 @@ export function exportWeeklyData({
         ? extractMatchupsForWeek(allSeasonWeeklyResults, year, nextWeek)
         : []);
 
-  if (resolvedNextWeekMatchups.length > 0) {
+  if (resolvedNextWeekMatchups.length > 0 && nextWeek <= 17) {
     lines.push('');
     lines.push(`## Next Week's Matchups (Week ${nextWeek})`);
     lines.push('');
+
     resolvedNextWeekMatchups.forEach(m => {
-      // Support both { homeId, awayId } (from extractMatchupsForWeek)
-      // and { home, away } (legacy format passed manually)
-      const homeId = m.homeId || m.home;
-      const awayId = m.awayId || m.away;
-      lines.push(`- **${mn(homeId)}** vs **${mn(awayId)}**`);
+      const homeId   = m.homeId || m.home;
+      const awayId   = m.awayId || m.away;
+      const homeName = mn(homeId);
+      const awayName = mn(awayId);
+
+      // H2H record
+      const h2h = allTimeWeeklyResults
+        ? computeHeadToHead(allTimeWeeklyResults, homeId, awayId)
+        : null;
+      const h2hLabel = h2h
+        ? (h2h.gamesPlayed === 0
+            ? 'First ever matchup'
+            : `All-time H2H: ${formatH2H(h2h, homeName, awayName)} (${h2h.gamesPlayed} games)`)
+        : '';
+
+      lines.push(`- **${homeName} vs ${awayName}**${h2hLabel ? ` — ${h2hLabel}` : ''}`);
     });
   } else if (nextWeek <= 14) {
     lines.push('');
     lines.push(`## Next Week's Matchups (Week ${nextWeek})`);
-    lines.push('*Matchup data for next week not available.*');
+    lines.push('*Matchup data not available.*');
   }
 
   return lines.join('\n');
@@ -715,49 +748,40 @@ export function exportPreDraftPackage({
   const lines = [];
 
   lines.push(`# NLFL ${year} Pre-Draft Package`);
-  lines.push(`*Contains everything needed to write the ${year} pre-draft preview and post-draft grade articles.*`);
+  lines.push(`*Everything needed for the ${year} pre-draft preview and post-draft grade articles.*`);
   lines.push('');
   lines.push('## IMPORTANT: How to Use This File');
-  lines.push('- The pre-draft power rankings below are **pre-computed from actual data** — do not recalculate them');
-  lines.push('- Formula: 60% all-time manager grade + 20% prior regular season finish + 20% prior post-season finish');
-  lines.push('- All grades are **letter grades** (C = league average) — never use numeric scores in articles');
+  lines.push('- Pre-draft power rankings are **pre-computed** — do not recalculate');
+  lines.push('- Formula: 60% all-time manager grade + 20% prior regular season + 20% prior post-season');
+  lines.push('- **Letter grades only** — never use numeric scores in articles');
   lines.push('- Use manager bios from league_context.md to personalize commentary');
   lines.push('');
 
   lines.push('## Pre-Draft Power Rankings');
   lines.push('');
   if (preSeasonRankings?.rankings?.length) {
-    lines.push('| Rank | Manager | Overall | Draft | Trades | Waivers | Lineup IQ | Prior Reg Finish | Prior Post Finish |');
-    lines.push('|------|---------|---------|-------|--------|---------|-----------|-----------------|-------------------|');
+    lines.push('| Rank | Manager | Overall | Draft | Trades | Waivers | Lineup IQ | Prior Reg | Prior Post |');
+    lines.push('|------|---------|---------|-------|--------|---------|-----------|-----------|------------|');
     preSeasonRankings.rankings.forEach(team => {
       const regRank  = team.isFirstSeason ? '(new)' : team.prevRegRank  != null ? `#${team.prevRegRank}`  : '—';
       const postRank = team.isFirstSeason ? '(new)' : team.prevPostRank != null ? `#${team.prevPostRank}` : '—';
       lines.push([
-        `#${team.rank}`,
-        mn(team.managerId),
-        toLetter(team.mgrGrade),
-        toLetter(team.avgNormDraft),
-        toLetter(team.avgNormTrade),
-        toLetter(team.avgNormWaiver),
-        toLetter(team.avgNormLineup),
-        regRank,
-        postRank
+        `#${team.rank}`, mn(team.managerId),
+        toLetter(team.mgrGrade), toLetter(team.avgNormDraft),
+        toLetter(team.avgNormTrade), toLetter(team.avgNormWaiver),
+        toLetter(team.avgNormLineup), regRank, postRank
       ].join(' | ').replace(/^/, '| ').replace(/$/, ' |'));
     });
   } else {
-    lines.push('*Rankings not computed. Go to Power Rankings tab → select next season → Compute Rankings → re-export this file.*');
+    lines.push('*Compute Power Rankings for next season before exporting this file.*');
   }
 
   lines.push('');
   lines.push('---');
   lines.push('');
-  lines.push('## Prior Season Full Data');
-  lines.push('');
   lines.push(latestSeasonExport || '*(Season stats not available)*');
   lines.push('');
   lines.push('---');
-  lines.push('');
-  lines.push('## All-Time League History');
   lines.push('');
   lines.push(allTimeExport || '*(All-time history not available)*');
 
@@ -771,134 +795,135 @@ export const PROMPTS = {
   preDraftRecap: `
 You are writing the Pre-Draft Preview newsletter for the NLFL (National Liver Failure League).
 
-VOICE: You are the league commissioner writing to the group chat. You're one of the guys. You watched every game last season and you have opinions. Write like you're texting your boys, not publishing a sports column.
+VOICE: League commissioner writing to the group chat. You're one of the guys. You watched every game and you have opinions that are going to hurt feelings.
 
-TONE EXAMPLES FROM PAST NLFL ARTICLES:
+TONE EXAMPLES FROM ACTUAL NLFL ARTICLES:
 - "3 years in, and Berra still can't beat me."
 - "Newman's team sucks major ball sacks, how did you win 6 games?"
-- "Jesus Jonathan Taylor is so fucking good."
 - "Better hope Ashton Jeanty turns into prime Adrian Peterson."
-- "Is this the beginning of Alec's collapse that we've been waiting for all season long?"
 - "hey Newman, remember when you talked shit when I was 0-4, suck my nutz"
-Match that energy exactly. Personal, specific, data-backed, filthy when appropriate.
+- "Is this the beginning of Alec's collapse that we've been waiting for all season long?"
 
 RULES:
-- Use REAL NAMES from the bios in league_context.md — never Sleeper usernames
-- LETTER GRADES ONLY — never write numeric scores like 87.3 or 64.2
-- DO NOT repeat season recap content in the storylines section — storylines = forward-looking only
-- The Pre-Draft Power Rankings table is pre-computed — copy it exactly, do not recalculate
-- Reference bio details (team allegiances, personality traits, past failures) to personalize roasts
-- Keep paragraphs short and punchy. No flowery language.
+- REAL NAMES only — never Sleeper usernames
+- LETTER GRADES ONLY — no numeric scores
+- Storylines section = FORWARD-LOOKING only, no season recap repeats
+- Pre-draft power rankings table = copy exactly as given, never recalculate
+- Use bio details to make roasts personal and specific
 
-ARTICLE STRUCTURE:
+STRUCTURE:
 
-**Opening** (3-4 sentences — punch them in the mouth immediately)
+**Opening** (3-4 sentences — immediate gut punch, reference something embarrassing)
 
-**[YEAR] Season Recap** (~250 words)
-Who won, who was last, who won the Draft Order Bowl. Hit the 3-4 most embarrassing/impressive statistical moments with specific numbers. Brief callbacks to prior season patterns.
+**Season Recap** (~250 words) — champion, last place, Draft Order Bowl, 3-4 stat-backed moments
 
-**All-Time Hall of Fame / Hall of Shame**
-Award specific titles based on the all-time data. Be mean when the data justifies it. Be specific.
+**All-Time Hall of Shame / Hall of Fame** — specific titles backed by data, be mean when justified
 
-**Storylines Heading Into the Draft** (FORWARD-LOOKING ONLY)
-3-4 things to watch. Draft position stakes, redemption arcs, who needs to prove something. No rehashing last season.
+**Storylines Heading Into the Draft** — 3-4 forward-looking items only
 
-**Pre-Draft Power Rankings**
-Copy the pre-computed table exactly. Then 1-2 sentences of spicy commentary per manager. Reference their component grades and prior season finish. Don't be diplomatic.
+**Pre-Draft Power Rankings** — copy table exactly, then 1-2 sentences trash talk per manager
 `.trim(),
 
   draftGrades: `
-You are grading the just-completed NLFL draft for the group newsletter.
+You are grading the just-completed NLFL draft.
 
-VOICE: Commissioner energy. You watched every single pick. You have takes. Some of them are going to hurt.
+VOICE: Commissioner with opinions. You watched every pick. You are not being diplomatic.
 
 RULES:
-- Use REAL NAMES from league_context.md — never Sleeper usernames
+- REAL NAMES only
 - LETTER GRADES ONLY
-- Reference prior draft grades (from all_time_history.md) when calling out patterns
-- Use bio details to add personality
+- Reference prior draft grades when calling out patterns
+- Use bio details for personality
 
-FOR EACH MANAGER:
-- Letter grade (A+ through F)
-- 2-3 sentences: key picks, reaches vs value, positional strategy, historical pattern
-- One bold prediction for their season
+FOR EACH MANAGER: grade + 2-3 sentences + one season prediction
 
-FINISH WITH:
-- Best draft in the room and the specific pick that made it
-- Worst draft and the pick that doomed them
-- One sleeper pick that could make everyone look stupid by week 8
+FINISH WITH: best draft (specific pick), worst draft (specific pick that doomed them), one sleeper pick
 `.trim(),
 
   weeklyRecap: `
 You are writing the NLFL weekly recap newsletter.
 
-VOICE: Commissioner to the group chat. You watched every game. Real names, exact scores, trash talk.
-
-TONE EXAMPLES:
-- "Wow, James pulled off the improbable and potentially clawed his way out of last."
-- "His team is ass cheeks" is appropriate vocabulary
-- Always include exact scores — "lost by 0.4 points" not "narrowly lost"
-- "Jesus [player name] is so fucking good" is the right register
+VOICE: Commissioner to the group chat. You watched every game. You have no filter.
 
 RULES:
-- Use REAL NAMES from league_context.md throughout
-- Include exact scores for every game
-- Reference specific players who had big weeks or flopped
-- If it's rivalry week, reference the bet stakes for each rivalry matchup
-- Trades this week have NO grades — list them factually only
-- Keep it punchy. Short paragraphs.
+- REAL NAMES throughout
+- Exact scores on every game — "lost by 0.4" not "narrowly lost"
+- Profanity is expected and encouraged
+- Reference specific players who went off or completely shit the bed
+- If rivalry week: call out bet stakes, talk shit about whoever lost
+- Trades: list factually only, no grades
+- Keep it punchy — short sentences, no filler
 
 STRUCTURE:
 
-**Opening** (2-3 sentences — reference something absurd from the week)
+**Opening** (2-3 sentences — something filthy, absurd, or painful from the week. Set the tone immediately.)
 
-**Game Recaps** (2-4 sentences per game — exact scores, winner gets credit, loser gets roasted)
+**Game Recaps**
+For EACH game, write 3-5 sentences. Requirements:
+- Include the exact score and margin
+- Name the losing manager and explain specifically why their team is an embarrassment
+- Reference specific players who won or lost the game
+- If someone lost by a large margin: rub it in
+- If someone won ugly: acknowledge it but find something to still clown them for
+- Make it feel like you're reading this in a group chat and losing your mind
+- Examples of the right register:
+  * "A 42-point loss isn't a loss, it's a hate crime. [Manager]'s team just stood there and watched."
+  * "[Player] put up [X] points and [Manager] still found a way to lose. Incredible."
+  * "[Manager] won but their team looked like ass doing it — enjoy the W because it won't last."
+  * "How do you start [player] and not [other player] and then wonder why you lost? Lineup IQ of a golden retriever."
 
-**Waiver Wire Report**
-Best pickup (use PAR data — explain why it matters to their season)
-Worst pickup (lowest PAR — give them grief)
-List all other moves factually.
+**Best Waiver Pickups This Week**
+Use the top 3 pickups from the data. For each:
+- Name the manager and player picked up
+- Explain in 1-2 sentences why this move matters to their season or was the right/wrong call
+- PAR is provided — reference it but explain it in plain language ("that's [X] points of value over what any other scrub off the wire would have given you")
+- The #1 pickup gets the most love/hate depending on the grade
 
 **Power Rankings**
-Copy the table. 1 sentence per team noting movement and trajectory.
+Copy the table. For each team write 1 sentence: current vibe, trajectory, and appropriate level of trash talk or hype.
 
 **Next Week Preview**
-1-2 sentences per matchup. Who has the edge. Add trash talk.
+For EACH matchup:
+- Include the all-time head-to-head record (it's in the data)
+- 2-3 sentences: who has the edge, why, and appropriate trash talk
+- If someone is on a hot streak: acknowledge it then explain why it's about to end
+- If someone is on a cold streak: pile on
+- H2H dominance is fair game: "you're 0-4 all time against this guy, maybe just forfeit"
 `.trim(),
 
   endOfSeasonRecap: `
 You are writing the NLFL End of Season Recap — the permanent record.
 
-VOICE: Commissioner with a full season of receipts. Real names, real grades, real numbers.
+VOICE: Commissioner with a full season of receipts. Real names, real grades, real savagery.
 
 RULES:
-- Use REAL NAMES from league_context.md
+- REAL NAMES only
 - LETTER GRADES ONLY
 - Back every claim with specific numbers
-- Reference rivalry results and who won/lost their bets
+- Reference rivalry results and what losers owe
 
 STRUCTURE:
 
-**Season Narrative** (~200 words) — how did it unfold, defining storylines
+**Season Narrative** (~200 words) — arc, turning points, who collapsed, what happened
 
-**Final Outcomes** — Champion, runner-up, last place, Draft Order Bowl winner. Last place gets the full autopsy.
+**Final Outcomes** — champion, runner-up, last place, Draft Order Bowl. Last place gets the full autopsy.
 
-**Rivalry Week Results** — who won each rivalry, what the loser owes
+**Rivalry Week Results** — who won each bet, what the loser owes, appropriate trash talk
 
 **Best Trades** (top 3 by PAR — name both sides, say who won and by how much)
 
-**Worst Trades** (bottom 3 — name the trade, explain why it was bad)
+**Worst Trades** (bottom 3 — name the trade, explain why it was a crime against fantasy football)
 
-**Best Waiver Pickup** (highest PAR — explain season impact)
+**Best Waiver Pickup** (highest PAR — explain the season impact in plain language)
 
-**Draft Report Card** — whose draft held up, whose collapsed, specific busts and steals by name
+**Draft Report Card** — whose draft held up, whose collapsed, specific busts/steals by player name
 
 **Season Awards**
-🏆 Best Manager (data-backed, not just who won)
+🏆 Best Manager (data-backed — can win and still have a mediocre grade, call that out)
 📈 Most Improved
-🍀 Luckiest Schedule (use SOS luck metric — call them out)
-🧠 Lineup Genius (best IQ)
-🤡 Annual Clown Award (worst grades, most embarrassing moment, specific evidence)
+🍀 Luckiest Schedule (use SOS luck metric — name names)
+🧠 Lineup Genius (best IQ — the one guy who actually watched his team)
+🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
 `.trim()
 
