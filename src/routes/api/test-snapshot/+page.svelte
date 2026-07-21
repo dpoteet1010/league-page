@@ -517,17 +517,22 @@
     } finally { loadingPower = false; }
   }
 
-  // ── Export ────────────────────────────────────────────────────────────────────
+// ── Export ────────────────────────────────────────────────────────────────────
   async function generateExport(type) {
     const snap       = get(teamManagersStore) || {};
     const yearStr    = currentSeasonYears[0];
     const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+    // All weekly results for the current season — used for accurate standings + next week matchups
+    const allSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter(
+      (r) => String(r.year) === yearStr
+    ) || [];
     let text = '', title = '';
 
     try {
       if (type === 'context') {
-        text  = exportLeagueContext(snap);
+        text  = exportLeagueContext(snap, currentSeasonYears[0]);
         title = 'league_context.md';
+
       } else if (type === 'history') {
         text = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
@@ -535,11 +540,12 @@
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap
         });
         title = 'all_time_history.md';
+
       } else if (type === 'season') {
         text = exportSeasonStats({
           year: yearStr,
           standings:      seasonData?.standings || [],
-          weeklyResults:  allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          weeklyResults:  allSeasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
           seasonSOS:      seasonSOSByYear[yearStr] || null,
           draftEndOfSeasonGrade: eosCache[yearStr] || null,
@@ -549,22 +555,26 @@
           rosterStats, managersSnapshot: snap
         });
         title = 'current_season.md';
+
       } else if (type === 'week') {
-        const weekResults = allTimeHistory?.weeklyResults?.filter(
-          (r) => String(r.year) === yearStr && r.week === exportWeek
-        ) || [];
+        const weekResults = allSeasonWeeklyResults.filter((r) => r.week === exportWeek);
         const pr     = weeklyProgressionData[exportWeek] || null;
         const prevPR = exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
         text = exportWeeklyData({
-          year: yearStr, week: exportWeek,
-          weeklyResults:   weekResults,
+          year:                  yearStr,
+          week:                  exportWeek,
+          weeklyResults:         weekResults,
+          allSeasonWeeklyResults,          // enables computed standings + auto next-week matchups
           gradedTransactions,
-          currentStandings: seasonData?.standings || [],
-          powerRankings:    pr,
+          currentStandings:      null,     // not needed when allSeasonWeeklyResults provided
+          powerRankings:         pr,
           previousPowerRankings: prevPR?.rankings || [],
-          managersSnapshot: snap
+          nextWeekMatchups:      null,     // auto-extracted from allSeasonWeeklyResults
+          isTestMode:            false,
+          managersSnapshot:      snap
         });
         title = 'current_week.md';
+
       } else if (type === 'predraft') {
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
@@ -573,7 +583,7 @@
         });
         const seasonText = exportSeasonStats({
           year: yearStr, standings: seasonData?.standings || [],
-          weeklyResults: allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          weeklyResults: allSeasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
           seasonSOS: seasonSOSByYear[yearStr] || null,
           draftEndOfSeasonGrade: eosCache[yearStr] || null,
@@ -604,40 +614,44 @@
     } catch (e) { console.error('Export error:', e); }
   }
 
-  async function copyPromptFn(key, text) {
-    await clipboardCopy(text);
-    promptCopied = { ...promptCopied, [key]: true };
-    setTimeout(() => { promptCopied = { ...promptCopied, [key]: false }; }, 2000);
-  }
-
   // ── Prompt testing ────────────────────────────────────────────────────────────
   async function generateTestExport(articleType) {
-    const snap       = get(teamManagersStore) || {};
-    const yearStr    = testYear || currentSeasonYears[0];
+    const snap    = get(teamManagersStore) || {};
+    const yearStr = testYear || currentSeasonYears[0];
     const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+
+    // All weekly results for the test season — used for everything time-bounded
+    const allSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter(
+      (r) => String(r.year) === yearStr
+    ) || [];
+
     let text = '', title = '';
 
     try {
       if (articleType === 'weeklyRecap') {
-        const weekResults = allTimeHistory?.weeklyResults?.filter(
-          (r) => String(r.year) === yearStr && r.week === testWeek
-        ) || [];
+        // Only this week's game results (for matchup recaps)
+        const weekResults = allSeasonWeeklyResults.filter((r) => r.week === testWeek);
+
         text = exportWeeklyData({
-          year: yearStr, week: testWeek,
-          weeklyResults:   weekResults,
-          gradedTransactions,
-          currentStandings: seasonData?.standings || [],
-          powerRankings:    null,
+          year:                  yearStr,
+          week:                  testWeek,
+          weeklyResults:         weekResults,
+          allSeasonWeeklyResults,          // standings computed through testWeek; next week auto-extracted
+          gradedTransactions,              // waivers filtered to testWeek inside the function
+          currentStandings:      null,     // not needed — allSeasonWeeklyResults handles this
+          powerRankings:         null,     // not available in test mode
           previousPowerRankings: [],
-          managersSnapshot: snap
+          nextWeekMatchups:      null,     // auto-extracted from allSeasonWeeklyResults for testWeek+1
+          isTestMode:            true,     // adds disclaimer about PAR values
+          managersSnapshot:      snap
         });
         title = `TEST_week${testWeek}_${yearStr}.md`;
 
       } else if (articleType === 'endOfSeason') {
         text = exportSeasonStats({
-          year: yearStr,
+          year:           yearStr,
           standings:      seasonData?.standings || [],
-          weeklyResults:  allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          weeklyResults:  allSeasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
           seasonSOS:      seasonSOSByYear[yearStr] || null,
           draftEndOfSeasonGrade: eosCache[yearStr] || null,
@@ -656,7 +670,7 @@
         });
         const seasonText = exportSeasonStats({
           year: yearStr, standings: seasonData?.standings || [],
-          weeklyResults: allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [],
+          weeklyResults: allSeasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
           seasonSOS: seasonSOSByYear[yearStr] || null,
           draftEndOfSeasonGrade: eosCache[yearStr] || null,
@@ -665,7 +679,7 @@
           managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
           rosterStats, managersSnapshot: snap
         });
-        text  = `# TEST: ${yearStr} Draft Grades\n\nUse the ${yearStr} draft data to test the Draft Grades prompt.\n\n---\n\n${seasonText}\n\n---\n\n${histText}`;
+        text  = `# TEST: ${yearStr} Draft Grades\n\nUse this with the Draft Grades prompt. Treat as if grading the ${yearStr} draft.\n\n---\n\n${seasonText}\n\n---\n\n${histText}`;
         title = `TEST_draft_grades_${yearStr}.md`;
       }
 
