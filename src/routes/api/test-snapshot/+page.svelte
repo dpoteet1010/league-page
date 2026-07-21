@@ -522,10 +522,11 @@
     const snap       = get(teamManagersStore) || {};
     const yearStr    = currentSeasonYears[0];
     const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-    // All weekly results for the current season — used for accurate standings + next week matchups
     const allSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter(
       (r) => String(r.year) === yearStr
     ) || [];
+    // All-time results across every season — needed for H2H records
+    const allTimeWeeklyResults = allTimeHistory?.weeklyResults || [];
     let text = '', title = '';
 
     try {
@@ -564,12 +565,13 @@
           year:                  yearStr,
           week:                  exportWeek,
           weeklyResults:         weekResults,
-          allSeasonWeeklyResults,          // enables computed standings + auto next-week matchups
+          allSeasonWeeklyResults,
+          allTimeWeeklyResults,           // for H2H records
           gradedTransactions,
-          currentStandings:      null,     // not needed when allSeasonWeeklyResults provided
+          currentStandings:      null,
           powerRankings:         pr,
           previousPowerRankings: prevPR?.rankings || [],
-          nextWeekMatchups:      null,     // auto-extracted from allSeasonWeeklyResults
+          nextWeekMatchups:      null,    // auto-extracted
           isTestMode:            false,
           managersSnapshot:      snap
         });
@@ -605,10 +607,8 @@
       exportPreview      = text;
       exportPreviewTitle = title;
       exportPreviewType  = type;
-
       downloadMarkdown(text, title);
       await clipboardCopy(text);
-
       exportCopied = { ...exportCopied, [type]: true };
       setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
     } catch (e) { console.error('Export error:', e); }
@@ -619,37 +619,34 @@
     const snap    = get(teamManagersStore) || {};
     const yearStr = testYear || currentSeasonYears[0];
     const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-
-    // All weekly results for the test season — used for everything time-bounded
     const allSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter(
       (r) => String(r.year) === yearStr
     ) || [];
-
+    const allTimeWeeklyResults = allTimeHistory?.weeklyResults || [];
     let text = '', title = '';
 
     try {
       if (articleType === 'weeklyRecap') {
-        // Only this week's game results (for matchup recaps)
         const weekResults = allSeasonWeeklyResults.filter((r) => r.week === testWeek);
-
         text = exportWeeklyData({
           year:                  yearStr,
           week:                  testWeek,
           weeklyResults:         weekResults,
-          allSeasonWeeklyResults,          // standings computed through testWeek; next week auto-extracted
-          gradedTransactions,              // waivers filtered to testWeek inside the function
-          currentStandings:      null,     // not needed — allSeasonWeeklyResults handles this
-          powerRankings:         null,     // not available in test mode
+          allSeasonWeeklyResults,
+          allTimeWeeklyResults,           // for H2H records
+          gradedTransactions,
+          currentStandings:      null,
+          powerRankings:         null,
           previousPowerRankings: [],
-          nextWeekMatchups:      null,     // auto-extracted from allSeasonWeeklyResults for testWeek+1
-          isTestMode:            true,     // adds disclaimer about PAR values
+          nextWeekMatchups:      null,    // auto-extracted
+          isTestMode:            true,
           managersSnapshot:      snap
         });
         title = `TEST_week${testWeek}_${yearStr}.md`;
 
       } else if (articleType === 'endOfSeason') {
         text = exportSeasonStats({
-          year:           yearStr,
+          year: yearStr,
           standings:      seasonData?.standings || [],
           weeklyResults:  allSeasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
@@ -679,7 +676,7 @@
           managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
           rosterStats, managersSnapshot: snap
         });
-        text  = `# TEST: ${yearStr} Draft Grades\n\nUse this with the Draft Grades prompt. Treat as if grading the ${yearStr} draft.\n\n---\n\n${seasonText}\n\n---\n\n${histText}`;
+        text  = `# TEST: ${yearStr} Draft Grades\n\nUse with the Draft Grades prompt.\n\n---\n\n${seasonText}\n\n---\n\n${histText}`;
         title = `TEST_draft_grades_${yearStr}.md`;
       }
 
@@ -691,7 +688,6 @@
       setTimeout(() => { testCopied = false; }, 2000);
     } catch (e) { console.error('Test export error:', e); }
   }
-
   // ── SVG chart ─────────────────────────────────────────────────────────────────
   function chartPath(managerId, progression, chartW, chartH, numTeams) {
     const points = progression.map((weekData, weekIdx) => {
