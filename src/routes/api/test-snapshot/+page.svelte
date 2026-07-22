@@ -102,7 +102,7 @@
   let testCopied      = false;
 
   const EXPORT_CONFIGS = [
-    { key: 'context',  title: 'League Context',       filename: 'league_context.md',   desc: 'League rules, scoring, manager bios, glossary.', freq: 'Upload once — re-upload if rules or bios change' },
+    { key: 'context',  title: 'League Context',       filename: 'league_context.md',   desc: 'League rules, scoring, manager names, glossary.', freq: 'Upload once — re-upload if rules change' },
     { key: 'history',  title: 'All-Time History',     filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history.', freq: 'Replace each year' },
     { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Full current season stats, grades, SOS, draft analysis.', freq: 'Replace each week' },
     { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "This week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
@@ -212,7 +212,7 @@
     if (label.includes('steal') || label === 'value') return 'vl-steal';
     if (label === 'as expected')                      return 'vl-neutral';
     if (label.includes('bust'))                       return 'vl-bust';
-    if (label.includes('reach'))                      return 'vl-reach';
+    if (label.includes('reach'))                       return 'vl-reach';
     return 'vl-neutral';
   }
   function waiverEmoji(l) { return { elite:'🔥', strong:'✅', solid:'👍', breakeven:'➖', poor:'❌' }[l] || '?'; }
@@ -573,7 +573,9 @@
           previousPowerRankings: prevPR?.rankings || [],
           nextWeekMatchups:      null,    // auto-extracted
           isTestMode:            false,
-          managersSnapshot:      snap
+          managersSnapshot:      snap,
+          playerResults:         allTimeHistory?.playerResults  || [],
+          allPlayersData:        allTimeHistory?.allPlayersData || {}
         });
         title = 'current_week.md';
 
@@ -640,7 +642,9 @@
           previousPowerRankings: [],
           nextWeekMatchups:      null,    // auto-extracted
           isTestMode:            true,
-          managersSnapshot:      snap
+          managersSnapshot:      snap,
+          playerResults:         allTimeHistory?.playerResults  || [],
+          allPlayersData:        allTimeHistory?.allPlayersData || {}
         });
         title = `TEST_week${testWeek}_${yearStr}.md`;
 
@@ -1270,7 +1274,7 @@
                       <td><strong>#{team.rank}</strong></td>
                       <td><span class="mgr-color-dot" style="background:{managerColors[team.managerId]||'#888'};"></span>{mdn(team.managerId)}</td>
                       <td><strong>{fp(team.compositeScore)}</strong></td>
-                      <td>{team.wins}-{team.losses}{team.ties>0?`-${team.ties}`:''}</td>
+                      <td>{team.wins}-{team.losses}</td>
                       <td>{fp(team.pf)}</td>
                     </tr>
                   {/each}
@@ -1378,7 +1382,7 @@
       {#if unmappedCount > 0}
         <div class="warn-banner">
           ⚠ <strong>{unmappedCount} manager(s) not mapped in leagueManagers.js.</strong>
-          Open Global Debug to see which IDs need real names and bios. LLM will use Sleeper usernames for unmapped managers.
+          Open Global Debug to see which IDs need real names. LLM will use Sleeper usernames for unmapped managers.
         </div>
       {:else}
         <div class="info-banner">✓ All managers mapped with real names.</div>
