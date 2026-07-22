@@ -40,9 +40,7 @@ function toLetter(score) {
 }
 
 /**
- * Builds a plain list of manager names — no bios. Bios were removed from
- * article context on purpose (they got referenced too often and went stale);
- * if you want them back later, reintroduce a call into leagueManagers.js here.
+ * Builds a plain list of manager names.
  */
 function buildSimpleManagerList(managersSnapshot) {
   const users = managersSnapshot?.users || {};
@@ -172,21 +170,23 @@ function formatH2H(h2h, managerAName, managerBName) {
 
 /**
  * Pulls a waiver pickup's PAR for one specific week out of the week-by-week
- * breakdown parGrading.js already computes (tx.grade.weekBreakdown). This is
- * what "Best Waiver Pickups This Week" ranks by — how much value that player
- * provided THAT WEEK — instead of full-season PAR from the pickup date
- * onward, which would let one early-season pickup dominate every week.
+ * breakdown parGrading.js computes (tx.grade.weekBreakdown).
+ *
+ * Returns null if the player has no boxscore for the acquiring manager's
+ * roster in that exact week — which happens when a waiver claim processes
+ * after that week's games are already locked (the player's first real week
+ * on the new roster is the following week). In that case the pickup is
+ * excluded from that week's ranking entirely, rather than falling back to
+ * full-season PAR — the old fallback behavior produced wildly inflated,
+ * misleading numbers (a multi-week hold's entire value showing up as if it
+ * happened in the pickup week).
  */
 function getWeekSpecificWaiverPAR(tx, week) {
   const wb = tx.grade?.weekBreakdown;
-  if (!Array.isArray(wb) || wb.length === 0) {
-    return { weekPAR: tx.grade?.par ?? null, weekPts: null, isFallback: true };
-  }
+  if (!Array.isArray(wb)) return null;
   const entry = wb.find(w => Number(w.week) === Number(week));
-  if (!entry) {
-    return { weekPAR: tx.grade?.par ?? null, weekPts: null, isFallback: true };
-  }
-  return { weekPAR: entry.weekPAR, weekPts: entry.playerPts, isFallback: false };
+  if (!entry) return null;
+  return { weekPAR: entry.weekPAR, weekPts: entry.playerPts };
 }
 
 /**
@@ -307,8 +307,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Profanity is fine and expected — "ass cheeks", "suck my nutz", "dogshit", "what the fuck" are all appropriate');
   lines.push('- Reference specific players, scores, and stats from the data to back up every claim');
   lines.push('- Inside jokes and callbacks to prior seasons or past games make it hit harder');
-  lines.push('- Keep sentences short and punchy. No flowery sports journalism language.');
-  lines.push('- Do NOT use manager bios or personal background details — they\'re not part of this context anymore. Stick to real names, in-league history, and stats.');
+  lines.push('- Stick to real names, in-league history, and stats — no flowery sports journalism language');
   lines.push('');
   lines.push('## Metrics Glossary');
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
@@ -636,9 +635,9 @@ export function exportAllTimeHistory({
 /**
  * @param {Array}   allSeasonWeeklyResults   All game results for this season (for standings + next week extraction)
  * @param {Array}   allTimeWeeklyResults     All game results across ALL seasons (for H2H records)
- * @param {Array}   playerResults            Per-player-per-week stat lines: { year, week, rosterId, playerId, pointsTotal, pointsStarted, isStarter } — used for week-specific waiver PAR and notable performances
- * @param {Object}  allPlayersData           Sleeper player_id -> player info map — used to resolve names for notable performances
- * @param {boolean} isTestMode               Adds PAR disclaimer in test mode
+ * @param {Array}   playerResults            Per-player-per-week stat lines: { year, week, rosterId, playerId, pointsTotal, pointsStarted, isStarter }
+ * @param {Object}  allPlayersData           Sleeper player_id -> player info map
+ * @param {boolean} isTestMode               Adds a disclaimer banner in test mode
  */
 export function exportWeeklyData({
   year,
@@ -666,8 +665,6 @@ export function exportWeeklyData({
   if (isTestMode) {
     lines.push('> **⚠ TEST MODE — HISTORICAL DATA**');
     lines.push(`> Simulates a Week ${week} export from the ${year} season.`);
-    lines.push('> ');
-    lines.push('> **Accurate**: matchup results, waiver moves, standings through this week, next week matchups, H2H records, week-specific waiver PAR, notable performances.');
     lines.push('');
   }
 
@@ -694,7 +691,6 @@ export function exportWeeklyData({
       const lScore   = r.result === 'W' ? r.pointsAgainst : r.pointsFor;
       const margin   = Math.abs(wScore - lScore);
 
-      // Include H2H if available
       const h2h = allTimeWeeklyResults
         ? computeHeadToHead(allTimeWeeklyResults, winnerId, loserId)
         : null;
@@ -707,9 +703,6 @@ export function exportWeeklyData({
   }
 
   // ── Notable performances this week ─────────────────────────────────────────
-  // League-wide standouts, not pre-attributed to a specific manager — the
-  // recap writer already has manager/roster context to slot these into the
-  // right game if it's a good fit. Not every game needs one.
   if (playerResults) {
     const { top, bottom } = getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData);
     if (top.length || bottom.length) {
@@ -730,21 +723,22 @@ export function exportWeeklyData({
   }
 
   // ── Waiver moves — top 3 pickups from this week ───────────────────────────
-  // Ranked by WEEK-SPECIFIC PAR (points scored the week they were added, above
-  // that pickup's replacement rate for that week), pulled from parGrading.js's
-  // weekBreakdown — not the full-season hold-period PAR. This is what makes
-  // this section actually change week to week instead of a single early
-  // pickup dominating every week it shows up in.
-  const weekWaiverCandidates = (gradedTransactions||[]).filter(tx =>
+  // Ranked by WEEK-SPECIFIC PAR from parGrading.js's weekBreakdown. Pickups
+  // with no boxscore yet for the new roster this week (added too late to
+  // play) are excluded from the ranking rather than credited with their
+  // full-season value.
+  const allWeekWaiverTx = (gradedTransactions||[]).filter(tx =>
     tx.type === 'waiver' &&
     !tx.isPartOfComposite &&
     Number(tx.leg) === week &&
     String(tx.seasonKey||tx.season) === String(year) &&
     tx.grade?.par != null
-  ).map(tx => {
-    const { weekPAR, weekPts, isFallback } = getWeekSpecificWaiverPAR(tx, week);
-    return { tx, weekPAR: weekPAR ?? tx.grade.par, weekPts, isFallback };
-  }).sort((a, b) => (b.weekPAR||0) - (a.weekPAR||0));
+  );
+
+  const weekWaiverCandidates = allWeekWaiverTx
+    .map(tx => ({ tx, weekData: getWeekSpecificWaiverPAR(tx, week) }))
+    .filter(({ weekData }) => weekData != null)
+    .sort((a, b) => (b.weekData.weekPAR||0) - (a.weekData.weekPAR||0));
 
   if (weekWaiverCandidates.length > 0) {
     lines.push('');
@@ -753,19 +747,25 @@ export function exportWeeklyData({
     lines.push('');
 
     const top3 = weekWaiverCandidates.slice(0, 3);
-    top3.forEach(({ tx, weekPAR, weekPts, isFallback }, i) => {
+    top3.forEach(({ tx, weekData }, i) => {
       const g      = tx.grade;
       const mgr    = mn(tx.managerIds?.[0]);
       const medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
       const drop   = g.droppedName ? ` (dropped ${g.droppedName})` : '';
       lines.push(`${medal} **${mgr}** — +${g.name} (${g.position})${drop}`);
-      if (isFallback) {
-        lines.push(`   Week ${week} PAR: ${signedFp(weekPAR)} vs replacement ${g.repName} *(week-specific data unavailable — showing full hold-period PAR)*`);
-      } else {
-        lines.push(`   Week ${week}: ${fp(weekPts)} pts vs replacement rate ${fp(g.repPerWeek)} = ${signedFp(weekPAR)} PAR`);
-      }
+      lines.push(`   Week ${week}: ${fp(weekData.weekPts)} pts vs replacement rate ${fp(g.repPerWeek)} = ${signedFp(weekData.weekPAR)} PAR`);
       lines.push('');
     });
+
+    const excludedCount = allWeekWaiverTx.length - weekWaiverCandidates.length;
+    if (excludedCount > 0) {
+      lines.push(`*${excludedCount} other waiver add(s) this week had no boxscore yet for the new roster (added too late to play) and were excluded from this ranking.*`);
+      lines.push('');
+    }
+  } else if (allWeekWaiverTx.length > 0) {
+    lines.push('');
+    lines.push('## Best Waiver Pickups This Week');
+    lines.push(`*${allWeekWaiverTx.length} waiver add(s) were made this week, but none have a graded performance yet for their new roster this week.*`);
   }
 
   // ── Trades ───────────────────────────────────────────────────────────────────
@@ -881,7 +881,7 @@ export function exportPreDraftPackage({
   lines.push('- Pre-draft power rankings are **pre-computed** — do not recalculate');
   lines.push('- Formula: 60% all-time manager grade + 20% prior regular season + 20% prior post-season');
   lines.push('- **Letter grades only** — never use numeric scores in articles');
-  lines.push('- Use real names and in-league history to personalize commentary — no manager bios');
+  lines.push('- Use real names and in-league history to personalize commentary');
   lines.push('');
 
   lines.push('## Pre-Draft Power Rankings');
@@ -936,7 +936,7 @@ RULES:
 - LETTER GRADES ONLY — no numeric scores
 - Storylines section = FORWARD-LOOKING only, no season recap repeats
 - Pre-draft power rankings table = copy exactly as given, never recalculate
-- Use in-league history (rivalries, prior seasons, past feuds) to make roasts personal — no manager bios, they're not in the data anymore
+- Use in-league history (rivalries, prior seasons, past feuds) to make roasts personal
 
 STRUCTURE:
 
@@ -960,7 +960,7 @@ RULES:
 - REAL NAMES only
 - LETTER GRADES ONLY
 - Reference prior draft grades when calling out patterns
-- No manager bios — keep the personality in the stats and the history, not background details
+- Keep the personality in the stats and history, not background details
 
 FOR EACH MANAGER: grade + 2-3 sentences + one season prediction
 
@@ -1001,11 +1001,12 @@ For EACH game, write 3-5 sentences. Requirements:
   * "How do you start [player] and not [other player] and then wonder why you lost? Lineup IQ of a golden retriever."
 
 **Best Waiver Pickups This Week**
-Use the top 3 pickups from the data. For each:
+Use the pickups from the data. For each:
 - Name the manager and player picked up
 - Explain in 1-2 sentences why this move matters to their season or was the right/wrong call
 - PAR is provided for THIS WEEK specifically — reference it but explain it in plain language ("that's [X] points of value over what any other scrub off the wire would have given you this week")
 - The #1 pickup gets the most love/hate depending on the grade
+- If the data notes some adds had no graded performance yet, you can skip them entirely — don't force a take on a guy who hasn't played a snap yet
 
 **Power Rankings**
 Copy the table. For each team write 1 sentence: current vibe, trajectory (use the win streak and rank movement), and appropriate level of trash talk or hype.
