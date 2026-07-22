@@ -134,9 +134,12 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	return seasonData;
 };
 
-// FIXED: Extract per-player points in addition to team totals.
 // players_points is a dict keyed by player_id with point values.
 // starters is an array of player_ids that were in the starting lineup.
+//
+// isStarter is stored explicitly (not just folded into pointsStarted) because
+// a starter can legitimately score 0 or a negative number (bad DEF week), and
+// that needs to stay distinguishable from a bench player who also nets to 0.
 const processMatchups = (inputMatchups, week) => {
 	if (!inputMatchups || inputMatchups.length === 0) return false;
 	const matchups = {};
@@ -169,7 +172,8 @@ const processMatchups = (inputMatchups, week) => {
 				rosterId: match.roster_id,
 				playerId,
 				pointsTotal,
-				pointsStarted: isStarter ? pointsTotal : 0
+				pointsStarted: isStarter ? pointsTotal : 0,
+				isStarter
 			});
 		}
 	}
