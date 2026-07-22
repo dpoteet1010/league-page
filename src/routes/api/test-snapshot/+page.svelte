@@ -9,7 +9,6 @@
   import { gradeDraftPreSeason, gradeDraftEndOfSeason } from '$lib/utils/dataEngine/draftAnalysis.js';
   import { getSeasonStatTotals } from '$lib/utils/dataEngine/allPlayerSeasonStats.js';
   import { computeRoundBaselines } from '$lib/utils/dataEngine/draftBaselines.js';
-  import { buildDraftHistoryContext, buildCurrentDraftSummary, DRAFT_GRADING_PROMPT_TEMPLATE } from '$lib/utils/dataEngine/draftHistoryContext.js';
   import { getAllRosterStats } from '$lib/utils/dataEngine/allRosterStats.js';
   import { computeSeasonManagerGrades, computeAllTimeManagerGrades } from '$lib/utils/dataEngine/managerGrades.js';
   import { computePreSeasonRankings, computePowerRankings, computeAllWeekRankings, REGULAR_SEASON_WEEKS } from '$lib/utils/dataEngine/powerRankings.js';
@@ -26,6 +25,10 @@
   let globalDebug     = [];
   let showGlobalDebug = false;
   let mainTab         = 'transactions';
+
+  // ── Load All ──────────────────────────────────────────────────────────────
+  let loadingAll   = false;
+  let loadAllStatus = '';
 
   // ── Transactions ────────────────────────────────────────────────────────────
   let transactionHistory        = null;
@@ -52,15 +55,6 @@
   let draftActiveTab    = 'end';
   let draftGradesByYear = {};
   const eosCache        = {};
-
-  // ── LLM ─────────────────────────────────────────────────────────────────────
-  let llmHistoryText  = '';
-  let llmCurrentText  = '';
-  let llmPromptText   = '';
-  let llmSelectedYear = null;
-  let copiedHistory   = false;
-  let copiedCurrent   = false;
-  let copiedPrompt    = false;
 
   // ── Manager grades ──────────────────────────────────────────────────────────
   let rosterStats           = null;
@@ -92,9 +86,10 @@
   let exportCopied       = {};
   let promptCopied       = {};
   let mainCopied         = false;
-  let exportWeek         = 1;
+  let exportSeasonYear   = null;
+  let exportWeek         = null;
 
-  // ── Prompt testing ──────────────────────────────────────────────────────────
+  // ── Prompt testing ────────────────────────────────────────────────────────
   let testYear       = null;
   let testWeek       = 1;
   let testExportText  = '';
@@ -104,8 +99,8 @@
   const EXPORT_CONFIGS = [
     { key: 'context',  title: 'League Context',       filename: 'league_context.md',   desc: 'League rules, scoring, manager names, glossary.', freq: 'Upload once — re-upload if rules change' },
     { key: 'history',  title: 'All-Time History',     filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history.', freq: 'Replace each year' },
-    { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Full current season stats, grades, SOS, draft analysis.', freq: 'Replace each week' },
-    { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "This week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
+    { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Season stats to date for the selected season/week.', freq: 'Replace each week' },
+    { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "The selected week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
     { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats.', freq: 'Generate before the draft' }
   ];
 
@@ -143,6 +138,26 @@
 
   // On mount, default testYear to most recent season
   $: if (currentSeasonYears.length && !testYear) testYear = currentSeasonYears[0];
+
+  // Export tab: default season to most recent, and compute which weeks
+  // actually have data for the selected season.
+  $: if (currentSeasonYears.length && !exportSeasonYear) exportSeasonYear = currentSeasonYears[0];
+
+  $: exportWeekOptions = (() => {
+    if (!allTimeHistory || !exportSeasonYear) return [];
+    const weeks = new Set(
+      (allTimeHistory.weeklyResults || [])
+        .filter(r => String(r.year) === String(exportSeasonYear) && !r.isPlayoffs)
+        .map(r => r.week)
+    );
+    return [...weeks].sort((a, b) => a - b);
+  })();
+
+  // Auto-jump to the latest played week whenever the available weeks for the
+  // selected season change (including on first load, or when Season changes).
+  $: if (exportWeekOptions.length && !exportWeekOptions.includes(exportWeek)) {
+    exportWeek = exportWeekOptions[exportWeekOptions.length - 1];
+  }
 
   const CHART_COLORS = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#65a30d','#9333ea','#ea580c','#0d9488','#b45309'];
   $: managerColors = Object.fromEntries(
@@ -232,11 +247,11 @@
   async function clipboardCopy(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
   }
-  async function llmCopy(text, which) {
-    await clipboardCopy(text);
-    if (which === 'h') { copiedHistory = true; setTimeout(() => copiedHistory = false, 2000); }
-    if (which === 'c') { copiedCurrent = true; setTimeout(() => copiedCurrent = false, 2000); }
-    if (which === 'p') { copiedPrompt  = true; setTimeout(() => copiedPrompt  = false, 2000); }
+
+  async function copyPromptFn(key, prompt) {
+    await clipboardCopy(prompt);
+    promptCopied = { ...promptCopied, [key]: true };
+    setTimeout(() => { promptCopied = { ...promptCopied, [key]: false }; }, 2000);
   }
 
   function downloadMarkdown(content, filename) {
@@ -255,7 +270,6 @@
     globalDebug = [...globalDebug];
     await getLeagueTeamManagers();
     allTimeHistory = await getAllSeasonsHistory();
-    // Log manager IDs to help fill in leagueManagers.js
     const snap = get(teamManagersStore) || {};
     const users = snap?.users || {};
     globalDebug.push('── Manager IDs (for leagueManagers.js) ──');
@@ -378,18 +392,6 @@
     endOfSeasonGrade = eosCache[String(year)] || await computeEOS(year);
     if (endOfSeasonGrade) draftDebug.push(...(endOfSeasonGrade.debug || []));
     draftDebug = [...draftDebug];
-  }
-
-  // ── LLM ──────────────────────────────────────────────────────────────────────
-  function buildLLM(year) {
-    if (!allDrafts.length) return;
-    const { text } = buildDraftHistoryContext(allDrafts, allTimeHistory?.allSeasonStats || {}, mdn);
-    llmHistoryText  = text;
-    llmCurrentText  = buildCurrentDraftSummary(allDrafts.find(d=>d.year===Number(year)), mdn);
-    llmPromptText   = DRAFT_GRADING_PROMPT_TEMPLATE
-      .replace('{{HISTORY}}', llmHistoryText)
-      .replace('{{CURRENT_DRAFT}}', llmCurrentText);
-    llmSelectedYear = year;
   }
 
   // ── Manager grades ────────────────────────────────────────────────────────────
@@ -517,15 +519,34 @@
     } finally { loadingPower = false; }
   }
 
-// ── Export ────────────────────────────────────────────────────────────────────
+  // ── Load All ──────────────────────────────────────────────────────────────
+  async function loadAllData() {
+    loadingAll = true;
+    loadAllStatus = 'Loading league history...';
+    try {
+      await ensureHistory();
+      loadAllStatus = 'Grading transactions...';
+      await loadTransactions();
+      loadAllStatus = 'Computing draft grades...';
+      await loadDrafts();
+      loadAllStatus = 'Computing manager grades...';
+      await loadManagerGrades();
+      if (currentSeasonYears.length) {
+        loadAllStatus = `Computing power rankings for ${currentSeasonYears[0]}...`;
+        await loadPowerRankings(currentSeasonYears[0]);
+      }
+      loadAllStatus = 'All data loaded.';
+    } catch (e) {
+      console.error('Load All failed:', e);
+      loadAllStatus = `Failed: ${e.message}`;
+    } finally {
+      loadingAll = false;
+    }
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────────
   async function generateExport(type) {
-    const snap       = get(teamManagersStore) || {};
-    const yearStr    = currentSeasonYears[0];
-    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-    const allSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter(
-      (r) => String(r.year) === yearStr
-    ) || [];
-    // All-time results across every season — needed for H2H records
+    const snap = get(teamManagersStore) || {};
     const allTimeWeeklyResults = allTimeHistory?.weeklyResults || [];
     let text = '', title = '';
 
@@ -543,10 +564,13 @@
         title = 'all_time_history.md';
 
       } else if (type === 'season') {
+        const yearStr = exportSeasonYear || currentSeasonYears[0];
+        const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+        const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
         text = exportSeasonStats({
           year: yearStr,
           standings:      seasonData?.standings || [],
-          weeklyResults:  allSeasonWeeklyResults,
+          weeklyResults:  seasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
           seasonSOS:      seasonSOSByYear[yearStr] || null,
           draftEndOfSeasonGrade: eosCache[yearStr] || null,
@@ -558,20 +582,23 @@
         title = 'current_season.md';
 
       } else if (type === 'week') {
-        const weekResults = allSeasonWeeklyResults.filter((r) => r.week === exportWeek);
-        const pr     = weeklyProgressionData[exportWeek] || null;
-        const prevPR = exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
+        const yearStr = exportSeasonYear || currentSeasonYears[0];
+        const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
+        const weekResults = seasonWeeklyResults.filter((r) => r.week === exportWeek);
+        const usePR  = powerYear === yearStr;
+        const pr     = usePR ? (weeklyProgressionData[exportWeek] || null) : null;
+        const prevPR = usePR && exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
         text = exportWeeklyData({
           year:                  yearStr,
           week:                  exportWeek,
           weeklyResults:         weekResults,
-          allSeasonWeeklyResults,
-          allTimeWeeklyResults,           // for H2H records
+          allSeasonWeeklyResults: seasonWeeklyResults,
+          allTimeWeeklyResults,
           gradedTransactions,
           currentStandings:      null,
           powerRankings:         pr,
           previousPowerRankings: prevPR?.rankings || [],
-          nextWeekMatchups:      null,    // auto-extracted
+          nextWeekMatchups:      null,
           isTestMode:            false,
           managersSnapshot:      snap,
           playerResults:         allTimeHistory?.playerResults  || [],
@@ -580,6 +607,9 @@
         title = 'current_week.md';
 
       } else if (type === 'predraft') {
+        const yearStr = currentSeasonYears[0];
+        const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+        const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
@@ -587,7 +617,7 @@
         });
         const seasonText = exportSeasonStats({
           year: yearStr, standings: seasonData?.standings || [],
-          weeklyResults: allSeasonWeeklyResults,
+          weeklyResults: seasonWeeklyResults,
           seasonManagerGrades: seasonManagerGrades[yearStr] || {},
           seasonSOS: seasonSOSByYear[yearStr] || null,
           draftEndOfSeasonGrade: eosCache[yearStr] || null,
@@ -627,41 +657,81 @@
     const allTimeWeeklyResults = allTimeHistory?.weeklyResults || [];
     let text = '', title = '';
 
+    const contextText = exportLeagueContext(snap, yearStr);
+    const seasonText = exportSeasonStats({
+      year: yearStr,
+      standings:      seasonData?.standings || [],
+      weeklyResults:  allSeasonWeeklyResults,
+      seasonManagerGrades: seasonManagerGrades[yearStr] || {},
+      seasonSOS:      seasonSOSByYear[yearStr] || null,
+      draftEndOfSeasonGrade: eosCache[yearStr] || null,
+      managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
+      managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
+      managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+      rosterStats, managersSnapshot: snap
+    });
+
     try {
       if (articleType === 'weeklyRecap') {
         const weekResults = allSeasonWeeklyResults.filter((r) => r.week === testWeek);
-        text = exportWeeklyData({
+        const weekText = exportWeeklyData({
           year:                  yearStr,
           week:                  testWeek,
           weeklyResults:         weekResults,
           allSeasonWeeklyResults,
-          allTimeWeeklyResults,           // for H2H records
+          allTimeWeeklyResults,
           gradedTransactions,
           currentStandings:      null,
           powerRankings:         null,
           previousPowerRankings: [],
-          nextWeekMatchups:      null,    // auto-extracted
+          nextWeekMatchups:      null,
           isTestMode:            true,
           managersSnapshot:      snap,
           playerResults:         allTimeHistory?.playerResults  || [],
           allPlayersData:        allTimeHistory?.allPlayersData || {}
         });
-        title = `TEST_week${testWeek}_${yearStr}.md`;
+
+        text = [
+          `# TEST BUNDLE: Weekly Recap — Week ${testWeek}, ${yearStr}`,
+          '*Contains league_context.md + current_season.md + current_week.md bundled together for testing. In production these are three separate files.*',
+          '',
+          '---',
+          '',
+          contextText,
+          '',
+          '---',
+          '',
+          seasonText,
+          '',
+          '---',
+          '',
+          weekText
+        ].join('\n');
+        title = `TEST_weekly_recap_bundle_week${testWeek}_${yearStr}.md`;
 
       } else if (articleType === 'endOfSeason') {
-        text = exportSeasonStats({
-          year: yearStr,
-          standings:      seasonData?.standings || [],
-          weeklyResults:  allSeasonWeeklyResults,
-          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
-          seasonSOS:      seasonSOSByYear[yearStr] || null,
-          draftEndOfSeasonGrade: eosCache[yearStr] || null,
-          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
-          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
-          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-          rosterStats, managersSnapshot: snap
+        const histText = exportAllTimeHistory({
+          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
+          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
         });
-        title = `TEST_end_of_season_${yearStr}.md`;
+        text = [
+          `# TEST BUNDLE: End of Season Recap — ${yearStr}`,
+          '*Contains league_context.md + current_season.md + all_time_history.md bundled together for testing.*',
+          '',
+          '---',
+          '',
+          contextText,
+          '',
+          '---',
+          '',
+          seasonText,
+          '',
+          '---',
+          '',
+          histText
+        ].join('\n');
+        title = `TEST_end_of_season_bundle_${yearStr}.md`;
 
       } else if (articleType === 'draftGrades') {
         const histText = exportAllTimeHistory({
@@ -669,19 +739,23 @@
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap
         });
-        const seasonText = exportSeasonStats({
-          year: yearStr, standings: seasonData?.standings || [],
-          weeklyResults: allSeasonWeeklyResults,
-          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
-          seasonSOS: seasonSOSByYear[yearStr] || null,
-          draftEndOfSeasonGrade: eosCache[yearStr] || null,
-          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
-          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
-          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-          rosterStats, managersSnapshot: snap
-        });
-        text  = `# TEST: ${yearStr} Draft Grades\n\nUse with the Draft Grades prompt.\n\n---\n\n${seasonText}\n\n---\n\n${histText}`;
-        title = `TEST_draft_grades_${yearStr}.md`;
+        text = [
+          `# TEST BUNDLE: Draft Grades — ${yearStr}`,
+          '*Contains league_context.md + current_season.md + all_time_history.md bundled together for testing (mirrors pre_draft.md contents).*',
+          '',
+          '---',
+          '',
+          contextText,
+          '',
+          '---',
+          '',
+          seasonText,
+          '',
+          '---',
+          '',
+          histText
+        ].join('\n');
+        title = `TEST_draft_grades_bundle_${yearStr}.md`;
       }
 
       testExportText  = text;
@@ -692,6 +766,7 @@
       setTimeout(() => { testCopied = false; }, 2000);
     } catch (e) { console.error('Test export error:', e); }
   }
+
   // ── SVG chart ─────────────────────────────────────────────────────────────────
   function chartPath(managerId, progression, chartW, chartH, numTeams) {
     const points = progression.map((weekData, weekIdx) => {
@@ -712,11 +787,17 @@
 <main class="container">
   <h1>NLFL Analysis Panel</h1>
 
+  <div class="control-row">
+    <button on:click={loadAllData} disabled={loadingAll}>
+      {loadingAll ? '⏳ Loading everything...' : '🚀 Load All Data'}
+    </button>
+    {#if loadAllStatus}<span class="muted">{loadAllStatus}</span>{/if}
+  </div>
+
   <div class="main-tabs">
     {#each [
       ['transactions','💱 Transactions'],
       ['draft','📋 Draft'],
-      ['llm','🤖 LLM Context'],
       ['managers','📊 Manager Grades'],
       ['sos','📅 Schedule Strength'],
       ['power','⚡ Power Rankings'],
@@ -984,38 +1065,6 @@
         <button on:click={() => (showDraftDebug=!showDraftDebug)}>{showDraftDebug?'Hide':'Show'} Debug</button>
       </div>
       {#if showDraftDebug}<div class="debug-terminal"><h4>Draft Debug</h4><ul>{#each draftDebug as l}<li><code>{l}</code></li>{/each}</ul></div>{/if}
-    {/if}
-
-  <!-- ════════ LLM ════════ -->
-  {:else if mainTab === 'llm'}
-    <h2>LLM Draft Context</h2>
-    <div class="explainer">Generate context for post-draft qualitative grading.</div>
-    {#if !allDrafts.length}
-      <div class="control-row"><button on:click={loadDrafts} disabled={loadingDrafts}>{loadingDrafts?'Loading...':'Load Draft Data First'}</button></div>
-    {:else}
-      <div class="control-row">
-        <select bind:value={llmSelectedYear} on:change={() => llmSelectedYear&&buildLLM(llmSelectedYear)}>
-          <option value={null}>Select year...</option>
-          {#each draftYearOptions as yr}<option value={yr}>{yr}</option>{/each}
-        </select>
-        {#if llmSelectedYear}<button on:click={() => buildLLM(llmSelectedYear)}>Generate</button>{/if}
-      </div>
-      {#if llmPromptText}
-        <div class="llm-section">
-          <div class="llm-header"><h4>Full Prompt</h4><button class="copy-btn {copiedPrompt?'copied':''}" on:click={() => llmCopy(llmPromptText,'p')}>{copiedPrompt?'✓ Copied!':'Copy'}</button></div>
-          <pre class="llm-text">{llmPromptText}</pre>
-        </div>
-        <div class="two-col" style="margin-top:1rem;">
-          <div class="llm-section">
-            <div class="llm-header"><h4>History</h4><button class="copy-btn {copiedHistory?'copied':''}" on:click={() => llmCopy(llmHistoryText,'h')}>{copiedHistory?'✓':'Copy'}</button></div>
-            <pre class="llm-text small">{llmHistoryText}</pre>
-          </div>
-          <div class="llm-section">
-            <div class="llm-header"><h4>Current Draft</h4><button class="copy-btn {copiedCurrent?'copied':''}" on:click={() => llmCopy(llmCurrentText,'c')}>{copiedCurrent?'✓':'Copy'}</button></div>
-            <pre class="llm-text small">{llmCurrentText}</pre>
-          </div>
-        </div>
-      {/if}
     {/if}
 
   <!-- ════════ MANAGER GRADES ════════ -->
@@ -1373,7 +1422,7 @@
       Always overwrite — 4 files max, never accumulate.
     </div>
     {#if !allTimeHistory}
-      <div class="status-msg">Load data first: Transactions → Draft Data → Manager Grades → compute Power Rankings for {nextSeasonYear}.</div>
+      <div class="status-msg">Load data first — try the 🚀 Load All Data button at the top, or load each category individually.</div>
     {:else}
 
       <!-- Name mapping status -->
@@ -1408,11 +1457,15 @@
       </div>
 
       <div class="control-row">
-        <label><strong>Current week:</strong></label>
-        <select bind:value={exportWeek}>
-          {#each Array.from({length:17},(_,i)=>i+1) as w}<option value={w}>Week {w}</option>{/each}
+        <label><strong>Season:</strong></label>
+        <select bind:value={exportSeasonYear}>
+          {#each currentSeasonYears as yr}<option value={yr}>{yr}</option>{/each}
         </select>
-        <span class="muted">Set before generating week/season exports.</span>
+        <label><strong>Week:</strong></label>
+        <select bind:value={exportWeek}>
+          {#each exportWeekOptions as w}<option value={w}>Week {w}</option>{/each}
+        </select>
+        <span class="muted">Defaults to the most recent season and its latest played week. current_season.md reflects totals through whatever's actually in the data for that season — for the live season that's automatically "to date."</span>
       </div>
 
       <h3>Generate Files</h3>
@@ -1503,8 +1556,9 @@
       <!-- ── Prompt Testing Panel ──────────────────────────────────────── -->
       <h3>🧪 Test Prompts with Historical Data</h3>
       <div class="explainer">
-        Test all article types using completed season data before the 2026 season begins.
-        Download the test file → upload to a Claude Project with league_context.md → paste the matching prompt.
+        Test all article types using completed season data. Each test file is a bundle of everything that
+        article type needs (league context + the relevant stats) — download it and upload as a single file
+        to a Claude Project, then paste the matching prompt.
       </div>
       <div class="test-panel">
         <div class="control-row">
@@ -1520,20 +1574,20 @@
         <div class="test-card-grid">
           <div class="test-card">
             <div class="test-card-title">📅 Weekly Recap Test</div>
-            <p class="muted">Week {testWeek} data from {testYear}. Upload as current_week.md + league_context.md.</p>
-            <button class="copy-btn" on:click={() => generateTestExport('weeklyRecap')}>Download Test Data</button>
+            <p class="muted">Bundles league_context + current_season + week {testWeek} data from {testYear} into one file.</p>
+            <button class="copy-btn" on:click={() => generateTestExport('weeklyRecap')}>Download Test Bundle</button>
             <div class="test-prompt-ref">Use prompt: <strong>📅 Weekly Recap</strong></div>
           </div>
           <div class="test-card">
             <div class="test-card-title">🏆 End of Season Test</div>
-            <p class="muted">Full {testYear} season data. Upload as current_season.md + league_context.md.</p>
-            <button class="copy-btn" on:click={() => generateTestExport('endOfSeason')}>Download Test Data</button>
+            <p class="muted">Bundles league_context + current_season + all_time_history for {testYear} into one file.</p>
+            <button class="copy-btn" on:click={() => generateTestExport('endOfSeason')}>Download Test Bundle</button>
             <div class="test-prompt-ref">Use prompt: <strong>🏆 End of Season Recap</strong></div>
           </div>
           <div class="test-card">
             <div class="test-card-title">📋 Draft Grades Test</div>
-            <p class="muted">{testYear} draft + season data. Upload as pre_draft.md + league_context.md.</p>
-            <button class="copy-btn" on:click={() => generateTestExport('draftGrades')}>Download Test Data</button>
+            <p class="muted">Bundles league_context + current_season + all_time_history for {testYear} into one file.</p>
+            <button class="copy-btn" on:click={() => generateTestExport('draftGrades')}>Download Test Bundle</button>
             <div class="test-prompt-ref">Use prompt: <strong>📋 Draft Grades</strong></div>
           </div>
         </div>
@@ -1650,14 +1704,6 @@
   .round-pill { padding: 0.15rem 0.45rem; border-radius: 3px; font-size: 0.85em; font-weight: 600; }
   .positive-bg { background: #d1fae5; color: #065f46; }
   .negative-bg { background: #fef2f2; color: #dc2626; }
-
-  .llm-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; }
-  .llm-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-  .llm-header h4 { margin: 0; }
-  .llm-text { white-space: pre-wrap; font-family: monospace; font-size: 0.78em; background: #1e1e1e; color: #d4d4d4; padding: 0.75rem; border-radius: 4px; max-height: 400px; overflow-y: auto; }
-  .llm-text.small { max-height: 250px; font-size: 0.72em; }
-  .copy-btn { padding: 0.3rem 0.8rem; font-size: 0.83rem; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; }
-  .copy-btn.copied { background: #16a34a; }
 
   .score-pill { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; color: white; font-weight: 700; font-size: 0.9em; }
 
