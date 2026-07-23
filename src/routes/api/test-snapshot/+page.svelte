@@ -583,6 +583,7 @@
 
       } else if (type === 'week') {
         const yearStr = exportSeasonYear || currentSeasonYears[0];
+        const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
         const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
         const weekResults = seasonWeeklyResults.filter((r) => r.week === exportWeek);
         const usePR  = powerYear === yearStr;
@@ -602,7 +603,8 @@
           isTestMode:            false,
           managersSnapshot:      snap,
           playerResults:         allTimeHistory?.playerResults  || [],
-          allPlayersData:        allTimeHistory?.allPlayersData || {}
+          allPlayersData:        allTimeHistory?.allPlayersData || {},
+          rosterToManagerId:     seasonData?.rosterToManagerId  || {}
         });
         title = 'current_week.md';
 
@@ -674,6 +676,9 @@
     try {
       if (articleType === 'weeklyRecap') {
         const weekResults = allSeasonWeeklyResults.filter((r) => r.week === testWeek);
+        const usePR  = powerYear === yearStr;
+        const pr     = usePR ? (weeklyProgressionData[testWeek] || null) : null;
+        const prevPR = usePR && testWeek > 0 ? weeklyProgressionData[testWeek - 1] : null;
         const weekText = exportWeeklyData({
           year:                  yearStr,
           week:                  testWeek,
@@ -682,13 +687,14 @@
           allTimeWeeklyResults,
           gradedTransactions,
           currentStandings:      null,
-          powerRankings:         null,
-          previousPowerRankings: [],
+          powerRankings:         pr,
+          previousPowerRankings: prevPR?.rankings || [],
           nextWeekMatchups:      null,
           isTestMode:            true,
           managersSnapshot:      snap,
           playerResults:         allTimeHistory?.playerResults  || [],
-          allPlayersData:        allTimeHistory?.allPlayersData || {}
+          allPlayersData:        allTimeHistory?.allPlayersData || {},
+          rosterToManagerId:     seasonData?.rosterToManagerId  || {}
         });
 
         text = [
@@ -1446,6 +1452,13 @@
         <div class="info-banner">✓ Pre-draft rankings ready for {nextSeasonYear} ({preSeasonRankings.rankings?.length} managers).</div>
       {/if}
 
+      {#if exportSeasonYear && powerYear !== exportSeasonYear}
+        <div class="warn-banner">
+          ⚠ Power Rankings haven't been computed for {exportSeasonYear} — current_week.md will be missing that section.
+          Go to the Power Rankings tab, select {exportSeasonYear}, and click Compute Rankings first if you want it included.
+        </div>
+      {/if}
+
       <div class="file-guide">
         <h4>4 Files, Always (overwrite, never add new ones)</h4>
         <div class="file-grid">
@@ -1571,6 +1584,12 @@
             {#each Array.from({length:14},(_,i)=>i+1) as w}<option value={w}>Week {w}</option>{/each}
           </select>
         </div>
+        {#if testYear && powerYear !== testYear}
+          <div class="warn-banner">
+            ⚠ Power Rankings haven't been computed for {testYear} yet, so the Weekly Recap test bundle's Power Rankings section will be empty.
+            Go to the Power Rankings tab, select {testYear}, and click Compute Rankings first if you want that section included.
+          </div>
+        {/if}
         <div class="test-card-grid">
           <div class="test-card">
             <div class="test-card-title">📅 Weekly Recap Test</div>
