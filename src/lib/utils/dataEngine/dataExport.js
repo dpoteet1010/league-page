@@ -152,8 +152,7 @@ function extractMatchupsForWeek(allWeeklyResults, year, week) {
 
 /**
  * Computes all-time head-to-head record between two managers across all seasons.
- * Regular season only (no playoffs). Used ONLY for the Next Week Preview —
- * completed-game recap lines don't reference all-time history at all.
+ * Regular season only (no playoffs). Used ONLY for the Next Week Preview.
  */
 function computeHeadToHead(allTimeWeeklyResults, managerAId, managerBId) {
   if (!allTimeWeeklyResults || !managerAId || !managerBId) {
@@ -191,8 +190,7 @@ function formatH2HShort(h2h, managerAName, managerBName) {
 /**
  * Turns one manager's result row for a completed week into a short factual
  * tag ("blowout win", "narrow loss", etc.) plus the raw score, for the
- * "Coming In" line of the Next Week Preview. The LLM writes the actual
- * sentence — this just hands it clean facts instead of raw numbers alone.
+ * "Coming In" line of the Next Week Preview.
  */
 function describeResult(row) {
   if (!row) return null;
@@ -209,11 +207,9 @@ function describeResult(row) {
 
 /**
  * League-wide standout performances for a given week, for the "Notable
- * Performances" callout in game recaps. Uses the explicit isStarter flag
- * (not pointsStarted, which collapses "benched" and "started but scored 0"
- * into the same value) so a real zero or negative week from a starter shows
- * up correctly. Each performance is resolved to the manager who started that
- * player via rosterToManagerId.
+ * Performances" callout in game recaps. Uses the explicit isStarter flag so
+ * a real zero or negative week from a starter shows up correctly, and
+ * resolves each performance to the manager who started that player.
  */
 function getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData, rosterToManagerId, topLimit = 3) {
   if (!playerResults?.length) return { top: [], bottom: [] };
@@ -239,8 +235,6 @@ function getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData
 
   const sorted = [...withInfo].sort((a, b) => b.points - a.points);
   const top    = sorted.slice(0, topLimit);
-  // Chug Alert: every 0-or-negative starter, not just a top few — each one
-  // is a separate chug obligation, so none should be dropped for length.
   const bottom = sorted
     .filter(p => p.points <= 0)
     .sort((a, b) => a.points - b.points);
@@ -251,10 +245,7 @@ function getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData
 /**
  * Pulls a waiver pickup's PAR for one specific week out of the week-by-week
  * breakdown parGrading.js computes (tx.grade.weekBreakdown). Returns null if
- * the player has no boxscore for that manager's roster in that exact week —
- * which happens when a pickup is claimed too late in the week to have played
- * for the new team yet. In that case the pickup is EXCLUDED from that week's
- * ranking rather than falling back to full-hold-period PAR.
+ * the player has no boxscore for that manager's roster in that exact week.
  */
 function getWeekSpecificWaiverPAR(tx, week) {
   const wb = tx.grade?.weekBreakdown;
@@ -262,6 +253,42 @@ function getWeekSpecificWaiverPAR(tx, week) {
   const entry = wb.find(w => Number(w.week) === Number(week));
   if (!entry) return null;
   return { weekPAR: entry.weekPAR, weekPts: entry.playerPts };
+}
+
+/**
+ * Resolves the players (and draft picks) each side of a completed trade
+ * received, from the raw transaction moves — independent of PAR grading, so
+ * trade details can be shown for the current week even though grading only
+ * happens at end of season.
+ */
+function extractTradeReceivedPlayers(tx, allPlayersData) {
+  const received = {};
+  (tx.rosters || []).forEach(r => { received[r] = []; });
+
+  (tx.moves || []).forEach(move => {
+    if (!Array.isArray(move)) return;
+    move.forEach((side, idx) => {
+      const roster = tx.rosters?.[idx];
+      if (!roster || !side || typeof side !== 'object') return;
+
+      if (side.type === 'trade' && side.player) {
+        const info = allPlayersData?.[String(side.player)];
+        const name = info
+          ? (info.full_name || `${info.first_name || ''} ${info.last_name || ''}`.trim())
+          : `Player ${side.player}`;
+        const pos = info?.position || '';
+        if (!received[roster]) received[roster] = [];
+        received[roster].push({ name, pos });
+      } else if (side.type === 'Received Pick' && side.pick) {
+        const pick = side.pick;
+        const label = `${pick.season || ''} Round ${pick.round || '?'} Pick`.trim();
+        if (!received[roster]) received[roster] = [];
+        received[roster].push({ name: label, pos: '' });
+      }
+    });
+  });
+
+  return received;
 }
 
 function deriveSeasonOutcomes(standings, weeklyResults, snap) {
@@ -347,7 +374,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Inside jokes and callbacks to prior seasons or past games make it hit harder');
   lines.push('- Keep sentences short and punchy. No flowery sports journalism language.');
   lines.push('- Stick to real names, in-league history, and stats to make it hit hard.');
-  lines.push('- **Formatting**: bold is reserved for section headers/subheaders and labels only. NEVER bold player names, manager names, scores, or stats in the middle of a sentence or paragraph — that stays plain text.');
+  lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> — they don\'t render reliably in most viewers.');
   lines.push('');
   lines.push('## Metrics Glossary');
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
@@ -674,7 +701,7 @@ export function exportAllTimeHistory({
 // ── Weekly data export ────────────────────────────────────────────────────────
 
 /**
- * @param {Array}   allSeasonWeeklyResults   All game results for this season (for standings + next week extraction)
+ * @param {Array}   allSeasonWeeklyResults   All game results for this season
  * @param {Array}   allTimeWeeklyResults     All game results across ALL seasons (used only for the Next Week Preview's all-time H2H)
  * @param {Array}   playerResults            Per-player-per-week stat lines: { year, week, rosterId, playerId, pointsTotal, pointsStarted, isStarter }
  * @param {Object}  allPlayersData           Sleeper player_id -> player info map
@@ -709,14 +736,11 @@ export function exportWeeklyData({
     lines.push('> **⚠ TEST MODE — HISTORICAL DATA**');
     lines.push(`> Simulates a Week ${week} export from the ${year} season.`);
     lines.push('> ');
-    lines.push('> **Accurate**: matchup results, waiver moves, standings through this week, next week matchups, week-specific waiver PAR, notable performances, chug tally.');
+    lines.push('> **Accurate**: matchup results, waiver moves, trade details, standings through this week, next week matchups, week-specific waiver PAR, notable performances, chug tally.');
     lines.push('');
   }
 
   // ── Matchup results ─────────────────────────────────────────────────────────
-  // No margin, no all-time H2H here — that stuff belongs in season/week-scoped
-  // data (standings, streaks, PPG) or the Next Week Preview, not the recap of
-  // a completed game.
   lines.push(`## Week ${week} Matchup Results`);
   lines.push('');
 
@@ -727,8 +751,6 @@ export function exportWeeklyData({
     if (!seen.has(key)) { seen.add(key); matchups.push(r); }
   });
 
-  // Per-manager result lookup for this week (used later for Next Week's
-  // "Coming In" facts). weeklyResults has one row per manager per week.
   const thisWeekByManager = {};
   (weeklyResults || []).filter(r => !r.isPlayoffs).forEach(r => {
     thisWeekByManager[r.managerId] = r;
@@ -742,7 +764,7 @@ export function exportWeeklyData({
       const loser  = r.result === 'W' ? mn(r.opponentManagerId) : mn(r.managerId);
       const wScore = r.result === 'W' ? r.pointsFor    : r.pointsAgainst;
       const lScore = r.result === 'W' ? r.pointsAgainst : r.pointsFor;
-      lines.push(`- ${winner} ${fp(wScore)} def. ${loser} ${fp(lScore)}`);
+      lines.push(`- ${winner} ${fp(wScore)} vs ${loser} ${fp(lScore)}`);
     });
   }
 
@@ -806,7 +828,9 @@ export function exportWeeklyData({
       const g      = tx.grade;
       const mgr    = mn(tx.managerIds?.[0]);
       const medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-      const drop   = g.droppedName ? ` (dropped ${g.droppedName})` : '';
+      const droppedInfo = g.droppedId ? allPlayersData?.[String(g.droppedId)] : null;
+      const droppedPos  = droppedInfo?.position;
+      const drop   = g.droppedName ? ` (dropped ${g.droppedName}${droppedPos ? `, ${droppedPos}` : ''})` : '';
       lines.push(`${medal} ${mgr} — +${g.name} (${g.position})${drop}`);
       lines.push(`   Week ${week}: ${fp(weekData.weekPts)} pts vs replacement rate ${fp(g.repPerWeek)} = ${signedFp(weekData.weekPAR)} PAR`);
       lines.push('');
@@ -823,20 +847,30 @@ export function exportWeeklyData({
     lines.push(`*${allWeekWaiverTx.length} waiver add(s) were made this week, but none have a graded performance yet for their new roster this week.*`);
   }
 
-  // ── Trades ───────────────────────────────────────────────────────────────────
+  // ── Trades — full player/pick details, no PAR grading until end of season ──
   const weekTrades = (gradedTransactions||[]).filter(tx =>
     tx.type === 'trade' &&
     !tx.isPartOfComposite &&
+    !tx.isComposite &&
     Number(tx.leg) === week &&
     String(tx.seasonKey||tx.season) === String(year)
   );
   if (weekTrades.length > 0) {
     lines.push('');
     lines.push('## Trades This Week');
-    lines.push('*(Grades not available until end of season)*');
+    lines.push('*(Value grades not available until end of season — full details only)*');
     lines.push('');
     weekTrades.forEach(tx => {
+      const received = extractTradeReceivedPlayers(tx, allPlayersData);
       lines.push(`- ${mn(tx.managerIds?.[0])} ↔ ${mn(tx.managerIds?.[1])}`);
+      (tx.rosters || []).forEach((roster, idx) => {
+        const mgrId = tx.managerIds?.[idx];
+        const items = received[roster] || [];
+        const itemStr = items.length
+          ? items.map(p => `${p.name}${p.pos ? ` (${p.pos})` : ''}`).join(', ')
+          : 'nothing found';
+        lines.push(`  - ${mn(mgrId)} receives: ${itemStr}`);
+      });
     });
   }
 
@@ -872,10 +906,7 @@ export function exportWeeklyData({
     powerRankings.rankings.forEach(team => {
       const prev   = prevMap[team.managerId];
       const mov    = prev != null ? prev - team.rank : null;
-      const movStr = mov == null ? 'NEW'
-                    : mov > 0     ? `↑${mov} (was #${prev})`
-                    : mov < 0     ? `↓${Math.abs(mov)} (was #${prev})`
-                    : `— (was #${prev})`;
+      const movStr = mov == null ? 'NEW' : mov > 0 ? `↑${mov}` : mov < 0 ? `↓${Math.abs(mov)}` : '—';
       const streak = streaks[team.managerId] || '—';
       const ppg    = ppgByManager[team.managerId];
       const chugs  = chugTally[team.managerId] || 0;
@@ -1038,31 +1069,31 @@ VOICE: Commissioner to the group chat. You watched every game. You have no filte
 
 RULES:
 - REAL NAMES throughout
-- Exact final scores on every game (e.g. "142.6-98.3") — the data doesn't hand you a margin number, do that math yourself in your head if it's worth mentioning
+- State final scores plainly (e.g. "142.6-98.3") — don't do margin math for the reader, just tell them who won and by roughly how much in your own words if it's worth mentioning
 - Profanity is expected and encouraged
 - Reference specific players who went off or completely shit the bed
 - A "Notable Performances This Week" list is provided in the data (top scorers + starters who bombed), each one already tied to the manager who started them — pull from it when a game recap calls for it, but don't force it into every game
 - Any player in the "🍺 Chug Alert" list means that manager owes a shotgun/chug before next week per house rules — call this out explicitly by name and mock them for it. The standings and power rankings tables also carry a running season Chug tally per manager — reference it when it's funny (e.g. someone leading the league in chugs)
 - Do NOT reference all-time head-to-head history in the Game Recaps — that only belongs in the Next Week Preview section. If a game recap wants a stat, pull from this week or this season's data (standings, streaks, PPG)
+- Trades: use the full player/pick details provided — name what each side actually received, not just the two manager names
 - If rivalry week: call out bet stakes, talk shit about whoever lost
-- Trades: list factually only, no grades
 - Keep it punchy — short sentences, no filler
-- **Formatting**: bold is ONLY for section headers/subheaders and the three labels in the Next Week Preview (Head-to-Head:, Coming In:, Storyline:). Never bold a player name, manager name, score, or stat inside a sentence — plain text throughout the prose
+- **Formatting**: bold is ONLY for section headers/subheaders, each game's header line, and the matchup title + three labels in the Next Week Preview (Head-to-Head:, Coming In:, Storyline:). Never bold a player name, manager name, score, or stat inside a sentence — plain text throughout the prose. Never use HTML tags like <u> — they don't render reliably.
 
 STRUCTURE:
 
 **Opening** (2-3 sentences — something filthy, absurd, or painful from the week. Set the tone immediately.)
 
 **Game Recaps**
-For EACH game, write 3-5 sentences. Requirements:
+For EACH game, start with a bolded header line in this exact format: **[Manager A] vs [Manager B]** — always use "vs", never a dash. Then write 3-5 sentences of plain prose below it. Requirements:
 - State the final score plainly
 - Name the losing manager and explain specifically why their team is an embarrassment
 - Reference specific players who won or lost the game — pull from "Notable Performances This Week" when it fits a specific game, and always call out any Chug Alert players by name
-- Weave in each manager's current Power Ranking context where it's in the data — their rank, movement, streak, and season chug count — naturally into the prose. This replaces any separate per-team Power Rankings summary; don't write that summary anywhere else in the article
-- If someone lost by a large margin: rub it in (you can describe it as a blowout without restating a margin number)
+- Weave in each manager's current Power Ranking context where it fits naturally — their rank, movement, streak, PPG, and season chug count. This replaces any separate per-team Power Rankings summary; don't write that summary anywhere else in the article
+- If someone lost by a large margin: rub it in (describe it as a blowout, no need to state a margin number)
 - If someone won ugly: acknowledge it but find something to still clown them for
 - Make it feel like you're reading this in a group chat and losing your mind
-- No bold text inside the paragraph — plain prose, profanity and all
+- No bold text inside the paragraph itself — only the header line above it is bold
 - Examples of the right register:
   * "A 42-point loss isn't a loss, it's a hate crime. Manager's team just stood there and watched."
   * "Player put up 38 points and Manager still found a way to lose. Incredible."
@@ -1070,24 +1101,27 @@ For EACH game, write 3-5 sentences. Requirements:
   * "How do you start one guy and not the other and then wonder why you lost? Lineup IQ of a golden retriever."
   * "Player laid a straight-up egg and Manager owes the group a chug for it. No exceptions."
 
+**Trades This Week**
+List each trade factually using the player/pick details provided — who received what, on both sides. No grading, no bold, plain text.
+
 **Best Waiver Pickups This Week**
 Use the top 3 pickups from the data, in rank order. For each one:
-- Lead with the medal emoji, manager name, and player picked up, plain text, no bold — e.g. "🥇 Berra — Kenny Gainwell (RB), dropped Will Shipley"
+- Lead with the medal emoji, manager name, and player picked up, plain text, no bold — e.g. "🥇 Berra — Kenny Gainwell (RB), dropped Will Shipley (RB)"
 - Underneath, write 1-2 sentences of plain prose explaining why the move matters — reference the week's PAR in plain language (no bold on the number), e.g. "that's roughly 12 points of value over anything else on the wire this week"
 - The #1 pickup gets the most love/hate depending on the grade
 
 **Power Rankings**
-Copy the table exactly as given — Rank, movement, Manager, Record, Streak, PPG, and season Chug count. Do NOT write a separate sentence-per-team summary underneath the table — that context (vibe, trajectory, chugs) belongs woven into the Game Recap paragraphs instead.
+Copy the table exactly as given — Rank, movement, Manager, Record, Streak, PPG, and season Chug count. Do NOT write a separate sentence-per-team summary underneath the table — that context belongs woven into the Game Recap paragraphs instead.
 
 **Next Week Preview**
 For EACH matchup, follow this structure exactly:
 
-<u>[Manager A] ([PPG] ppg) vs. [Manager B] ([PPG] ppg)</u>
+**[Manager A] ([PPG] ppg) vs. [Manager B] ([PPG] ppg)**
 **Head-to-Head:** [use the Head-to-Head line provided in the data as-is]
 **Coming In:** one or two punchy sentences combining how both managers did this week — use the "coming in" facts provided (result, score), written in your own words, plain text after the label
 **Storyline:** one forward-looking, trash-talky question or angle about the matchup — this one's yours to invent, it's not in the data, plain text after the label
 
-Formatting for this section specifically: bold ONLY the three labels (Head-to-Head:, Coming In:, Storyline:) — everything after each colon is plain text, not bold. Underline ONLY the matchup title line (both manager names + ppg) using \`<u>...</u>\` — don't bold that line.
+Formatting for this section specifically: bold the matchup title line AND the three labels (Head-to-Head:, Coming In:, Storyline:) — everything after each label/colon is plain text, not bold.
 `.trim(),
 
   endOfSeasonRecap: `
