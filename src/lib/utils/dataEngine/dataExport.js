@@ -39,9 +39,7 @@ function toLetter(score) {
   return 'F';
 }
 
-/**
- * Builds a plain list of manager names.
- */
+/** Builds a plain list of manager names. */
 function buildSimpleManagerList(managersSnapshot) {
   const users = managersSnapshot?.users || {};
   const ids = Object.keys(users);
@@ -55,7 +53,7 @@ function buildSimpleManagerList(managersSnapshot) {
 
 /**
  * Computes standings from individual game results through a specific week.
- * Always accurate regardless of whether the season is complete.
+ * Regular season only. Always accurate regardless of whether the season is complete.
  */
 function buildStandingsThroughWeek(allWeeklyResults, year, throughWeek) {
   const results = (allWeeklyResults || []).filter(
@@ -110,6 +108,30 @@ function computeStreaks(allWeeklyResults, year, throughWeek) {
 }
 
 /**
+ * Cumulative "chug" tally: house rule is any STARTER who scores 0 or negative
+ * points in a week costs that manager a shotgun/chug. This counts every
+ * qualifying starter-week for each manager, summed through a given week.
+ * Multiple bad starters in the same week each count separately.
+ */
+function computeChugTally(playerResults, year, throughWeek, rosterToManagerId) {
+  const tally = {};
+  (playerResults || [])
+    .filter(r =>
+      String(r.year) === String(year) &&
+      Number(r.week) <= Number(throughWeek) &&
+      r.isStarter === true
+    )
+    .forEach(r => {
+      const pts = typeof r.pointsTotal === 'string' ? parseFloat(r.pointsTotal) : r.pointsTotal;
+      if (typeof pts !== 'number' || isNaN(pts) || pts > 0) return;
+      const managerId = rosterToManagerId?.[String(r.rosterId)];
+      if (!managerId) return;
+      tally[managerId] = (tally[managerId] || 0) + 1;
+    });
+  return tally;
+}
+
+/**
  * Extracts matchup pairs for a specific week.
  */
 function extractMatchupsForWeek(allWeeklyResults, year, week) {
@@ -149,8 +171,7 @@ function computeHeadToHead(allTimeWeeklyResults, managerAId, managerBId) {
 
 /**
  * Formats a H2H record as: "Manager A vs Manager B: Manager A Leads the
- * series 2-0 All Time" (or "Series Tied X-X All Time" / "First ever matchup").
- * The record shown is always relative to whichever manager is leading.
+ * series 2-0 All Time" — used for completed-game recap lines.
  */
 function formatH2H(h2h, managerAName, managerBName) {
   if (!h2h || h2h.gamesPlayed === 0) {
@@ -169,24 +190,41 @@ function formatH2H(h2h, managerAName, managerBName) {
 }
 
 /**
- * Pulls a waiver pickup's PAR for one specific week out of the week-by-week
- * breakdown parGrading.js computes (tx.grade.weekBreakdown).
- *
- * Returns null if the player has no boxscore for the acquiring manager's
- * roster in that exact week — which happens when a waiver claim processes
- * after that week's games are already locked (the player's first real week
- * on the new roster is the following week). In that case the pickup is
- * excluded from that week's ranking entirely, rather than falling back to
- * full-season PAR — the old fallback behavior produced wildly inflated,
- * misleading numbers (a multi-week hold's entire value showing up as if it
- * happened in the pickup week).
+ * Short H2H format for the Next Week Preview: "Newman leads 1-0" /
+ * "Series tied 1-1" / "First ever matchup" — names are given separately in
+ * that section's header line, so this doesn't repeat them.
  */
-function getWeekSpecificWaiverPAR(tx, week) {
-  const wb = tx.grade?.weekBreakdown;
-  if (!Array.isArray(wb)) return null;
-  const entry = wb.find(w => Number(w.week) === Number(week));
-  if (!entry) return null;
-  return { weekPAR: entry.weekPAR, weekPts: entry.playerPts };
+function formatH2HShort(h2h, managerAName, managerBName) {
+  if (!h2h || h2h.gamesPlayed === 0) return 'First ever matchup';
+  if (h2h.wins > h2h.losses) {
+    const recStr = `${h2h.wins}-${h2h.losses}${h2h.ties > 0 ? `-${h2h.ties}` : ''}`;
+    return `${managerAName} leads ${recStr}`;
+  }
+  if (h2h.losses > h2h.wins) {
+    const recStr = `${h2h.losses}-${h2h.wins}${h2h.ties > 0 ? `-${h2h.ties}` : ''}`;
+    return `${managerBName} leads ${recStr}`;
+  }
+  const recStr = `${h2h.wins}-${h2h.losses}${h2h.ties > 0 ? `-${h2h.ties}` : ''}`;
+  return `Series tied ${recStr}`;
+}
+
+/**
+ * Turns one manager's result row for a completed week into a short factual
+ * tag ("blowout win", "narrow loss", etc.) plus the raw score, for the
+ * "Coming In" line of the Next Week Preview. The LLM writes the actual
+ * sentence — this just hands it clean facts instead of raw numbers alone.
+ */
+function describeResult(row) {
+  if (!row) return null;
+  const pf = row.pointsFor || 0;
+  const pa = row.pointsAgainst || 0;
+  const margin = Math.abs(pf - pa);
+  let tag;
+  if (row.result === 'T') tag = 'tie';
+  else if (margin >= 25)   tag = row.result === 'W' ? 'blowout win'  : 'blowout loss';
+  else if (margin <= 5)    tag = row.result === 'W' ? 'narrow win'   : 'narrow loss';
+  else                      tag = row.result === 'W' ? 'win'          : 'loss';
+  return { tag, pointsFor: pf, pointsAgainst: pa, margin };
 }
 
 /**
@@ -194,9 +232,12 @@ function getWeekSpecificWaiverPAR(tx, week) {
  * Performances" callout in game recaps. Uses the explicit isStarter flag
  * (not pointsStarted, which collapses "benched" and "started but scored 0"
  * into the same value) so a real zero or negative week from a starter shows
- * up correctly.
+ * up correctly. Each performance is resolved to the manager who started that
+ * player via rosterToManagerId — without this, the recap writer has no way
+ * to attribute a big (or disastrous) game to a specific manager unless they
+ * happen to have drafted the player, which misses waiver/FA pickups entirely.
  */
-function getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData, limit = 3) {
+function getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData, rosterToManagerId, topLimit = 3) {
   if (!playerResults?.length) return { top: [], bottom: [] };
 
   const weekStarters = playerResults.filter(r =>
@@ -213,16 +254,18 @@ function getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData
         : `Player ${r.playerId}`;
       const pos = info?.position || '';
       const pts = typeof r.pointsTotal === 'string' ? parseFloat(r.pointsTotal) : r.pointsTotal;
-      return { name, pos, points: pts };
+      const managerId = rosterToManagerId?.[String(r.rosterId)] || null;
+      return { name, pos, points: pts, managerId };
     })
     .filter(p => typeof p.points === 'number' && !isNaN(p.points));
 
   const sorted = [...withInfo].sort((a, b) => b.points - a.points);
-  const top    = sorted.slice(0, limit);
+  const top    = sorted.slice(0, topLimit);
+  // Chug Alert: every 0-or-negative starter, not just a top few — each one
+  // is a separate chug obligation, so none should be dropped for length.
   const bottom = sorted
-    .filter(p => p.points <= 3)
-    .sort((a, b) => a.points - b.points)
-    .slice(0, limit);
+    .filter(p => p.points <= 0)
+    .sort((a, b) => a.points - b.points);
 
   return { top, bottom };
 }
@@ -293,6 +336,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **Last Place Award**: worst record/points through week 14');
   lines.push('- **Draft Order Bowl**: bottom 6 teams; winner sets next season\'s draft order');
   lines.push('- **Rivalry Week**: each manager has a designated rival set at the draft; results carry extra bragging rights and a bet is placed between rivals');
+  lines.push('- **House Rule — The Chug Rule**: any manager who STARTS a player who scores 0 or negative points that week owes a shotgun/chug before the next week starts. Multiple qualifying starters in the same week = multiple chugs. A running season tally is included in the standings table.');
   lines.push('');
   lines.push('## Roster Settings (2024 onward)');
   lines.push('QB×1, RB×2, WR×2, TE×1, FLEX×2 (RB/WR/TE), K×1, DEF×1, BN×6 — 17 rounds');
@@ -307,7 +351,8 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Profanity is fine and expected — "ass cheeks", "suck my nutz", "dogshit", "what the fuck" are all appropriate');
   lines.push('- Reference specific players, scores, and stats from the data to back up every claim');
   lines.push('- Inside jokes and callbacks to prior seasons or past games make it hit harder');
-  lines.push('- Stick to real names, in-league history, and stats — no flowery sports journalism language');
+  lines.push('- Keep sentences short and punchy. No flowery sports journalism language.');
+  lines.push('- Stick to real names, in-league history, and stats to make it hit hard.');
   lines.push('');
   lines.push('## Metrics Glossary');
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
@@ -316,6 +361,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **SOS**: Strength of Schedule — avg opponent scoring and win % faced');
   lines.push('- **Luck**: actual win% minus expected win% based on weekly score vs all other scores');
   lines.push('- **Manager Grade**: Draft 40% + Trades 20% + Waivers 20% + Lineup IQ 20%. C = league average');
+  lines.push('- **PPG**: Points Per Game — regular season total points ÷ regular season games played, through the most recent completed week');
   lines.push('');
   lines.push(buildSimpleManagerList(managersSnapshot));
   return lines.join('\n');
@@ -637,6 +683,7 @@ export function exportAllTimeHistory({
  * @param {Array}   allTimeWeeklyResults     All game results across ALL seasons (for H2H records)
  * @param {Array}   playerResults            Per-player-per-week stat lines: { year, week, rosterId, playerId, pointsTotal, pointsStarted, isStarter }
  * @param {Object}  allPlayersData           Sleeper player_id -> player info map
+ * @param {Object}  rosterToManagerId        rosterId -> managerId map for THIS season — needed to attribute notable performances/chugs to a manager
  * @param {boolean} isTestMode               Adds a disclaimer banner in test mode
  */
 export function exportWeeklyData({
@@ -653,7 +700,8 @@ export function exportWeeklyData({
   isTestMode,
   managersSnapshot,
   playerResults,
-  allPlayersData
+  allPlayersData,
+  rosterToManagerId
 }) {
   const mn    = (id) => mgrName(id, managersSnapshot);
   const lines = [];
@@ -665,6 +713,8 @@ export function exportWeeklyData({
   if (isTestMode) {
     lines.push('> **⚠ TEST MODE — HISTORICAL DATA**');
     lines.push(`> Simulates a Week ${week} export from the ${year} season.`);
+    lines.push('> ');
+    lines.push('> **Accurate**: matchup results, waiver moves, standings through this week, next week matchups, H2H records, week-specific waiver PAR, notable performances, chug tally.');
     lines.push('');
   }
 
@@ -677,6 +727,13 @@ export function exportWeeklyData({
   (weeklyResults||[]).filter(r => !r.isPlayoffs).forEach(r => {
     const key = [r.managerId, r.opponentManagerId].sort().join('-');
     if (!seen.has(key)) { seen.add(key); matchups.push(r); }
+  });
+
+  // Per-manager result lookup for this week (used later for Next Week's
+  // "Coming In" facts). weeklyResults has one row per manager per week.
+  const thisWeekByManager = {};
+  (weeklyResults || []).filter(r => !r.isPlayoffs).forEach(r => {
+    thisWeekByManager[r.managerId] = r;
   });
 
   if (matchups.length === 0) {
@@ -704,29 +761,25 @@ export function exportWeeklyData({
 
   // ── Notable performances this week ─────────────────────────────────────────
   if (playerResults) {
-    const { top, bottom } = getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData);
+    const { top, bottom } = getWeekTopAndBottomPerformers(playerResults, year, week, allPlayersData, rosterToManagerId);
     if (top.length || bottom.length) {
       lines.push('');
       lines.push('### Notable Performances This Week');
-      lines.push('*Use these if they fit naturally into a game recap — not required for every game.*');
+      lines.push('*Each performance is tied to the manager who started that player — use these if they fit naturally into a game recap, not required for every game.*');
       lines.push('');
       if (top.length) {
         lines.push('**Went off:**');
-        top.forEach(p => lines.push(`- ${p.name}${p.pos ? ` (${p.pos})` : ''} — ${fp(p.points)} pts`));
+        top.forEach(p => lines.push(`- ${p.name}${p.pos ? ` (${p.pos})` : ''}${p.managerId ? ` — started by ${mn(p.managerId)}` : ''} — ${fp(p.points)} pts`));
       }
       if (bottom.length) {
         lines.push('');
-        lines.push('**Laid an egg (started, 3 pts or fewer):**');
-        bottom.forEach(p => lines.push(`- ${p.name}${p.pos ? ` (${p.pos})` : ''} — ${fp(p.points)} pts`));
+        lines.push('**🍺 Chug Alert (started, 0 or negative pts) — house rule: that manager owes a shotgun/chug before next week:**');
+        bottom.forEach(p => lines.push(`- ${p.name}${p.pos ? ` (${p.pos})` : ''}${p.managerId ? ` — started by ${mn(p.managerId)}` : ''} — ${fp(p.points)} pts`));
       }
     }
   }
 
-  // ── Waiver moves — top 3 pickups from this week ───────────────────────────
-  // Ranked by WEEK-SPECIFIC PAR from parGrading.js's weekBreakdown. Pickups
-  // with no boxscore yet for the new roster this week (added too late to
-  // play) are excluded from the ranking rather than credited with their
-  // full-season value.
+  // ── Waiver moves — top 3 pickups from this week, ranked by THIS WEEK's PAR ──
   const allWeekWaiverTx = (gradedTransactions||[]).filter(tx =>
     tx.type === 'waiver' &&
     !tx.isPartOfComposite &&
@@ -759,7 +812,7 @@ export function exportWeeklyData({
 
     const excludedCount = allWeekWaiverTx.length - weekWaiverCandidates.length;
     if (excludedCount > 0) {
-      lines.push(`*${excludedCount} other waiver add(s) this week had no boxscore yet for the new roster (added too late to play) and were excluded from this ranking.*`);
+      lines.push(`*${excludedCount} other waiver add(s) this week had no boxscore yet for the new roster (claimed too late to play) and were excluded from this ranking.*`);
       lines.push('');
     }
   } else if (allWeekWaiverTx.length > 0) {
@@ -789,18 +842,22 @@ export function exportWeeklyData({
   lines.push('');
   lines.push(`## Standings Through Week ${week}`);
   lines.push('');
-  lines.push('| Rank | Manager | W | L | PF | PA |');
-  lines.push('|------|---------|---|---|----|----|');
+  lines.push('| Rank | Manager | W | L | PF | PA | 🍺 Chugs |');
+  lines.push('|------|---------|---|---|----|----|----------|');
 
+  let computedStandings = null;
   if (allSeasonWeeklyResults) {
-    const computed = buildStandingsThroughWeek(allSeasonWeeklyResults, year, week);
-    computed.forEach((rec, idx) => {
-      lines.push(`| #${idx+1} | ${mn(rec.managerId)} | ${rec.wins} | ${rec.losses} | ${fp(rec.pf)} | ${fp(rec.pa)} |`);
+    computedStandings = buildStandingsThroughWeek(allSeasonWeeklyResults, year, week);
+    const chugTally = (playerResults && rosterToManagerId)
+      ? computeChugTally(playerResults, year, week, rosterToManagerId)
+      : {};
+    computedStandings.forEach((rec, idx) => {
+      lines.push(`| #${idx+1} | ${mn(rec.managerId)} | ${rec.wins} | ${rec.losses} | ${fp(rec.pf)} | ${fp(rec.pa)} | ${chugTally[rec.managerId] || 0} |`);
     });
   } else {
     (currentStandings||[]).forEach((team, idx) => {
       const rs = team.regularSeason || {};
-      lines.push(`| #${idx+1} | ${mn(team.managerId)} | ${rs.wins||0} | ${rs.losses||0} | ${fp(rs.fptsFor)} | ${fp(rs.fptsAgainst)} |`);
+      lines.push(`| #${idx+1} | ${mn(team.managerId)} | ${rs.wins||0} | ${rs.losses||0} | ${fp(rs.fptsFor)} | ${fp(rs.fptsAgainst)} | — |`);
     });
   }
 
@@ -828,10 +885,10 @@ export function exportWeeklyData({
   } else if (isTestMode) {
     lines.push('');
     lines.push(`## Power Rankings — Week ${week}`);
-    lines.push('*Not reconstructed in test mode.*');
+    lines.push('*Not reconstructed for this test — Power Rankings for this season/week combination haven\'t been computed yet. Go to the Power Rankings tab, select this season, and click Compute Rankings, then regenerate the test bundle.*');
   }
 
-  // ── Next week matchups with H2H records ───────────────────────────────────────
+  // ── Next week matchups: PPG, short H2H, "coming in" facts ─────────────────────
   const nextWeek = week + 1;
   const resolvedNextWeekMatchups = nextWeekMatchups?.length
     ? nextWeekMatchups
@@ -839,9 +896,18 @@ export function exportWeeklyData({
         ? extractMatchupsForWeek(allSeasonWeeklyResults, year, nextWeek)
         : []);
 
+  const ppgByManager = {};
+  if (computedStandings) {
+    computedStandings.forEach(rec => {
+      const gp = rec.wins + rec.losses + rec.ties;
+      ppgByManager[rec.managerId] = gp > 0 ? rec.pf / gp : null;
+    });
+  }
+
   if (resolvedNextWeekMatchups.length > 0 && nextWeek <= 17) {
     lines.push('');
     lines.push(`## Next Week's Matchups (Week ${nextWeek})`);
+    lines.push('*PPG is regular-season-to-date through this week. "Coming in" reflects each manager\'s result THIS week.*');
     lines.push('');
 
     resolvedNextWeekMatchups.forEach(m => {
@@ -849,14 +915,21 @@ export function exportWeeklyData({
       const awayId   = m.awayId || m.away;
       const homeName = mn(homeId);
       const awayName = mn(awayId);
+      const homePPG  = ppgByManager[homeId];
+      const awayPPG  = ppgByManager[awayId];
+
+      lines.push(`**${homeName}${homePPG!=null?` (${fp(homePPG)} ppg)`:''} vs. ${awayName}${awayPPG!=null?` (${fp(awayPPG)} ppg)`:''}**`);
 
       const h2h = allTimeWeeklyResults
         ? computeHeadToHead(allTimeWeeklyResults, homeId, awayId)
         : null;
-      const h2hLabel = h2h ? formatH2H(h2h, homeName, awayName) : `${homeName} vs ${awayName}`;
-      const gamesNote = h2h && h2h.gamesPlayed > 0 ? ` (${h2h.gamesPlayed} all-time meetings)` : '';
+      lines.push(`- Head-to-Head: ${h2h ? formatH2HShort(h2h, homeName, awayName) : 'unknown'}`);
 
-      lines.push(`- ${h2hLabel}${gamesNote}`);
+      const homeResult = describeResult(thisWeekByManager[homeId]);
+      const awayResult = describeResult(thisWeekByManager[awayId]);
+      if (homeResult) lines.push(`- ${homeName} coming in: ${homeResult.tag} (${fp(homeResult.pointsFor)}-${fp(homeResult.pointsAgainst)})`);
+      if (awayResult) lines.push(`- ${awayName} coming in: ${awayResult.tag} (${fp(awayResult.pointsFor)}-${fp(awayResult.pointsAgainst)})`);
+      lines.push('');
     });
   } else if (nextWeek <= 14) {
     lines.push('');
@@ -865,6 +938,22 @@ export function exportWeeklyData({
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Pulls a waiver pickup's PAR for one specific week out of the week-by-week
+ * breakdown parGrading.js computes (tx.grade.weekBreakdown). Returns null if
+ * the player has no boxscore for that manager's roster in that exact week —
+ * which happens when a pickup is claimed too late in the week to have played
+ * for the new team yet. In that case the pickup is EXCLUDED from that week's
+ * ranking rather than falling back to full-hold-period PAR.
+ */
+function getWeekSpecificWaiverPAR(tx, week) {
+  const wb = tx.grade?.weekBreakdown;
+  if (!Array.isArray(wb)) return null;
+  const entry = wb.find(w => Number(w.week) === Number(week));
+  if (!entry) return null;
+  return { weekPAR: entry.weekPAR, weekPts: entry.playerPts };
 }
 
 // ── Pre-draft package ─────────────────────────────────────────────────────────
@@ -977,7 +1066,8 @@ RULES:
 - Exact scores on every game — "lost by 0.4" not "narrowly lost"
 - Profanity is expected and encouraged
 - Reference specific players who went off or completely shit the bed
-- A "Notable Performances This Week" list is provided in the data (top scorers + starters who laid an egg) — pull from it when a game recap calls for it, but don't force it into every game
+- A "Notable Performances This Week" list is provided in the data (top scorers + starters who bombed), each one already tied to the manager who started them — pull from it when a game recap calls for it, but don't force it into every game
+- Any player in the "🍺 Chug Alert" list means that manager owes a shotgun/chug before next week per house rules — call this out explicitly by name and mock them for it. The standings table also has a running season Chug tally per manager — reference it when it's funny (e.g. someone leading the league in chugs)
 - If rivalry week: call out bet stakes, talk shit about whoever lost
 - Trades: list factually only, no grades
 - Keep it punchy — short sentences, no filler
@@ -990,7 +1080,7 @@ STRUCTURE:
 For EACH game, write 3-5 sentences. Requirements:
 - Include the exact score and margin
 - Name the losing manager and explain specifically why their team is an embarrassment
-- Reference specific players who won or lost the game — pull from "Notable Performances This Week" when it fits a specific game
+- Reference specific players who won or lost the game — pull from "Notable Performances This Week" when it fits a specific game, and always call out any Chug Alert players by name
 - If someone lost by a large margin: rub it in
 - If someone won ugly: acknowledge it but find something to still clown them for
 - Make it feel like you're reading this in a group chat and losing your mind
@@ -999,25 +1089,25 @@ For EACH game, write 3-5 sentences. Requirements:
   * "[Player] put up [X] points and [Manager] still found a way to lose. Incredible."
   * "[Manager] won but their team looked like ass doing it — enjoy the W because it won't last."
   * "How do you start [player] and not [other player] and then wonder why you lost? Lineup IQ of a golden retriever."
+  * "[Player] laid a straight-up egg and [Manager] owes the group a chug for it. No exceptions."
 
 **Best Waiver Pickups This Week**
-Use the pickups from the data. For each:
+Use the top 3 pickups from the data. For each:
 - Name the manager and player picked up
 - Explain in 1-2 sentences why this move matters to their season or was the right/wrong call
 - PAR is provided for THIS WEEK specifically — reference it but explain it in plain language ("that's [X] points of value over what any other scrub off the wire would have given you this week")
 - The #1 pickup gets the most love/hate depending on the grade
-- If the data notes some adds had no graded performance yet, you can skip them entirely — don't force a take on a guy who hasn't played a snap yet
 
 **Power Rankings**
-Copy the table. For each team write 1 sentence: current vibe, trajectory (use the win streak and rank movement), and appropriate level of trash talk or hype.
+Copy the table if it's present in the data. For each team write 1 sentence: current vibe, trajectory (use the win streak and rank movement), and appropriate level of trash talk or hype. If the Power Rankings table isn't in the data, skip this section — don't invent one.
 
 **Next Week Preview**
-For EACH matchup:
-- Include the all-time head-to-head record (it's in the data)
-- 2-3 sentences: who has the edge, why, and appropriate trash talk
-- If someone is on a hot streak: acknowledge it then explain why it's about to end
-- If someone is on a cold streak: pile on
-- H2H dominance is fair game: "you're 0-4 all time against this guy, maybe just forfeit"
+For EACH matchup, follow this structure exactly:
+
+[Manager A] ([PPG] ppg) vs. [Manager B] ([PPG] ppg)
+Head-to-Head: [use the Head-to-Head line provided in the data as-is]
+Coming In: one or two punchy sentences combining how both managers did this week — use the "coming in" facts provided (result, score, margin), written in your own words, not just the raw numbers restated
+Storyline: one forward-looking, trash-talky question or angle about the matchup — this one's yours to invent, it's not in the data
 `.trim(),
 
   endOfSeasonRecap: `
@@ -1052,6 +1142,7 @@ STRUCTURE:
 📈 Most Improved
 🍀 Luckiest Schedule (use SOS luck metric — name names)
 🧠 Lineup Genius (best IQ — the one guy who actually watched his team)
+🍺 Chug King (most cumulative chugs on the season — worst starts, most shame)
 🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
 `.trim()
