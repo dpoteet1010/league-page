@@ -337,6 +337,22 @@ function extractTradeReceivedPlayers(tx, allPlayersData, playerResults, year, th
   return received;
 }
 
+/** Plain "Name (POS)" string for a trade item — no stats, used in headers. */
+function tradeItemsPlain(items) {
+  if (!items || !items.length) return 'nothing found';
+  return items.map(p => p.isPick ? p.name : `${p.name}${p.pos ? ` (${p.pos})` : ''}`).join(', ');
+}
+
+/** "Name (POS, X pts this season)" string for a trade item — used in detail bullets. */
+function tradeItemsDetailed(items) {
+  if (!items || !items.length) return 'nothing found';
+  return items.map(p => {
+    if (p.isPick) return p.name;
+    const ptsStr = p.seasonPts != null ? `, ${fp(p.seasonPts)} pts this season` : '';
+    return `${p.name}${p.pos ? ` (${p.pos}${ptsStr})` : ptsStr}`;
+  }).join(', ');
+}
+
 function deriveSeasonOutcomes(standings, weeklyResults, snap) {
   if (!standings || standings.length === 0) return null;
   const mn     = (id) => mgrName(id, snap);
@@ -420,8 +436,9 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Inside jokes and callbacks to prior seasons or past games make it hit harder');
   lines.push('- Keep sentences short and punchy. No flowery sports journalism language.');
   lines.push('- Stick to real names, in-league history, and stats to make it hit hard.');
-  lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> — they don\'t render reliably in most viewers.');
+  lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, trade header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> — they don\'t render reliably in most viewers.');
   lines.push('- Never include internal methodology, weighting formulas, or calculation notes anywhere in the article — those are for internal computation only, never narrative content.');
+  lines.push('- Where the data hands you pre-built bolded lines (game headers, matchup preview blocks), reproduce them EXACTLY as given, each on its own line, preserving any blank lines between them — do not merge them into a paragraph or run them together with spaces.');
   lines.push('');
   lines.push('## Metrics Glossary');
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
@@ -789,10 +806,7 @@ export function exportWeeklyData({
   }
 
   // ── Matchup results — pre-formatted as ready-to-use Game Recap headers ──────
-  // Each line is exactly the bolded header format requested: "**Name (Score)
-  // vs Name (Score):**" — the recap writer should copy these verbatim rather
-  // than reconstructing them, since relying on prompt instructions alone
-  // wasn't reliably producing the requested format.
+  // No trailing colon per user preference; reproduce EXACTLY as given.
   lines.push(`## Week ${week} Matchup Results`);
   lines.push('*Use these exact bolded lines as your Game Recap headers, verbatim — do not reformat them.*');
   lines.push('');
@@ -817,7 +831,7 @@ export function exportWeeklyData({
       const loser  = r.result === 'W' ? mn(r.opponentManagerId) : mn(r.managerId);
       const wScore = r.result === 'W' ? r.pointsFor    : r.pointsAgainst;
       const lScore = r.result === 'W' ? r.pointsAgainst : r.pointsFor;
-      lines.push(`**${winner} (${fp(wScore)}) vs ${loser} (${fp(lScore)}):**`);
+      lines.push(`**${winner} (${fp(wScore)}) vs ${loser} (${fp(lScore)})**`);
     });
   }
 
@@ -900,7 +914,7 @@ export function exportWeeklyData({
     lines.push(`*${allWeekWaiverTx.length} waiver add(s) were made this week, but none have a graded performance yet for their new roster this week.*`);
   }
 
-  // ── Trades — styled like the waiver section, no section at all if empty ─────
+  // ── Trades — headline lists what was actually traded, no section if empty ───
   const weekTrades = (gradedTransactions||[]).filter(tx =>
     tx.type === 'trade' &&
     !tx.isPartOfComposite &&
@@ -911,25 +925,20 @@ export function exportWeeklyData({
   if (weekTrades.length > 0) {
     lines.push('');
     lines.push('## Trades This Week');
-    lines.push('*No formal PAR grade until end of season — season-to-date points shown per player so a preliminary reaction can be reasoned out.*');
+    lines.push('*No formal PAR grade until end of season — season-to-date points shown per player so a preliminary reaction can be reasoned out. One paragraph per manager, please.*');
     lines.push('');
     weekTrades.forEach(tx => {
       const received = extractTradeReceivedPlayers(tx, allPlayersData, playerResults, year, week);
-      lines.push(`🔄 ${mn(tx.managerIds?.[0])} ↔ ${mn(tx.managerIds?.[1])}`);
-      (tx.rosters || []).forEach((roster, idx) => {
-        const mgrId = tx.managerIds?.[idx];
-        const items = received[roster] || [];
-        if (!items.length) {
-          lines.push(`   ${mn(mgrId)} receives: nothing found in this trade's data`);
-          return;
-        }
-        const itemStr = items.map(p => {
-          if (p.isPick) return p.name;
-          const ptsStr = p.seasonPts != null ? `, ${fp(p.seasonPts)} pts this season` : '';
-          return `${p.name}${p.pos ? ` (${p.pos}${ptsStr})` : ptsStr}`;
-        }).join('; ');
-        lines.push(`   ${mn(mgrId)} receives: ${itemStr}`);
-      });
+      const rosterA = tx.rosters?.[0];
+      const rosterB = tx.rosters?.[1];
+      const mgrA = mn(tx.managerIds?.[0]);
+      const mgrB = mn(tx.managerIds?.[1]);
+      const itemsA = received[rosterA] || []; // what A received (i.e. sent by B)
+      const itemsB = received[rosterB] || []; // what B received (i.e. sent by A)
+
+      lines.push(`**${mgrA} sends ${tradeItemsPlain(itemsB)} to ${mgrB} in exchange for ${tradeItemsPlain(itemsA)}**`);
+      lines.push(`- ${mgrA} receives: ${tradeItemsDetailed(itemsA)}`);
+      lines.push(`- ${mgrB} receives: ${tradeItemsDetailed(itemsB)}`);
       lines.push('');
     });
   }
@@ -978,7 +987,10 @@ export function exportWeeklyData({
     lines.push('*Not reconstructed for this test — Power Rankings for this season/week combination haven\'t been computed yet. Go to the Power Rankings tab, select this season, and click Compute Rankings, then regenerate the test bundle.*');
   }
 
-  // ── Next week matchups: PPG + odds embedded, short H2H, "coming in" facts ────
+  // ── Next week matchups: pre-built four-line blocks, blank line between each ──
+  // Blank lines between the title/H2H/Coming In lines are REQUIRED — Markdown
+  // collapses adjacent single-newline lines into one paragraph, which is what
+  // was producing a wall of text instead of separate lines.
   const nextWeek = week + 1;
   const resolvedNextWeekMatchups = nextWeekMatchups?.length
     ? nextWeekMatchups
@@ -989,7 +1001,7 @@ export function exportWeeklyData({
   if (resolvedNextWeekMatchups.length > 0 && nextWeek <= 17) {
     lines.push('');
     lines.push(`## Next Week's Matchups (Week ${nextWeek})`);
-    lines.push('*PPG is regular-season-to-date through this week. The odds shown alongside each PPG are a rough estimate from that PPG gap, American/moneyline format — for fun, not a real projection model. "Coming in" reflects each manager\'s result THIS week. Head-to-Head is all-time — this is the one place in the export where all-time history belongs.*');
+    lines.push('*PPG is regular-season-to-date through this week. The odds shown alongside each PPG are a rough estimate from that PPG gap, American/moneyline format — for fun, not a real projection model. "Coming in" reflects each manager\'s result THIS week. Head-to-Head is all-time. Each matchup block below has a blank line between its title/Head-to-Head/Coming In lines on purpose — preserve those blank lines exactly, then add your own Storyline line after, also separated by a blank line.*');
     lines.push('');
 
     resolvedNextWeekMatchups.forEach(m => {
@@ -1011,19 +1023,25 @@ export function exportWeeklyData({
         : null;
 
       lines.push(`**${homeName}${homeLabel ? ` (${homeLabel})` : ''} vs. ${awayName}${awayLabel ? ` (${awayLabel})` : ''}**`);
+      lines.push('');
 
       const h2h = allTimeWeeklyResults
         ? computeHeadToHead(allTimeWeeklyResults, homeId, awayId)
         : null;
       lines.push(`**Head-to-Head:** ${h2h ? formatH2HShort(h2h, homeName, awayName) : 'unknown'}`);
+      lines.push('');
 
       const homeResult = describeResult(thisWeekByManager[homeId]);
       const awayResult = describeResult(thisWeekByManager[awayId]);
       const cominInBits = [];
       if (homeResult) cominInBits.push(`${homeName}: ${homeResult.tag} (${fp(homeResult.pointsFor)}-${fp(homeResult.pointsAgainst)})`);
       if (awayResult) cominInBits.push(`${awayName}: ${awayResult.tag} (${fp(awayResult.pointsFor)}-${fp(awayResult.pointsAgainst)})`);
-      if (cominInBits.length) lines.push(`**Coming In:** ${cominInBits.join(' | ')}`);
+      if (cominInBits.length) {
+        lines.push(`**Coming In:** ${cominInBits.join(' | ')}`);
+        lines.push('');
+      }
 
+      lines.push('---');
       lines.push('');
     });
   } else if (nextWeek <= 14) {
@@ -1147,18 +1165,18 @@ RULES:
 - A "Notable Performances This Week" list is provided in the data (top scorers + starters who bombed), each one already tied to the manager who started them — pull from it when a game recap calls for it, but don't force it into every game
 - Any player in the "🍺 Chug Alert" list means that manager owes a shotgun/chug before next week per house rules — call this out explicitly by name and mock them for it. The standings and power rankings tables also carry a running season Chug tally per manager — reference it when it's funny
 - Do NOT reference all-time head-to-head history in the Game Recaps — that only belongs in the Next Week Preview section. If a game recap wants a stat, pull from this week or this season's data (standings, streaks, PPG)
-- Trades: use the full player/pick and season-to-date points provided — name what each side actually received, not just the two manager names
 - NEVER mention how Power Rankings are calculated (weights, phase, formulas) anywhere in the article — that's internal-only, not narrative content
 - If rivalry week: call out bet stakes, talk shit about whoever lost
 - Keep it punchy — short sentences, no filler
-- **Formatting**: bold is ONLY for section headers/subheaders, each game's header line (given to you pre-built in the data), and the matchup title + labels in the Next Week Preview (Head-to-Head:, Coming In:, Storyline:). Never bold a player name, manager name, score, or stat inside a sentence — plain text throughout the prose. Never use HTML tags like <u> — they don't render reliably.
+- **Formatting**: bold is ONLY for section headers/subheaders, each game's header line (given to you pre-built in the data), trade header lines, and the matchup title + labels in the Next Week Preview (Head-to-Head:, Coming In:, Storyline:). Never bold a player name, manager name, score, or stat inside a sentence — plain text throughout the prose. Never use HTML tags like <u> — they don't render reliably.
+- CRITICAL: wherever the data hands you multiple pre-built bolded lines meant to stack (game headers, matchup preview blocks), reproduce them EXACTLY as given, each on its own line, WITH the blank lines between them preserved. Do not run them together into one paragraph — that has been a recurring bug, be careful here.
 
 STRUCTURE:
 
 **Opening** (2-3 sentences — something filthy, absurd, or painful from the week. Set the tone immediately.)
 
 **Game Recaps**
-The data gives you a pre-built bolded header line for every matchup, in the exact format "**Manager A (Score) vs Manager B (Score):**" — under the "Week X Matchup Results" section. Use that line EXACTLY as given, verbatim, as the header for that game's section. Do not rewrite, reorder, or reformat it. Then write 3-5 sentences of plain prose below it (no bold in the paragraph itself). Requirements:
+The data gives you a pre-built bolded header line for every matchup, in the exact format "**Manager A (Score) vs Manager B (Score)**" (no colon) — under the "Week X Matchup Results" section. Use that line EXACTLY as given, verbatim, as the header for that game's section, on its own line. Then write 3-5 sentences of plain prose below it (no bold in the paragraph itself). Requirements:
 - Name the losing manager and explain specifically why their team is an embarrassment
 - Reference specific players who won or lost the game — pull from "Notable Performances This Week" when it fits a specific game, and always call out any Chug Alert players by name
 - Weave in each manager's current Power Ranking context where it fits naturally — their rank, movement, streak, PPG, and season chug count (never the methodology behind the ranking). This replaces any separate per-team Power Rankings summary; don't write that summary anywhere else in the article
@@ -1174,11 +1192,10 @@ The data gives you a pre-built bolded header line for every matchup, in the exac
 
 **Trades This Week**
 Only include this section if trade data is present in the data file — if there's no "Trades This Week" section in the data, skip this section entirely in the article, don't write "no trades happened."
-For each trade, give it the same energy as the waiver section, not a dry two-name summary:
-- Start with a bolded header line naming both managers, e.g. **Jared trades with Harrison**
-- Underneath in plain prose, name exactly what each side received (players with position, picks, etc.) using the data provided
-- Then give a "preliminary trade grade" per side — a letter grade, clearly framed as an early, vibes-based reaction rather than a final verdict (something like "way too early to know, but early vibes:"), reasoning from season-to-date points and position value you can infer from the data and league context — not from a real PAR calculation, since the season isn't over
-- Keep it in the same brutal, funny voice as everything else — mock the side that looks like they got fleeced, hype the side that looks like they won
+For each trade in the data:
+- Use the pre-built bolded header line EXACTLY as given (format: "**Manager A sends [items] to Manager B in exchange for [items]**") — don't rewrite it
+- Then write TWO separate paragraphs, one for each manager (not one combined paragraph): each paragraph covers what that manager gave up and got, their reasoning/needs based on the season-to-date points and roster context in the data, and a "preliminary trade grade" for that manager — a letter grade, clearly framed as an early, vibes-based reaction rather than a final verdict (something like "way too early to know, but early vibes:")
+- Keep it in the same brutal, funny voice as everything else — mock the manager who looks like they got fleeced, hype the one who looks like they won
 
 **Best Waiver Pickups This Week**
 Use the top 3 pickups from the data, in rank order. For each one:
@@ -1190,11 +1207,11 @@ Use the top 3 pickups from the data, in rank order. For each one:
 Copy the table exactly as given — Rank, movement, Manager, Record, Streak, PPG, and season Chug count. Do NOT write a separate sentence-per-team summary underneath the table, and do NOT mention how the rankings are calculated — that context belongs woven into the Game Recap paragraphs instead.
 
 **Next Week Preview**
-For EACH matchup, the data gives you a pre-built four-line block: a bolded title line (with PPG and odds already embedded in parentheses for each manager), a bolded **Head-to-Head:** line, and a bolded **Coming In:** line. Reproduce the title, Head-to-Head, and Coming In lines EXACTLY as given, each on its own line, in that order — do not reformat, reword, or move the odds. Then add one more line:
+For EACH matchup, the data gives you a pre-built block with blank lines already inserted between the title, Head-to-Head, and Coming In lines (PPG and odds are already embedded in the title's parentheses). Reproduce that block EXACTLY as given — same three lines, same order, same blank lines between them, do not reformat, reword, or move the odds. Then add one more line, separated from Coming In by a blank line:
 
 **Storyline:** one forward-looking, trash-talky question or angle about the matchup — this one's yours to invent, it's not in the data
 
-Leave exactly one blank line between one matchup's block and the next. Nothing else goes inside a matchup's block — no extra commentary outside these four bolded lines.
+Leave a blank line after Storyline before the next matchup's block begins. Nothing else goes inside a matchup's block — no extra commentary outside these four bolded lines.
 `.trim(),
 
   endOfSeasonRecap: `
