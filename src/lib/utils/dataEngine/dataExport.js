@@ -806,7 +806,6 @@ export function exportWeeklyData({
   }
 
   // ── Matchup results — pre-formatted as ready-to-use Game Recap headers ──────
-  // No trailing colon per user preference; reproduce EXACTLY as given.
   lines.push(`## Week ${week} Matchup Results`);
   lines.push('*Use these exact bolded lines as your Game Recap headers, verbatim — do not reformat them.*');
   lines.push('');
@@ -925,7 +924,7 @@ export function exportWeeklyData({
   if (weekTrades.length > 0) {
     lines.push('');
     lines.push('## Trades This Week');
-    lines.push('*No formal PAR grade until end of season — season-to-date points shown per player so a preliminary reaction can be reasoned out. One paragraph per manager, please.*');
+    lines.push('*No formal PAR grade until end of season — season-to-date points shown per player so a preliminary reaction can be reasoned out.*');
     lines.push('');
     weekTrades.forEach(tx => {
       const received = extractTradeReceivedPlayers(tx, allPlayersData, playerResults, year, week);
@@ -962,7 +961,6 @@ export function exportWeeklyData({
   }
 
   // ── Power rankings ────────────────────────────────────────────────────────────
-  // No phase/weighting info shown — that's internal methodology, not article content.
   if (powerRankings) {
     lines.push('');
     lines.push(`## Power Rankings — Week ${week}`);
@@ -988,9 +986,6 @@ export function exportWeeklyData({
   }
 
   // ── Next week matchups: pre-built four-line blocks, blank line between each ──
-  // Blank lines between the title/H2H/Coming In lines are REQUIRED — Markdown
-  // collapses adjacent single-newline lines into one paragraph, which is what
-  // was producing a wall of text instead of separate lines.
   const nextWeek = week + 1;
   const resolvedNextWeekMatchups = nextWeekMatchups?.length
     ? nextWeekMatchups
@@ -1192,10 +1187,25 @@ The data gives you a pre-built bolded header line for every matchup, in the exac
 
 **Trades This Week**
 Only include this section if trade data is present in the data file — if there's no "Trades This Week" section in the data, skip this section entirely in the article, don't write "no trades happened."
-For each trade in the data:
-- Use the pre-built bolded header line EXACTLY as given (format: "**Manager A sends [items] to Manager B in exchange for [items]**") — don't rewrite it
-- Then write TWO separate paragraphs, one for each manager (not one combined paragraph): each paragraph covers what that manager gave up and got, their reasoning/needs based on the season-to-date points and roster context in the data, and a "preliminary trade grade" for that manager — a letter grade, clearly framed as an early, vibes-based reaction rather than a final verdict (something like "way too early to know, but early vibes:")
-- Keep it in the same brutal, funny voice as everything else — mock the manager who looks like they got fleeced, hype the one who looks like they won
+
+Format EVERY trade using this exact minimalist layout — follow it precisely, it's non-negotiable:
+
+1. Header line, one per team involved in the trade, formatted EXACTLY like this (grade goes right after the colon, then a pipe, then Acquired/Sent):
+**[Manager Name]: [Grade]** | Acquired: [Player Name] ([Position]) / Sent: [Player Name] ([Position])
+If a side received or sent more than one asset, separate them with commas within the same Acquired/Sent list (e.g. "Acquired: Player A (RB), Player B (WR)").
+
+2. Directly below that manager's header line, write ONE analysis paragraph for that manager — plain prose, no bullet points, no blockquotes, no bold inside the paragraph. Base the reasoning on the season-to-date points and roster context given in the data (this is a preliminary, vibes-based reaction, not a final verdict — but don't write out a disclaimer phrase like "way too early to know" every time, the grade in the header already signals that).
+
+3. Repeat step 1-2 for the other manager in the same trade, directly below the first manager's paragraph — no blank section between the two, just header-paragraph-header-paragraph.
+
+4. If there is more than one trade this week, separate each complete trade (both managers' header+paragraph pairs) with a markdown horizontal rule (---) on its own line, with a blank line above and below it.
+
+Example of the exact format for ONE trade between two managers:
+
+**Jared: C-** | Acquired: Quinshon Judkins (RB) / Sent: Jaylen Waddle (WR)
+Jared gives up Waddle's season-long production for Judkins, on paper selling low to buy lower. At a losing record with a stack of chugs already on the board, though, this reads like a move about immediate team need over pure value.
+**Harrison: B+** | Acquired: Jaylen Waddle (WR) / Sent: Quinshon Judkins (RB)
+Harrison adds a proven receiver plugging straight into a roster that's riding a hot streak near the top of the power rankings. Buying while ahead is a low-risk swing since Judkins wasn't doing much for him anyway.
 
 **Best Waiver Pickups This Week**
 Use the top 3 pickups from the data, in rank order. For each one:
