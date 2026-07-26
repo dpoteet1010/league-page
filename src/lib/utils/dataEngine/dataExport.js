@@ -1,6 +1,6 @@
 // dataExport.js
 
-import { getRealName, getSeasonRivalries } from '$lib/utils/leagueManagers.js';
+import { getRealName, MANAGERS } from '$lib/utils/leagueManagers.js';
 
 // ── League lore / house rules ──────────────────────────────────────────────
 
@@ -17,13 +17,85 @@ const REGULAR_SEASON_LOSER_PUNISHMENTS = {
 
 // Bowl games by final placement. Applies to ALL seasons.
 const BOWL_DEFINITIONS = {
-  1:  { name: 'National Liver Failure League Championship', reward: 'Winner gets $1000, the trophy, and eternal glory.' },
-  3:  { name: 'Double Barrel Bowl', reward: 'Winner gets 2 additional landmines at the next draft.' },
-  5:  { name: 'Boomerang Bowl', reward: "Winner gets to redirect anyone's landmine back to the sender at the next draft." },
-  7:  { name: "Dictator's Deputy Bowl", reward: 'Winner gets to decide how the next draft order is determined.' },
-  9:  { name: 'Wire Cutter Bowl', reward: 'Winner gets to skip the first landmine they hit at the next draft.' },
-  11: { name: "Bartender's Choice Bowl", reward: 'Winner gets to pick the shot the league takes at the next draft.' }
+  1:  { name: 'National Liver Failure League Championship', emoji: '🏆', reward: 'Winner gets $1000, the trophy, and eternal glory.' },
+  3:  { name: 'Double Barrel Bowl', emoji: '🔫', reward: 'Winner gets 2 additional landmines at the next draft.' },
+  5:  { name: 'Boomerang Bowl', emoji: '🪃', reward: "Winner gets to redirect anyone's landmine back to the sender at the next draft." },
+  7:  { name: "Dictator's Deputy Bowl", emoji: '🎩', reward: 'Winner gets to decide how the next draft order is determined.' },
+  9:  { name: 'Wire Cutter Bowl', emoji: '✂️', reward: 'Winner gets to skip the first landmine they hit at the next draft.' },
+  11: { name: "Bartender's Choice Bowl", emoji: '🍸', reward: 'Winner gets to pick the shot the league takes at the next draft.' }
 };
+
+// ── Rivalry Week data by year ────────────────────────────────────────────────
+// Rivals and their bets change every year — enter each season's matchups here
+// once the rivals/bets are set at the draft. "week" is the actual NFL/league
+// week the rivalry matchup happens; the winner is derived automatically from
+// that week's real game result, never hardcoded.
+const RIVALRY_WEEKS = {
+  '2023': {
+    week: 12,
+    defaultBet: "Loser has to cover the winner's bar tab at the end of season banquet.",
+    pairs: [
+      { a: 'David', b: 'Corzine' },
+      { a: 'Berra', b: 'D Kim' },
+      { a: 'Lukas', b: 'Harrison' },
+      { a: 'Alec', b: 'Haskin' },
+      { a: 'Tyler', b: 'James' },
+      { a: 'Newman', b: 'Jared' }
+    ]
+  },
+  '2024': {
+    week: 13,
+    pairs: [
+      { a: 'David', b: 'Haskin', bet: 'Loser buys a round of golf + course drinks for the winner.' },
+      { a: 'Alec', b: 'James', bet: 'Loser buys a round of golf for the winner.' },
+      { a: 'Tyler', b: 'Jared', bet: "Winner chooses banquet outfit for the loser and loser covers winner's banquet bar tab." },
+      { a: 'Newman', b: 'Harrison', bet: "Loser covers winner's banquet bar tab." },
+      { a: 'Corzine', b: 'DKim', bet: "Winner chooses the loser's team name for next season." },
+      { a: 'Lukas', b: 'Berra', bet: 'Winner chooses the banquet outfit for the loser.' }
+    ]
+  },
+  '2025': {
+    week: 13,
+    pairs: [
+      { a: 'Dictator', b: 'Berra', bet: 'Loser buys the winner an NFL jersey of choice and provides a pre-draft anthem next season.' },
+      { a: 'Alec', b: 'Mendez', bet: "Loser has to buy and wear the winner's team's jersey (Packers or Chiefs) to the banquet and draft." },
+      { a: 'Jared', b: 'Siampos', bet: 'Loser has to take a shot, shotgun, or chug every week of the 2026 NFL Fantasy Regular Season (14 weeks).' },
+      { a: 'Lukas', b: 'Stolze', bet: 'Loser has to agree with everything Jared says until the next draft without him realizing.' },
+      { a: 'Harrison', b: 'James', bet: 'Loser buys the winner an NFL jersey of choice.' },
+      { a: 'Haskin', b: 'Newman', bet: "Loser has to wear the clothes from their college's rival to the banquet." }
+    ]
+  }
+};
+
+// ── Name resolution for rivalry data (uses real MANAGERS IDs, not guessing) ──
+
+function normalizeName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const MANAGER_NAME_TO_ID = {};
+Object.entries(MANAGERS).forEach(([id, data]) => {
+  if (data?.name) MANAGER_NAME_TO_ID[normalizeName(data.name)] = id;
+});
+
+// Manual aliases for cases where rivalry data used an older nickname/real name
+// than the current MANAGERS entry. "David" -> The Dictator is INFERRED from
+// the year-over-year rivalry pattern (same recurring central figure), not
+// explicitly confirmed — verify and adjust if wrong.
+const MANAGER_NAME_ALIASES = {
+  david: '1211171582181912576' // The Dictator
+};
+
+function findManagerIdByName(name) {
+  const norm = normalizeName(name);
+  if (MANAGER_NAME_ALIASES[norm]) return MANAGER_NAME_ALIASES[norm];
+  if (MANAGER_NAME_TO_ID[norm]) return MANAGER_NAME_TO_ID[norm];
+  // Fallback: partial match, handles e.g. "Dictator" vs "The Dictator".
+  for (const [key, id] of Object.entries(MANAGER_NAME_TO_ID)) {
+    if (key.includes(norm) || norm.includes(key)) return id;
+  }
+  return null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -537,6 +609,185 @@ function deriveSeasonOutcomes(standings, weeklyResults, snap, year) {
   return { bowlWinners, runnerUp, regularSeasonLoser };
 }
 
+/**
+ * Resolves this season's Rivalry Week results from RIVALRY_WEEKS: matches
+ * each named pair to real manager IDs (via MANAGERS, not guesswork), finds
+ * that week's actual game result between them, and reports the winner. Any
+ * pair that couldn't be matched or resolved gets a visible note instead of
+ * silently guessing.
+ */
+function getRivalryResultsForYear(year, weeklyResults, managersSnapshot) {
+  const cfg = RIVALRY_WEEKS[String(year)];
+  if (!cfg) return null;
+
+  const results = cfg.pairs.map(pairRaw => {
+    const nameA = pairRaw.a;
+    const nameB = pairRaw.b;
+    const bet = pairRaw.bet || cfg.defaultBet || 'Stakes not recorded.';
+    const idA = findManagerIdByName(nameA);
+    const idB = findManagerIdByName(nameB);
+    const displayA = idA ? mgrName(idA, managersSnapshot) : nameA;
+    const displayB = idB ? mgrName(idB, managersSnapshot) : nameB;
+
+    let winnerName = null, loserName = null, resolved = false, note = null;
+
+    if (idA && idB) {
+      const game = (weeklyResults || []).find(r =>
+        String(r.year) === String(year) && r.week === cfg.week && !r.isPlayoffs &&
+        ((r.managerId === idA && r.opponentManagerId === idB) ||
+         (r.managerId === idB && r.opponentManagerId === idA))
+      );
+      if (game) {
+        let winnerId = null;
+        if (game.managerId === idA) winnerId = game.result === 'W' ? idA : game.result === 'L' ? idB : null;
+        else                        winnerId = game.result === 'W' ? idB : game.result === 'L' ? idA : null;
+        if (winnerId) {
+          resolved = true;
+          winnerName = mgrName(winnerId, managersSnapshot);
+          loserName  = winnerId === idA ? displayB : displayA;
+        } else {
+          note = `Week ${cfg.week} ${year} matchup ended in a tie — no clear winner.`;
+        }
+      } else {
+        note = `Could not find a Week ${cfg.week} ${year} matchup between these two managers — verify manually.`;
+      }
+    } else {
+      note = `Could not confidently match "${!idA ? nameA : nameB}" to a manager — verify manually.`;
+    }
+
+    return { displayA, displayB, bet, winnerName, loserName, resolved, note };
+  });
+
+  return { week: cfg.week, results };
+}
+
+/**
+ * Best/worst win for a manager this regular season. This is a heuristic, not
+ * an objective calculation — "best win" and "worst loss" are inherently
+ * judgment calls. Score = points scored, with a bonus for beating (or losing
+ * to) an opponent whose season record was notably better (or worse) —
+ * approximating "upset win" / "should never have lost that" framing.
+ */
+function getManagerBestWinWorstLoss(weeklyResults, standings, year, managerId, managersSnapshot) {
+  const mn = (id) => mgrName(id, managersSnapshot);
+  const games = (weeklyResults || []).filter(r =>
+    String(r.year) === String(year) && !r.isPlayoffs && r.managerId === managerId
+  );
+  const standingByMgr = {};
+  (standings || []).forEach(s => { standingByMgr[s.managerId] = s; });
+
+  const winPctFor = (mgrId) => {
+    const s = standingByMgr[mgrId]?.regularSeason;
+    if (!s) return null;
+    const gp = (s.wins || 0) + (s.losses || 0) + (s.ties || 0);
+    return gp > 0 ? (s.wins + 0.5 * s.ties) / gp : null;
+  };
+
+  const own = winPctFor(managerId);
+  let bestWin = null, bestScore = -Infinity;
+  let worstLoss = null, worstScore = -Infinity;
+
+  games.forEach(r => {
+    const opp = winPctFor(r.opponentManagerId);
+    if (r.result === 'W') {
+      const upsetBonus = (opp != null && own != null) ? Math.max(0, (opp - own) * 100) : 0;
+      const score = (r.pointsFor || 0) + upsetBonus;
+      if (score > bestScore) {
+        bestScore = score;
+        bestWin = {
+          week: r.week, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst,
+          opponent: mn(r.opponentManagerId), isUpset: upsetBonus > 15
+        };
+      }
+    } else if (r.result === 'L') {
+      const downsetBonus = (own != null && opp != null) ? Math.max(0, (own - opp) * 100) : 0;
+      const score = -(r.pointsFor || 0) + downsetBonus * 2;
+      if (score > worstScore) {
+        worstScore = score;
+        worstLoss = {
+          week: r.week, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst,
+          opponent: mn(r.opponentManagerId), isUpset: downsetBonus > 15
+        };
+      }
+    }
+  });
+
+  return { bestWin, worstLoss };
+}
+
+function getManagerBestWaiver(gradedTransactions, year, managerId) {
+  const waivers = (gradedTransactions || []).filter(tx =>
+    tx.type === 'waiver' && !tx.isPartOfComposite &&
+    String(tx.seasonKey || tx.season) === String(year) &&
+    tx.managerIds?.[0] === managerId && tx.grade?.par != null
+  );
+  if (!waivers.length) return null;
+  const best = waivers.reduce((a, b) => (b.grade.par > a.grade.par ? b : a));
+  return { name: best.grade.name, position: best.grade.position, par: best.grade.par, droppedName: best.grade.droppedName };
+}
+
+function getManagerBestTrade(gradedTransactions, year, managerId, managersSnapshot) {
+  const mn = (id) => mgrName(id, managersSnapshot);
+  const trades = (gradedTransactions || []).filter(tx =>
+    tx.type === 'trade' && String(tx.seasonKey || tx.season) === String(year)
+  );
+  let best = null;
+  trades.forEach(tx => {
+    if (tx.isComposite && tx.grade?.teamGrades) {
+      const entry = tx.grade.teamGrades.find(t => t.managerId === managerId);
+      if (entry && (!best || (entry.parTotal || 0) > best.parTotal)) {
+        best = { parTotal: entry.parTotal || 0, description: `Multi-team trade — ${signedFp(entry.parTotal)} PAR` };
+      }
+    } else if (!tx.isPartOfComposite && tx.grade?.side0 && tx.grade?.side1) {
+      const idx = tx.managerIds?.indexOf(managerId);
+      if (idx === 0 || idx === 1) {
+        const side = idx === 0 ? tx.grade.side0 : tx.grade.side1;
+        const otherMgr = mn(tx.managerIds?.[idx === 0 ? 1 : 0]);
+        const received = (side.players || []).map(p => `${p.name} (${p.position})`).join(', ') || 'nothing';
+        if (!best || (side.parTotal || 0) > best.parTotal) {
+          best = { parTotal: side.parTotal || 0, description: `Acquired ${received} from ${otherMgr} — ${signedFp(side.parTotal)} PAR` };
+        }
+      }
+    }
+  });
+  return best;
+}
+
+/**
+ * Builds the per-manager season recap table: everyone's best/worst draft
+ * pick, best waiver add, best trade, best win, worst loss, and SOS — a
+ * scannable "here's your year" reference, ranked by final placement.
+ */
+function computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year }) {
+  const mn = (id) => mgrName(id, managersSnapshot);
+  const draftByManager = {};
+  (draftEndOfSeasonGrade?.teamRankings || []).forEach(t => { draftByManager[t.managerId] = t; });
+
+  const sorted = [...(standings || [])].sort((a, b) => (a.finalPlacement || 99) - (b.finalPlacement || 99));
+
+  return sorted.map(team => {
+    const managerId = team.managerId;
+    const draftTeam = draftByManager[managerId];
+    const waiver = getManagerBestWaiver(gradedTransactions, year, managerId);
+    const trade  = getManagerBestTrade(gradedTransactions, year, managerId, managersSnapshot);
+    const { bestWin, worstLoss } = getManagerBestWinWorstLoss(weeklyResults, standings, year, managerId, managersSnapshot);
+    const sos = seasonSOS?.[managerId];
+
+    return {
+      managerId,
+      displayName: mn(managerId),
+      finalPlacement: team.finalPlacement,
+      bestDraftPick: draftTeam?.bestPick || null,
+      worstDraftPick: draftTeam?.worstPick || null,
+      bestWaiver: waiver,
+      bestTrade: trade,
+      bestWin, worstLoss,
+      sosLabel: sos?.luckLabel || null,
+      avgOppWinPct: sos?.avgOpponentWinPct ?? null
+    };
+  });
+}
+
 // ── League context ────────────────────────────────────────────────────────────
 
 export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
@@ -555,11 +806,12 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Playoffs: weeks 15-17. Championship bracket = top 6 regular-season teams, playing for final placements #1-6. Consolation bracket = bottom 6 teams, playing for final placements #7-12');
   lines.push('- **Bowl Games** — every odd-numbered final placement from 1st through 11th has its own named bowl with its own reward. Use these names/rewards exactly, they are league canon:');
   Object.entries(BOWL_DEFINITIONS).forEach(([placement, b]) => {
-    lines.push(`  - **${b.name}** (${placement}${placement === '1' ? 'st' : placement === '3' ? 'rd' : 'th'} Place): ${b.reward}`);
+    const suffix = placement === '1' ? 'st' : placement === '3' ? 'rd' : 'th';
+    lines.push(`  - ${b.emoji} **${b.name}** (${placement}${suffix} Place): ${b.reward}`);
   });
   lines.push('- **Regular Season Last Place** ("the actual loser of the league" — judged on regular-season record only, independent of how they finish in the consolation bracket): buys the champion\'s name bracket for the trophy, is beer bitch at the next draft, and performs that year\'s specific punishment (varies year to year — see the Regular Season Loser Punishments list below)');
   lines.push('- **Landmines** (a draft-night game, occurs at the NEXT draft after this season ends): before the draft, whoever holds the 1st overall pick secretly writes down one player ranked 1-10 (by ADP/consensus rank) on an index card; the 2nd pick writes down a player ranked 11-20; the 3rd pick a player ranked 21-30; and so on in bands of 10 for later pick slots (this pattern for picks 4+ is inferred, not explicitly confirmed). If the written-down player gets drafted by anyone during the draft, the landmine holder announces it, and whoever drafted that player must finish their beer or take a shot on the spot. Several bowl rewards modify landmines for their winner (extra landmines, redirect, skip, etc. — see Bowl Games above)');
-  lines.push('- **Rivalry Week**: each manager has a designated rival set at the draft; results carry extra bragging rights and a bet is placed between rivals');
+  lines.push('- **Rivalry Week**: rivals and the stakes they bet are set fresh each year — see the Rivalry Week Results section in the season data for who faced whom, what they bet, and who won');
   lines.push('- **House Rule — The Chug Rule**: any manager who STARTS a player who scores 0 or negative points that week owes a shotgun/chug before the next week starts. Multiple qualifying starters in the same week = multiple chugs. A running season tally is included in the standings and power rankings tables.');
   lines.push('');
   lines.push('## Regular Season Loser Punishments By Year');
@@ -589,7 +841,8 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, trade header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> — they don\'t render reliably in most viewers.');
   lines.push('- Never include internal methodology, weighting formulas, or calculation notes anywhere in the article — those are for internal computation only, never narrative content.');
   lines.push('- Where the data hands you pre-built bolded lines (game headers, matchup preview blocks), reproduce them EXACTLY as given, each on its own line, preserving any blank lines between them — do not merge them into a paragraph or run them together with spaces.');
-  lines.push('- Bowl names and rewards, and the regular season loser\'s punishment, are league canon — use them exactly as given in the data, never invent your own.');
+  lines.push('- Bowl names/rewards, the regular season loser\'s punishment, and Rivalry Week results are league canon — use them exactly as given in the data, never invent your own.');
+  lines.push('- Don\'t repeat the same specific facts (a stat, a result, an award winner) across multiple sections of the same article. Each section covers its own ground — if something is covered in a dedicated section later, don\'t pre-empt it earlier in vaguer form.');
   lines.push('');
   lines.push('## Metrics Glossary');
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
@@ -628,7 +881,7 @@ export function exportSeasonStats({
 
   const bw = outcomes?.bowlWinners || {};
   if (bw[1]) {
-    lines.push(`- 🏆 **${bw[1].name}**: ${bw[1].displayName} — ${bw[1].reward}`);
+    lines.push(`- ${bw[1].emoji} **${bw[1].name}**: ${bw[1].displayName} — ${bw[1].reward}`);
   } else {
     lines.push('- 🏆 **National Liver Failure League Championship**: Not yet determined');
   }
@@ -637,7 +890,7 @@ export function exportSeasonStats({
   }
   [3, 5, 7, 9, 11].forEach(placement => {
     const b = bw[placement];
-    if (b) lines.push(`- 🎖️ **${b.name}** (${placement}th Place): ${b.displayName} — ${b.reward}`);
+    if (b) lines.push(`- ${b.emoji} **${b.name}** (${placement}th Place): ${b.displayName} — ${b.reward}`);
   });
   if (outcomes?.regularSeasonLoser) {
     const l = outcomes.regularSeasonLoser;
@@ -647,13 +900,18 @@ export function exportSeasonStats({
     lines.push('- 💀 **Regular Season Last Place**: Not available in data');
   }
 
-  const rivalries = getSeasonRivalries(year, managersSnapshot);
-  if (rivalries.length > 0) {
+  const rivalryInfo = getRivalryResultsForYear(year, weeklyResults, managersSnapshot);
+  if (rivalryInfo) {
     lines.push('');
-    lines.push('## Rivalry Week Stakes');
+    lines.push(`## Rivalry Week Results (Week ${rivalryInfo.week})`);
+    lines.push('*Winner is derived from that week\'s actual matchup result. A note means the name-matching or result lookup was uncertain — double check manually.*');
     lines.push('');
-    rivalries.forEach(r => {
-      lines.push(`- **${r.managerA} vs ${r.managerB}**: ${r.bet}`);
+    rivalryInfo.results.forEach(r => {
+      if (r.resolved) {
+        lines.push(`- **${r.displayA} vs ${r.displayB}**: ${r.winnerName} won. Stakes: ${r.bet} → ${r.loserName} owes it.`);
+      } else {
+        lines.push(`- **${r.displayA} vs ${r.displayB}**: Stakes: ${r.bet}${r.note ? ` (${r.note})` : ''}`);
+      }
     });
   }
 
@@ -695,7 +953,7 @@ export function exportSeasonStats({
     lines.push('|-------------|---------|-------|');
     sortedByFinal.forEach(team => {
       const b = BOWL_DEFINITIONS[team.finalPlacement];
-      const note = b ? `🎖️ ${b.name}` : (team.finalPlacement === 2 ? '🥈 Runner-Up' : '');
+      const note = b ? `${b.emoji} ${b.name}` : (team.finalPlacement === 2 ? '🥈 Runner-Up' : '');
       lines.push(`| #${team.finalPlacement} | **${mn(team.managerId)}** | ${note} |`);
     });
   } else {
@@ -816,6 +1074,27 @@ export function exportSeasonStats({
       .forEach(({ id, data }) => {
         lines.push(`| ${mn(id)} | ${fp(data.fpts)} | ${fp(data.ppts)} | ${pct(data.lineupIQ)} |`);
       });
+  }
+
+  const cards = computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year });
+  if (cards.length > 0) {
+    lines.push('');
+    lines.push('## Manager Season Recap Cards');
+    lines.push('*Ranked by final placement. This is a scannable reference so every manager can see their own year at a glance — reproduce as a table, don\'t narrate every row.*');
+    lines.push('');
+    lines.push('| Place | Manager | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss | SOS |');
+    lines.push('|-------|---------|------------------|-------------------|------------------|------------|----------|-------------|-----|');
+    cards.forEach(c => {
+      const place = c.finalPlacement != null ? `#${c.finalPlacement}` : '—';
+      const bestPick = c.bestDraftPick ? `${c.bestDraftPick.playerName} (Rd ${c.bestDraftPick.round}, ${signedFp(c.bestDraftPick.adjustedPAR)} PAR)` : '—';
+      const worstPick = c.worstDraftPick ? `${c.worstDraftPick.playerName} (Rd ${c.worstDraftPick.round}, ${signedFp(c.worstDraftPick.adjustedPAR)} PAR)` : '—';
+      const bestWaiver = c.bestWaiver ? `${c.bestWaiver.name} (${c.bestWaiver.position}, ${signedFp(c.bestWaiver.par)} PAR)` : '—';
+      const bestTrade = c.bestTrade ? c.bestTrade.description : 'Refused To Trade With Anyone';
+      const bestWin = c.bestWin ? `Wk${c.bestWin.week}: ${fp(c.bestWin.pointsFor)}-${fp(c.bestWin.pointsAgainst)} vs ${c.bestWin.opponent}${c.bestWin.isUpset?' (upset!)':''}` : '—';
+      const worstLoss = c.worstLoss ? `Wk${c.worstLoss.week}: ${fp(c.worstLoss.pointsFor)}-${fp(c.worstLoss.pointsAgainst)} vs ${c.worstLoss.opponent}${c.worstLoss.isUpset?' (bad loss)':''}` : '—';
+      const sos = `${c.sosLabel || '—'}${c.avgOppWinPct != null ? ` (opp win% ${pct(c.avgOppWinPct)})` : ''}`;
+      lines.push(`| ${place} | ${c.displayName} | ${bestPick} | ${worstPick} | ${bestWaiver} | ${bestTrade} | ${bestWin} | ${worstLoss} | ${sos} |`);
+    });
   }
 
   return lines.join('\n');
@@ -1414,22 +1693,22 @@ RULES:
 - REAL NAMES only
 - LETTER GRADES ONLY
 - Back every claim with specific numbers
-- Bowl names/rewards and the regular season loser's punishment are league canon — pull them from the data exactly, never invent your own
-- Reference rivalry results and what losers owe
+- Bowl names/rewards, the regular season loser's punishment, and Rivalry Week results are league canon — pull them from the data exactly, never invent your own
+- CRITICAL — avoid repetition: this article has dedicated sections for outcomes, trades, waivers, draft, and awards. Once a specific fact (a stat, a result, a specific player/trade/pickup) has its own section below, don't also plant it earlier in vaguer form. Say each specific thing ONCE, in its proper section.
 
 STRUCTURE:
 
-**Season Narrative** (~200 words) — arc, turning points, who collapsed, what happened
+**Season Narrative** (~150 words) — big-picture arc and tone ONLY: was it a runaway, a dogfight, a rebuild, total chaos? Describe turning points in general narrative terms (e.g. "everything changed around week 8") WITHOUT naming the specific champion, bowl winners, specific trades, specific waiver pickups, or specific award winners — all of those get their own sections below, and naming them here is redundant. Think "previously on..." teaser, not the full recap.
 
 **Final Outcomes** — copy directly from the data's "Season Outcomes" section: the championship winner (with the $1000/trophy/eternal glory bit), the runner-up, every bowl winner (3rd/5th/7th/9th/11th) named and with their exact reward, and the regular season's last place team (the actual loser of the league) with their record and PPG. Give the last place team the full autopsy — mock them specifically, and lay out their punishment (buying the champion's name bracket, being beer bitch at the draft, and this year's specific punishment) in gleeful detail.
 
-**Rivalry Week Results** — who won each bet, what the loser owes, appropriate trash talk
+**Rivalry Week Results** — use the "Rivalry Week Results" section from the data directly, it already tells you who won each pair and what the loser owes. Don't guess at winners yourself — if the data flags a pair as unresolved, just note the stakes without declaring a winner.
 
 **Most Lopsided Trades** — use the "Most Lopsided Trades This Season" list from the data directly. For each, name both sides, what they gave up, and who clearly won the trade and by how much (PAR gap)
 
 **Top Waiver Pickups (Season)** — use the "Top Waiver Pickups This Season" list from the data. Call out the #1 pickup specifically and explain the season-long impact in plain language
 
-**Draft Report Card** — whose draft held up, whose collapsed, specific busts/steals by player name
+**Draft Report Card** — use the league-wide "Top Draft Steals" and "Biggest Draft Busts" data for standout call-outs. Don't restate every single manager's individual best/worst pick here — that's covered in the Manager Season Recap Cards table below, this section is for the league-wide extremes only.
 
 **Season Awards** — pull these directly from the "Season Superlatives (Pre-computed)" data, don't recompute or guess:
 🏆 Best Manager (data-backed — can win and still have a mediocre grade, call that out)
@@ -1444,6 +1723,8 @@ STRUCTURE:
 🍺 Chug King (most cumulative chugs on the season)
 🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
+
+**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
 `.trim()
 
 };
