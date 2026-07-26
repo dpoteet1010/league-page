@@ -577,7 +577,10 @@
           managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
           managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
           managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-          rosterStats, managersSnapshot: snap
+          rosterStats, managersSnapshot: snap,
+          gradedTransactions,
+          playerResults:     allTimeHistory?.playerResults  || [],
+          rosterToManagerId: seasonData?.rosterToManagerId  || {}
         });
         title = 'current_season.md';
 
@@ -626,7 +629,10 @@
           managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
           managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
           managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-          rosterStats, managersSnapshot: snap
+          rosterStats, managersSnapshot: snap,
+          gradedTransactions,
+          playerResults:     allTimeHistory?.playerResults  || [],
+          rosterToManagerId: seasonData?.rosterToManagerId  || {}
         });
         text = exportPreDraftPackage({
           year:               Number(yearStr) + 1,
@@ -670,7 +676,10 @@
       managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
       managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
       managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-      rosterStats, managersSnapshot: snap
+      rosterStats, managersSnapshot: snap,
+      gradedTransactions,
+      playerResults:     allTimeHistory?.playerResults  || [],
+      rosterToManagerId: seasonData?.rosterToManagerId  || {}
     });
 
     try {
