@@ -25,6 +25,8 @@ const BOWL_DEFINITIONS = {
   11: { name: "Bartender's Choice Bowl", emoji: '🍸', reward: 'Winner gets to pick the shot the league takes at the next draft.' }
 };
 
+const RUNNER_UP_REWARD = 'Wins $200.';
+
 // ── Rivalry Week data by year ────────────────────────────────────────────────
 // Rivals and their bets change every year — enter each season's matchups here
 // once the rivals/bets are set at the draft. "week" is the actual NFL/league
@@ -517,10 +519,26 @@ function getTopSeasonWaiverPickups(gradedTransactions, year, managersSnapshot, l
 }
 
 /**
+ * Ranks every manager's schedule strength this season, 1 (easiest, lowest
+ * average opponent points allowed) through N (hardest, highest average
+ * opponent points). Replaces the old "luckiest/unluckiest" superlative pick
+ * with a full ranking, since strength of schedule and luck aren't quite the
+ * same thing and a full list is more useful than picking two extremes.
+ */
+function computeSOSRanking(seasonSOS) {
+  const entries = Object.entries(seasonSOS || {})
+    .filter(([, data]) => data.avgOpponentPts != null)
+    .sort(([, a], [, b]) => a.avgOpponentPts - b.avgOpponentPts);
+  const rankByManager = {};
+  entries.forEach(([id], idx) => { rankByManager[id] = idx + 1; });
+  return { rankByManager, total: entries.length };
+}
+
+/**
  * Pre-computes the season's superlative award winners so the LLM doesn't
  * have to hunt through raw tables and risk picking wrong.
  */
-function computeSuperlatives({ managerTradePAR, managerWaiverPAR, seasonSOS, chugTally, managersSnapshot }) {
+function computeSuperlatives({ managerTradePAR, managerWaiverPAR, chugTally, managersSnapshot }) {
   const mn = (id) => mgrName(id, managersSnapshot);
 
   const pick = (obj, isBetter) => {
@@ -538,20 +556,7 @@ function computeSuperlatives({ managerTradePAR, managerWaiverPAR, seasonSOS, chu
   const worstWaiver = pick(managerWaiverPAR, (a, b) => a < b);
   const chugKing     = pick(chugTally, (a, b) => a > b);
 
-  let unluckiest = null, luckiest = null;
-  if (seasonSOS) {
-    Object.entries(seasonSOS).forEach(([id, data]) => {
-      if (data.luck == null) return;
-      if (!unluckiest || data.luck < unluckiest.value) {
-        unluckiest = { managerId: id, displayName: mn(id), value: data.luck, label: data.luckLabel };
-      }
-      if (!luckiest || data.luck > luckiest.value) {
-        luckiest = { managerId: id, displayName: mn(id), value: data.luck, label: data.luckLabel };
-      }
-    });
-  }
-
-  return { bestTrader, worstTrader, bestWaiver, worstWaiver, chugKing, unluckiest, luckiest };
+  return { bestTrader, worstTrader, bestWaiver, worstWaiver, chugKing };
 }
 
 /**
@@ -755,10 +760,10 @@ function getManagerBestTrade(gradedTransactions, year, managerId, managersSnapsh
 
 /**
  * Builds the per-manager season recap table: everyone's best/worst draft
- * pick, best waiver add, best trade, best win, worst loss, and SOS — a
+ * pick, best waiver add, best trade, best win, worst loss, and SOS rank — a
  * scannable "here's your year" reference, ranked by final placement.
  */
-function computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year }) {
+function computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, sosRanking, managersSnapshot, year }) {
   const mn = (id) => mgrName(id, managersSnapshot);
   const draftByManager = {};
   (draftEndOfSeasonGrade?.teamRankings || []).forEach(t => { draftByManager[t.managerId] = t; });
@@ -782,7 +787,8 @@ function computeManagerSeasonCards({ standings, weeklyResults, gradedTransaction
       bestWaiver: waiver,
       bestTrade: trade,
       bestWin, worstLoss,
-      sosLabel: sos?.luckLabel || null,
+      sosRank: sosRanking?.rankByManager?.[managerId] ?? null,
+      sosTotal: sosRanking?.total ?? null,
       avgOppWinPct: sos?.avgOpponentWinPct ?? null
     };
   });
@@ -809,6 +815,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
     const suffix = placement === '1' ? 'st' : placement === '3' ? 'rd' : 'th';
     lines.push(`  - ${b.emoji} **${b.name}** (${placement}${suffix} Place): ${b.reward}`);
   });
+  lines.push(`- **Runner-Up** (2nd Place): ${RUNNER_UP_REWARD}`);
   lines.push('- **Regular Season Last Place** ("the actual loser of the league" — judged on regular-season record only, independent of how they finish in the consolation bracket): buys the champion\'s name bracket for the trophy, is beer bitch at the next draft, and performs that year\'s specific punishment (varies year to year — see the Regular Season Loser Punishments list below)');
   lines.push('- **Landmines** (a draft-night game, occurs at the NEXT draft after this season ends): before the draft, whoever holds the 1st overall pick secretly writes down one player ranked 1-10 (by ADP/consensus rank) on an index card; the 2nd pick writes down a player ranked 11-20; the 3rd pick a player ranked 21-30; and so on in bands of 10 for later pick slots (this pattern for picks 4+ is inferred, not explicitly confirmed). If the written-down player gets drafted by anyone during the draft, the landmine holder announces it, and whoever drafted that player must finish their beer or take a shot on the spot. Several bowl rewards modify landmines for their winner (extra landmines, redirect, skip, etc. — see Bowl Games above)');
   lines.push('- **Rivalry Week**: rivals and the stakes they bet are set fresh each year — see the Rivalry Week Results section in the season data for who faced whom, what they bet, and who won');
@@ -848,7 +855,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
   lines.push('- **Adjusted Draft PAR**: draft PAR minus expected PAR for that round');
   lines.push('- **Lineup IQ**: actual pts scored ÷ maximum possible pts. Higher = better lineup decisions');
-  lines.push('- **SOS**: Strength of Schedule — avg opponent scoring and win % faced');
+  lines.push('- **SOS Rank**: Strength of Schedule rank, 1 = easiest schedule faced (lowest average opponent points), higher = harder');
   lines.push('- **Luck**: actual win% minus expected win% based on weekly score vs all other scores');
   lines.push('- **Manager Grade**: Draft 40% + Trades 20% + Waivers 20% + Lineup IQ 20%. C = league average');
   lines.push('- **PPG**: Points Per Game — regular season total points ÷ regular season games played, through the most recent completed week');
@@ -872,6 +879,7 @@ export function exportSeasonStats({
   const seasonChugTally = (playerResults && rosterToManagerId)
     ? computeChugTally(playerResults, year, 99, rosterToManagerId)
     : {};
+  const sosRanking = computeSOSRanking(seasonSOS);
 
   lines.push(`# NLFL ${year} Season — Full Data`);
   lines.push('');
@@ -886,7 +894,7 @@ export function exportSeasonStats({
     lines.push('- 🏆 **National Liver Failure League Championship**: Not yet determined');
   }
   if (outcomes?.runnerUp) {
-    lines.push(`- 🥈 **Runner-Up**: ${outcomes.runnerUp.displayName}`);
+    lines.push(`- 🥈 **Runner-Up**: ${outcomes.runnerUp.displayName} — ${RUNNER_UP_REWARD}`);
   }
   [3, 5, 7, 9, 11].forEach(placement => {
     const b = bw[placement];
@@ -988,13 +996,14 @@ export function exportSeasonStats({
   if (seasonSOS) {
     lines.push('');
     lines.push('## Strength of Schedule');
+    lines.push('*Rank 1 = easiest schedule faced (lowest average opponent points), higher rank = harder.*');
     lines.push('');
-    lines.push('| Manager | Avg Opp Pts | Avg Opp Win% | Luck | Label |');
-    lines.push('|---------|-------------|--------------|------|-------|');
+    lines.push('| SOS Rank | Manager | Avg Opp Pts | Avg Opp Win% | Luck |');
+    lines.push('|----------|---------|-------------|--------------|------|');
     Object.entries(seasonSOS)
-      .sort(([,a],[,b]) => b.avgOpponentPts - a.avgOpponentPts)
-      .forEach(([id, data]) => {
-        lines.push(`| ${mn(id)} | ${fp(data.avgOpponentPts)} | ${data.avgOpponentWinPct!=null?pct(data.avgOpponentWinPct):'—'} | ${data.luck!=null?signedFp(data.luck*100,1)+'%':'—'} | ${data.luckLabel||'—'} |`);
+      .sort(([,a],[,b]) => a.avgOpponentPts - b.avgOpponentPts)
+      .forEach(([id, data], idx) => {
+        lines.push(`| #${idx+1} | ${mn(id)} | ${fp(data.avgOpponentPts)} | ${data.avgOpponentWinPct!=null?pct(data.avgOpponentWinPct):'—'} | ${data.luck!=null?signedFp(data.luck*100,1)+'%':'—'} |`);
       });
   }
 
@@ -1026,13 +1035,11 @@ export function exportSeasonStats({
   lines.push('');
   lines.push('## Season Superlatives (Pre-computed — use these, don\'t recompute)');
   lines.push('');
-  const sup = computeSuperlatives({ managerTradePAR, managerWaiverPAR, seasonSOS, chugTally: seasonChugTally, managersSnapshot });
+  const sup = computeSuperlatives({ managerTradePAR, managerWaiverPAR, chugTally: seasonChugTally, managersSnapshot });
   if (sup.bestTrader)  lines.push(`- 🤝 **Best Trader**: ${sup.bestTrader.displayName} (${signedFp(sup.bestTrader.value)} total trade PAR)`);
   if (sup.worstTrader) lines.push(`- 🐟 **Worst Trader**: ${sup.worstTrader.displayName} (${signedFp(sup.worstTrader.value)} total trade PAR)`);
   if (sup.bestWaiver)  lines.push(`- 🎣 **Best Waiver Manager**: ${sup.bestWaiver.displayName} (${signedFp(sup.bestWaiver.value)} total waiver PAR)`);
   if (sup.worstWaiver) lines.push(`- 🗑️ **Worst Waiver Manager**: ${sup.worstWaiver.displayName} (${signedFp(sup.worstWaiver.value)} total waiver PAR)`);
-  if (sup.luckiest)    lines.push(`- 🍀 **Luckiest Schedule**: ${sup.luckiest.displayName} (${sup.luckiest.label||'—'}, ${signedFp(sup.luckiest.value*100,1)}% luck)`);
-  if (sup.unluckiest)  lines.push(`- 🐍 **Unluckiest Schedule**: ${sup.unluckiest.displayName} (${sup.unluckiest.label||'—'}, ${signedFp(sup.unluckiest.value*100,1)}% luck)`);
   if (sup.chugKing)    lines.push(`- 🍺 **Chug King**: ${sup.chugKing.displayName} (${sup.chugKing.value} chugs this season)`);
 
   if (draftEndOfSeasonGrade) {
@@ -1076,14 +1083,14 @@ export function exportSeasonStats({
       });
   }
 
-  const cards = computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year });
+  const cards = computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, sosRanking, managersSnapshot, year });
   if (cards.length > 0) {
     lines.push('');
     lines.push('## Manager Season Recap Cards');
     lines.push('*Ranked by final placement. This is a scannable reference so every manager can see their own year at a glance — reproduce as a table, don\'t narrate every row.*');
     lines.push('');
-    lines.push('| Place | Manager | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss | SOS |');
-    lines.push('|-------|---------|------------------|-------------------|------------------|------------|----------|-------------|-----|');
+    lines.push('| Place | Manager | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss | SOS Rank |');
+    lines.push('|-------|---------|------------------|-------------------|------------------|------------|----------|-------------|----------|');
     cards.forEach(c => {
       const place = c.finalPlacement != null ? `#${c.finalPlacement}` : '—';
       const bestPick = c.bestDraftPick ? `${c.bestDraftPick.playerName} (Rd ${c.bestDraftPick.round}, ${signedFp(c.bestDraftPick.adjustedPAR)} PAR)` : '—';
@@ -1092,7 +1099,7 @@ export function exportSeasonStats({
       const bestTrade = c.bestTrade ? c.bestTrade.description : 'Refused To Trade With Anyone';
       const bestWin = c.bestWin ? `Wk${c.bestWin.week}: ${fp(c.bestWin.pointsFor)}-${fp(c.bestWin.pointsAgainst)} vs ${c.bestWin.opponent}${c.bestWin.isUpset?' (upset!)':''}` : '—';
       const worstLoss = c.worstLoss ? `Wk${c.worstLoss.week}: ${fp(c.worstLoss.pointsFor)}-${fp(c.worstLoss.pointsAgainst)} vs ${c.worstLoss.opponent}${c.worstLoss.isUpset?' (bad loss)':''}` : '—';
-      const sos = `${c.sosLabel || '—'}${c.avgOppWinPct != null ? ` (opp win% ${pct(c.avgOppWinPct)})` : ''}`;
+      const sos = c.sosRank != null ? `#${c.sosRank}${c.sosTotal?`/${c.sosTotal}`:''}${c.avgOppWinPct != null ? ` (opp win% ${pct(c.avgOppWinPct)})` : ''}` : '—';
       lines.push(`| ${place} | ${c.displayName} | ${bestPick} | ${worstPick} | ${bestWaiver} | ${bestTrade} | ${bestWin} | ${worstLoss} | ${sos} |`);
     });
   }
@@ -1700,7 +1707,7 @@ STRUCTURE:
 
 **Season Narrative** (~150 words) — big-picture arc and tone ONLY: was it a runaway, a dogfight, a rebuild, total chaos? Describe turning points in general narrative terms (e.g. "everything changed around week 8") WITHOUT naming the specific champion, bowl winners, specific trades, specific waiver pickups, or specific award winners — all of those get their own sections below, and naming them here is redundant. Think "previously on..." teaser, not the full recap.
 
-**Final Outcomes** — copy directly from the data's "Season Outcomes" section: the championship winner (with the $1000/trophy/eternal glory bit), the runner-up, every bowl winner (3rd/5th/7th/9th/11th) named and with their exact reward, and the regular season's last place team (the actual loser of the league) with their record and PPG. Give the last place team the full autopsy — mock them specifically, and lay out their punishment (buying the champion's name bracket, being beer bitch at the draft, and this year's specific punishment) in gleeful detail.
+**Final Outcomes** — copy directly from the data's "Season Outcomes" section: the championship winner (with the $1000/trophy/eternal glory bit), the runner-up (with the $200), every bowl winner (3rd/5th/7th/9th/11th) named and with their exact reward, and the regular season's last place team (the actual loser of the league) with their record and PPG. Give the last place team the full autopsy — mock them specifically, and lay out their punishment (buying the champion's name bracket, being beer bitch at the draft, and this year's specific punishment) in gleeful detail.
 
 **Rivalry Week Results** — use the "Rivalry Week Results" section from the data directly, it already tells you who won each pair and what the loser owes. Don't guess at winners yourself — if the data flags a pair as unresolved, just note the stakes without declaring a winner.
 
@@ -1713,8 +1720,6 @@ STRUCTURE:
 **Season Awards** — pull these directly from the "Season Superlatives (Pre-computed)" data, don't recompute or guess:
 🏆 Best Manager (data-backed — can win and still have a mediocre grade, call that out)
 📈 Most Improved
-🍀 Luckiest Schedule
-🐍 Unluckiest Schedule
 🧠 Lineup Genius (best IQ — the one guy who actually watched his team)
 🤝 Trade Shark (best trader all season)
 🐟 Sold For Parts (worst trader all season)
@@ -1723,6 +1728,8 @@ STRUCTURE:
 🍺 Chug King (most cumulative chugs on the season)
 🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
+
+**Strength of Schedule Rankings** — copy the "Strength of Schedule" table from the data exactly as given (already ranked #1 easiest through #12 hardest). One or two sentences max — call out whoever had it easiest and whoever had it hardest, no per-team commentary.
 
 **Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
 `.trim()
