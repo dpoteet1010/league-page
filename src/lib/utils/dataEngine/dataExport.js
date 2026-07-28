@@ -791,10 +791,27 @@ function getManagerBestTrade(gradedTransactions, year, managerId, managersSnapsh
 }
 
 /**
+ * Converts a manager's expected win rate (from strengthOfSchedule.js) into
+ * an expected W-L record over the same number of games they actually played,
+ * so it can be shown alongside their real record ("8-6 (Should be 10-4)").
+ * Expected wins is rounded to the nearest whole win; there's no concept of
+ * an "expected tie" in the underlying win-probability math, so only the
+ * actual record (shown alongside) can include a real tie.
+ */
+function computeExpectedRecord(sos, wins, losses, ties) {
+  if (!sos || sos.expectedWinRate == null) return null;
+  const gp = (wins || 0) + (losses || 0) + (ties || 0);
+  if (gp <= 0) return null;
+  const expectedWins = Math.round(sos.expectedWinRate * gp);
+  const expectedLosses = gp - expectedWins;
+  return { expectedWins, expectedLosses, gamesPlayed: gp };
+}
+
+/**
  * Builds the per-manager season recap table: everyone's best/worst draft
- * pick, best waiver add, best trade, best win, worst loss, and SOS (the
- * luck label + luck % from Strength of Schedule) — a scannable "here's your
- * year" reference, ranked by final placement.
+ * pick, best waiver add, best trade, best win, worst loss, and expected
+ * record — a scannable "here's your year" reference, ranked by final
+ * placement.
  */
 function computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year }) {
   const mn = (id) => mgrName(id, managersSnapshot);
@@ -810,6 +827,7 @@ function computeManagerSeasonCards({ standings, weeklyResults, gradedTransaction
     const trade  = getManagerBestTrade(gradedTransactions, year, managerId, managersSnapshot);
     const { bestWin, worstLoss } = getManagerBestWinWorstLoss(weeklyResults, standings, year, managerId, managersSnapshot);
     const sos = seasonSOS?.[managerId];
+    const rs = team.regularSeason || {};
 
     return {
       managerId,
@@ -820,8 +838,8 @@ function computeManagerSeasonCards({ standings, weeklyResults, gradedTransaction
       bestWaiver: waiver,
       bestTrade: trade,
       bestWin, worstLoss,
-      sosLabel: sos?.luckLabel ?? null,
-      luckPct: sos?.luck ?? null
+      actualRecord: { wins: rs.wins || 0, losses: rs.losses || 0, ties: rs.ties || 0 },
+      expectedRecord: computeExpectedRecord(sos, rs.wins, rs.losses, rs.ties)
     };
   });
 }
@@ -880,6 +898,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, trade header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> — they don\'t render reliably in most viewers.');
   lines.push('- Never include internal methodology, weighting formulas, or calculation notes anywhere in the article — those are for internal computation only, never narrative content.');
   lines.push('- Where the data hands you pre-built bolded lines (game headers, matchup preview blocks), reproduce them EXACTLY as given, each on its own line, preserving any blank lines between them — do not merge them into a paragraph or run them together with spaces.');
+  lines.push('- **Bulleted data blocks (Season Outcomes, Rivalry Week Results, and similar) MUST stay as separate bullet points, each with its given icon and bold label — never collapse them into flowing paragraph prose.** This has been a recurring compliance issue; be careful here specifically.');
   lines.push('- Bowl names/rewards, the regular season loser\'s punishment, and Rivalry Week results are league canon — use them exactly as given in the data, never invent your own.');
   lines.push('- Don\'t repeat the same specific facts (a stat, a result, an award winner) across multiple sections of the same article. Each section covers its own ground — if something is covered in a dedicated section later, don\'t pre-empt it earlier in vaguer form.');
   lines.push('');
@@ -887,7 +906,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **PAR**: Points Above Replacement — how much a player/pickup/trade exceeded a freely available alternative');
   lines.push('- **Adjusted Draft PAR**: draft PAR minus expected PAR for that round');
   lines.push('- **Lineup IQ**: actual pts scored ÷ maximum possible pts. Higher = better lineup decisions');
-  lines.push('- **Luck**: actual win% minus expected win% based on weekly score vs all other scores — shown per manager in the Manager Season Recap Cards table');
+  lines.push('- **Expected Record**: what a manager\'s win-loss record "should" have been based on how their weekly score stacked up against the whole league each week, shown alongside their actual record (e.g. "8-6 (Should be 10-4)") — a way of showing luck as a record instead of a percentage. Shown per manager in the Manager Season Recap Cards table');
   lines.push('- **Manager Grade**: Draft 40% + Trades 20% + Waivers 20% + Lineup IQ 20%. C = league average');
   lines.push('- **PPG**: Points Per Game — regular season total points ÷ regular season games played, through the most recent completed week');
   lines.push('- **Odds**: American/moneyline format (e.g. -150 favorite, +130 underdog) derived from each team\'s season PPG — a fun estimate, not a real projection model');
@@ -914,7 +933,7 @@ export function exportSeasonStats({
   lines.push(`# NLFL ${year} Season — Full Data`);
   lines.push('');
   lines.push('## Season Outcomes');
-  lines.push('*Derived from final placements and regular-season records. Bowl names/rewards and the regular season loser\'s punishment are league canon — use them exactly, don\'t invent your own. Use as ground truth.*');
+  lines.push('*Derived from final placements and regular-season records. Bowl names/rewards and the regular season loser\'s punishment are league canon — use them exactly, don\'t invent your own. EACH LINE BELOW IS ITS OWN BULLET (icon + bold label) — reproduce as separate bullet points, never merge into paragraph prose. Use as ground truth.*');
   lines.push('');
 
   const bw = outcomes?.bowlWinners || {};
@@ -934,8 +953,7 @@ export function exportSeasonStats({
     const l = outcomes.regularSeasonLoser;
     const championName = bw[1]?.displayName || null;
     const championPossessive = championName ? `${championName}'s` : "the champion's";
-    lines.push(`- 💀 **Regular Season Last Place** (the actual loser of the league — based on regular season record, not final bracket placement): ${l.displayName} (${l.wins}-${l.losses}${l.ties > 0 ? `-${l.ties}` : ''}, ${l.ppg!=null?fp(l.ppg):'—'} ppg)`);
-    lines.push(`  Consequences: buys ${championPossessive} name bracket for the trophy, is beer bitch at the next draft, and this year's specific punishment — ${l.punishment}`);
+    lines.push(`- 💀 **Regular Season Last Place** (the actual loser of the league — based on regular season record, not final bracket placement): ${l.displayName} (${l.wins}-${l.losses}${l.ties > 0 ? `-${l.ties}` : ''}, ${l.ppg!=null?fp(l.ppg):'—'} ppg). Consequences: buys ${championPossessive} name bracket for the trophy, is beer bitch at the next draft, and this year's specific punishment — ${l.punishment}`);
   } else {
     lines.push('- 💀 **Regular Season Last Place**: Not available in data');
   }
@@ -944,7 +962,7 @@ export function exportSeasonStats({
   if (rivalryInfo) {
     lines.push('');
     lines.push(`## Rivalry Week Results (Week ${rivalryInfo.week})`);
-    lines.push('*Names are already substituted into the bet text below — reproduce as-is. A note means the name-matching or result lookup was uncertain — double check manually.*');
+    lines.push('*Names are already substituted into the bet text below — reproduce as-is, as separate bullet points. A note means the name-matching or result lookup was uncertain — double check manually.*');
     lines.push('');
     rivalryInfo.results.forEach(r => {
       if (r.resolved) {
@@ -1108,8 +1126,8 @@ export function exportSeasonStats({
     lines.push('## Manager Season Recap Cards');
     lines.push('*Ranked by final placement. This is a scannable reference so every manager can see their own year at a glance — reproduce as a table, don\'t narrate every row.*');
     lines.push('');
-    lines.push('| Place | Manager | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss | SOS |');
-    lines.push('|-------|---------|------------------|-------------------|------------------|------------|----------|-------------|-----|');
+    lines.push('| Place | Manager | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss | Record (Expected) |');
+    lines.push('|-------|---------|------------------|-------------------|------------------|------------|----------|-------------|--------------------|');
     cards.forEach(c => {
       const place = c.finalPlacement != null ? `#${c.finalPlacement}` : '—';
       const bestPick = c.bestDraftPick ? `${c.bestDraftPick.playerName} (Rd ${c.bestDraftPick.round}, ${signedFp(c.bestDraftPick.adjustedPAR)} PAR)` : '—';
@@ -1118,8 +1136,16 @@ export function exportSeasonStats({
       const bestTrade = c.bestTrade ? c.bestTrade.description : 'Refused To Trade With Anyone';
       const bestWin = c.bestWin ? `Wk${c.bestWin.week}: ${fp(c.bestWin.pointsFor)}-${fp(c.bestWin.pointsAgainst)} vs ${c.bestWin.opponent}${c.bestWin.isUpset?' (upset!)':''}` : '—';
       const worstLoss = c.worstLoss ? `Wk${c.worstLoss.week}: ${fp(c.worstLoss.pointsFor)}-${fp(c.worstLoss.pointsAgainst)} vs ${c.worstLoss.opponent}${c.worstLoss.isUpset?' (bad loss)':''}` : '—';
-      const sos = c.sosLabel ? `${c.sosLabel}${c.luckPct != null ? ` (${signedFp(c.luckPct*100,1)}%)` : ''}` : '—';
-      lines.push(`| ${place} | ${c.displayName} | ${bestPick} | ${worstPick} | ${bestWaiver} | ${bestTrade} | ${bestWin} | ${worstLoss} | ${sos} |`);
+      const ar = c.actualRecord;
+      const actualStr = `${ar.wins}-${ar.losses}${ar.ties>0?`-${ar.ties}`:''}`;
+      let recordCell = actualStr;
+      if (c.expectedRecord) {
+        const expectedStr = `${c.expectedRecord.expectedWins}-${c.expectedRecord.expectedLosses}`;
+        recordCell = expectedStr === `${ar.wins}-${ar.losses}`
+          ? `${actualStr} (as expected)`
+          : `${actualStr} (Should be ${expectedStr})`;
+      }
+      lines.push(`| ${place} | ${c.displayName} | ${bestPick} | ${worstPick} | ${bestWaiver} | ${bestTrade} | ${bestWin} | ${worstLoss} | ${recordCell} |`);
     });
   }
 
@@ -1720,15 +1746,16 @@ RULES:
 - LETTER GRADES ONLY
 - Back every claim with specific numbers
 - Bowl names/rewards, the regular season loser's punishment, and Rivalry Week results are league canon — pull them from the data exactly, never invent your own. Names are already substituted into the reward/bet text in the data (e.g. "Newman gets $1000..." not "Winner gets $1000...") — reproduce that phrasing, don't revert to generic role-words
+- **Bulleted data sections (Season Outcomes, Rivalry Week Results) MUST stay as separate bullet points — each its own line, with its icon and bold label, exactly as given in the data. Do NOT merge them into a flowing paragraph. This has happened before; be deliberate about preserving the bullet structure.**
 - CRITICAL — avoid repetition: this article has dedicated sections for outcomes, trades, waivers, draft, and awards. Once a specific fact (a stat, a result, a specific player/trade/pickup) has its own section below, don't also plant it earlier in vaguer form. Say each specific thing ONCE, in its proper section.
 
 STRUCTURE:
 
 **Season Narrative** (~150 words) — big-picture arc and tone ONLY: was it a runaway, a dogfight, a rebuild, total chaos? Describe turning points in general narrative terms (e.g. "everything changed around week 8") WITHOUT naming the specific champion, bowl winners, specific trades, specific waiver pickups, or specific award winners — all of those get their own sections below, and naming them here is redundant. Think "previously on..." teaser, not the full recap.
 
-**Final Outcomes** — copy directly from the data's "Season Outcomes" section, reproducing the reward text exactly as given (names already substituted in for you): the championship winner, the runner-up, every bowl winner (3rd/5th/7th/9th/11th), and the regular season's last place team (the actual loser of the league) with their record and PPG. Give the last place team the full autopsy — mock them specifically, and lay out their punishment (buying the champion's name bracket, being beer bitch at the draft, and this year's specific punishment) in gleeful detail.
+**Final Outcomes** — reproduce each line from the data's "Season Outcomes" section AS ITS OWN BULLET POINT (icon + bold label, exactly as given — the names are already substituted into the reward text for you): the championship winner, the runner-up, every bowl winner (3rd/5th/7th/9th/11th), and the regular season's last place team (the actual loser of the league) with their record and PPG. For the last place bullet specifically, you can extend it with a sentence or two of mockery immediately after — but keep it anchored to that one bullet, don't turn the whole section into a paragraph.
 
-**Rivalry Week Results** — use the "Rivalry Week Results" section from the data directly — the bet text already has the actual winner/loser names substituted in (e.g. "Mendez has to buy and wear Alec's jersey..."), just reproduce it. Don't guess at winners yourself — if the data flags a pair as unresolved, just note the stakes without declaring a winner.
+**Rivalry Week Results** — reproduce each line from the "Rivalry Week Results" section AS ITS OWN BULLET POINT — the bet text already has the actual winner/loser names substituted in (e.g. "Mendez has to buy and wear Alec's jersey..."), just reproduce it as-is per pair. Don't guess at winners yourself — if the data flags a pair as unresolved, just note the stakes without declaring a winner.
 
 **Most Lopsided Trades** — use the "Most Lopsided Trades This Season" list from the data directly. For each, name both sides, what they gave up, and who clearly won the trade and by how much (PAR gap)
 
@@ -1748,7 +1775,7 @@ STRUCTURE:
 🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
 
-**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given, including the SOS column (luck label + luck %). Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
+**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given, including the Record (Expected) column showing each manager's actual record against what their record "should" have been. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
 `.trim()
 
 };
