@@ -808,12 +808,12 @@ function computeExpectedRecord(sos, wins, losses, ties) {
 }
 
 /**
- * Builds the per-manager season recap table: everyone's best/worst draft
- * pick, best waiver add, best trade, best win, worst loss, and expected
- * record — a scannable "here's your year" reference, ranked by final
- * placement.
+ * Builds the per-manager season recap table: everyone's manager grades
+ * (overall + components), best/worst draft pick, best waiver add, best
+ * trade, best win, worst loss, and expected record — a scannable "here's
+ * your year" reference, ranked by final placement.
  */
-function computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year }) {
+function computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, seasonManagerGrades, managersSnapshot, year }) {
   const mn = (id) => mgrName(id, managersSnapshot);
   const draftByManager = {};
   (draftEndOfSeasonGrade?.teamRankings || []).forEach(t => { draftByManager[t.managerId] = t; });
@@ -828,11 +828,17 @@ function computeManagerSeasonCards({ standings, weeklyResults, gradedTransaction
     const { bestWin, worstLoss } = getManagerBestWinWorstLoss(weeklyResults, standings, year, managerId, managersSnapshot);
     const sos = seasonSOS?.[managerId];
     const rs = team.regularSeason || {};
+    const grades = seasonManagerGrades?.[managerId] || null;
 
     return {
       managerId,
       displayName: mn(managerId),
       finalPlacement: team.finalPlacement,
+      overallGrade: grades?.overallGrade ?? null,
+      draftGrade: grades?.normDraft ?? null,
+      tradeGrade: grades?.normTrade ?? null,
+      waiverGrade: grades?.normWaiver ?? null,
+      lineupGrade: grades?.normLineup ?? null,
       bestDraftPick: draftTeam?.bestPick || null,
       worstDraftPick: draftTeam?.worstPick || null,
       bestWaiver: waiver,
@@ -907,7 +913,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- **Adjusted Draft PAR**: draft PAR minus expected PAR for that round');
   lines.push('- **Lineup IQ**: actual pts scored ÷ maximum possible pts. Higher = better lineup decisions');
   lines.push('- **Expected Record**: what a manager\'s win-loss record "should" have been based on how their weekly score stacked up against the whole league each week, shown alongside their actual record (e.g. "8-6 (Should be 10-4)") — a way of showing luck as a record instead of a percentage. Shown per manager in the Manager Season Recap Cards table');
-  lines.push('- **Manager Grade**: Draft 40% + Trades 20% + Waivers 20% + Lineup IQ 20%. C = league average');
+  lines.push('- **Manager Grade**: Draft 40% + Trades 20% + Waivers 20% + Lineup IQ 20%. C = league average. Both the overall grade and each component grade are shown per manager in the Manager Season Recap Cards table');
   lines.push('- **PPG**: Points Per Game — regular season total points ÷ regular season games played, through the most recent completed week');
   lines.push('- **Odds**: American/moneyline format (e.g. -150 favorite, +130 underdog) derived from each team\'s season PPG — a fun estimate, not a real projection model');
   lines.push('');
@@ -1120,14 +1126,14 @@ export function exportSeasonStats({
       });
   }
 
-  const cards = computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, managersSnapshot, year });
+  const cards = computeManagerSeasonCards({ standings, weeklyResults, gradedTransactions, draftEndOfSeasonGrade, seasonSOS, seasonManagerGrades, managersSnapshot, year });
   if (cards.length > 0) {
     lines.push('');
     lines.push('## Manager Season Recap Cards');
     lines.push('*Ranked by final placement. This is a scannable reference so every manager can see their own year at a glance — reproduce as a table, don\'t narrate every row.*');
     lines.push('');
-    lines.push('| Place | Manager | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss | Record (Expected) |');
-    lines.push('|-------|---------|------------------|-------------------|------------------|------------|----------|-------------|--------------------|');
+    lines.push('| Place | Manager | Overall Grade | Draft Grade | Trade Grade | Waiver Grade | Lineup IQ Grade | Record (Expected) | Best Draft Pick | Worst Draft Pick | Best Waiver Add | Best Trade | Best Win | Worst Loss |');
+    lines.push('|-------|---------|----------------|--------------|--------------|---------------|------------------|--------------------|------------------|-------------------|------------------|------------|----------|-------------|');
     cards.forEach(c => {
       const place = c.finalPlacement != null ? `#${c.finalPlacement}` : '—';
       const bestPick = c.bestDraftPick ? `${c.bestDraftPick.playerName} (Rd ${c.bestDraftPick.round}, ${signedFp(c.bestDraftPick.adjustedPAR)} PAR)` : '—';
@@ -1145,7 +1151,7 @@ export function exportSeasonStats({
           ? `${actualStr} (as expected)`
           : `${actualStr} (Should be ${expectedStr})`;
       }
-      lines.push(`| ${place} | ${c.displayName} | ${bestPick} | ${worstPick} | ${bestWaiver} | ${bestTrade} | ${bestWin} | ${worstLoss} | ${recordCell} |`);
+      lines.push(`| ${place} | ${c.displayName} | ${toLetter(c.overallGrade)} | ${toLetter(c.draftGrade)} | ${toLetter(c.tradeGrade)} | ${toLetter(c.waiverGrade)} | ${toLetter(c.lineupGrade)} | ${recordCell} | ${bestPick} | ${worstPick} | ${bestWaiver} | ${bestTrade} | ${bestWin} | ${worstLoss} |`);
     });
   }
 
@@ -1775,7 +1781,7 @@ STRUCTURE:
 🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
 
-**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given, including the Record (Expected) column showing each manager's actual record against what their record "should" have been. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
+**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given, including all five grade columns (Overall, Draft, Trade, Waiver, Lineup IQ) and the Record (Expected) column showing each manager's actual record against what their record "should" have been. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
 `.trim()
 
 };
