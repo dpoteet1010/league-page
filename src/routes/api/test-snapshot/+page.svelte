@@ -101,7 +101,7 @@
     { key: 'history',  title: 'All-Time History',     filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history.', freq: 'Replace each year' },
     { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Season stats to date for the selected season/week.', freq: 'Replace each week' },
     { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "The selected week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
-    { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats.', freq: 'Generate before the draft' }
+    { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats — always generated fresh for next season.', freq: 'Generate before the draft' }
   ];
 
   const PROMPT_LABELS = {
@@ -124,6 +124,13 @@
     ? [nextSeasonYear, ...currentSeasonYears]
     : currentSeasonYears;
 
+  // Same list, used for the Export tab's Season dropdown — the next
+  // (upcoming, not-yet-played) season is a valid selection there too, since
+  // that's what the Pre-Draft Package targets.
+  $: exportYearOptions = nextSeasonYear
+    ? [nextSeasonYear, ...currentSeasonYears]
+    : currentSeasonYears;
+
   $: allManagerIds = allTimeHistory ? Object.keys(allTimeHistory.managers || {}) : [];
   $: draftYearOptions = allDrafts.map((d) => d.year).sort((a, b) => b - a);
   $: filteredTransactions = gradedTransactions
@@ -139,8 +146,8 @@
   // On mount, default testYear to most recent season
   $: if (currentSeasonYears.length && !testYear) testYear = currentSeasonYears[0];
 
-  // Export tab: default season to most recent, and compute which weeks
-  // actually have data for the selected season.
+  // Export tab: default season to most recent COMPLETED season, and compute
+  // which weeks actually have data for the selected season.
   $: if (currentSeasonYears.length && !exportSeasonYear) exportSeasonYear = currentSeasonYears[0];
 
   $: exportWeekOptions = (() => {
@@ -155,6 +162,8 @@
 
   // Auto-jump to the latest played week whenever the available weeks for the
   // selected season change (including on first load, or when Season changes).
+  // For a not-yet-started season (e.g. next year), this list is naturally
+  // empty and exportWeek is simply left alone/unused.
   $: if (exportWeekOptions.length && !exportWeekOptions.includes(exportWeek)) {
     exportWeek = exportWeekOptions[exportWeekOptions.length - 1];
   }
@@ -457,6 +466,40 @@
   }
 
   // ── Power rankings ────────────────────────────────────────────────────────────
+
+  /**
+   * Computes pre-season power rankings for a given year WITHOUT touching any
+   * shared component state (powerYear, preSeasonRankings, etc). Used by both
+   * loadPowerRankings (for the Power Rankings tab's display) and by the
+   * Export tab's Pre-Draft Package generator, so the export is never at the
+   * mercy of whatever year was last selected/computed in the Power Rankings
+   * tab — it always computes fresh for the exact year it needs.
+   */
+  async function computePreSeasonRankingsFresh(year) {
+    await ensureHistory();
+    const ys = String(year);
+    const isNextSeason = !currentSeasonYears.includes(ys);
+
+    const sortedYears = currentSeasonYears.map(Number).sort((a, b) => a - b);
+    const prevYear    = [...sortedYears].reverse().find((y) => y < Number(year));
+    const prevSeason  = prevYear
+      ? allTimeHistory.seasons.find((s) => Number(s.year) === prevYear)
+      : null;
+    const prevStandings = prevSeason?.standings || [];
+
+    const priorSeasonGrades = {};
+    currentSeasonYears
+      .filter((y) => Number(y) < Number(year))
+      .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
+    const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
+
+    const activeManagerIds = isNextSeason
+      ? (prevStandings.length ? prevStandings.map((t) => t.managerId).filter(Boolean) : allManagerIds)
+      : getActiveManagerIds(ys);
+
+    return computePreSeasonRankings(year, priorAllTimeGrades, prevStandings, activeManagerIds);
+  }
+
   async function loadPowerRankings(year) {
     loadingPower = true;
     powerYear    = String(year);
@@ -486,19 +529,7 @@
       }
       globalDebug = [...globalDebug];
 
-      const priorSeasonGrades = {};
-      currentSeasonYears
-        .filter((y) => Number(y) < Number(year))
-        .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
-      const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
-
-      const activeManagerIds = isNextSeason
-        ? (prevStandings.length ? prevStandings.map((t) => t.managerId).filter(Boolean) : allManagerIds)
-        : getActiveManagerIds(ys);
-
-      preSeasonRankings = computePreSeasonRankings(
-        year, priorAllTimeGrades, prevStandings, activeManagerIds
-      );
+      preSeasonRankings = await computePreSeasonRankingsFresh(year);
 
       if (!isNextSeason) {
         const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === ys);
@@ -612,7 +643,15 @@
         title = 'current_week.md';
 
       } else if (type === 'predraft') {
+        // Season stats + all-time history always come from the most
+        // recently COMPLETED season (that's the "last season" a pre-draft
+        // preview reports on).
         const yearStr = currentSeasonYears[0];
+        // The package itself targets the upcoming season. Computed fresh
+        // here, independent of the Power Rankings tab's state — this is
+        // what fixes the "predraft shows the wrong year's rankings" bug.
+        const targetYear = nextSeasonYear || (yearStr ? String(Number(yearStr) + 1) : null);
+
         const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
         const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
         const histText = exportAllTimeHistory({
@@ -634,11 +673,16 @@
           playerResults:     allTimeHistory?.playerResults  || [],
           rosterToManagerId: seasonData?.rosterToManagerId  || {}
         });
+
+        const freshPreSeasonRankings = targetYear
+          ? await computePreSeasonRankingsFresh(targetYear)
+          : null;
+
         text = exportPreDraftPackage({
-          year:               Number(yearStr) + 1,
+          year:               targetYear,
           allTimeExport:      histText,
           latestSeasonExport: seasonText,
-          preSeasonRankings,
+          preSeasonRankings:  freshPreSeasonRankings,
           managersSnapshot:   snap
         });
         title = 'pre_draft.md';
@@ -1452,16 +1496,11 @@
         <div class="info-banner">✓ All managers mapped with real names.</div>
       {/if}
 
-      {#if !preSeasonRankings && nextSeasonYear}
-        <div class="warn-banner">
-          ⚠ <strong>Pre-draft rankings not computed.</strong>
-          Go to Power Rankings → select <strong>{nextSeasonYear} (Next Season)</strong> → Compute Rankings. Then export pre_draft.md.
-        </div>
-      {:else if preSeasonRankings}
-        <div class="info-banner">✓ Pre-draft rankings ready for {nextSeasonYear} ({preSeasonRankings.rankings?.length} managers).</div>
+      {#if nextSeasonYear}
+        <div class="info-banner">✓ Pre-Draft Package for {nextSeasonYear} is computed fresh every time you click its button below — no separate setup needed, and it's always in sync with the current data.</div>
       {/if}
 
-      {#if exportSeasonYear && powerYear !== exportSeasonYear}
+      {#if exportSeasonYear && exportSeasonYear !== nextSeasonYear && powerYear !== exportSeasonYear}
         <div class="warn-banner">
           ⚠ Power Rankings haven't been computed for {exportSeasonYear} — current_week.md will be missing that section.
           Go to the Power Rankings tab, select {exportSeasonYear}, and click Compute Rankings first if you want it included.
@@ -1481,14 +1520,22 @@
       <div class="control-row">
         <label><strong>Season:</strong></label>
         <select bind:value={exportSeasonYear}>
-          {#each currentSeasonYears as yr}<option value={yr}>{yr}</option>{/each}
+          {#each exportYearOptions as yr}
+            <option value={yr}>{yr}{yr===nextSeasonYear?' (Next Season — Pre-Draft)':''}</option>
+          {/each}
         </select>
         <label><strong>Week:</strong></label>
-        <select bind:value={exportWeek}>
+        <select bind:value={exportWeek} disabled={exportSeasonYear===nextSeasonYear}>
           {#each exportWeekOptions as w}<option value={w}>Week {w}</option>{/each}
         </select>
         <span class="muted">Defaults to the most recent season and its latest played week. current_season.md reflects totals through whatever's actually in the data for that season — for the live season that's automatically "to date."</span>
       </div>
+
+      {#if exportSeasonYear === nextSeasonYear}
+        <div class="info-banner">
+          ℹ️ {nextSeasonYear} hasn't started yet, so current_season.md and current_week.md don't apply — there's no game data. Use the <strong>Pre-Draft Package</strong> card below instead; it always targets {nextSeasonYear} regardless of this dropdown.
+        </div>
+      {/if}
 
       <h3>Generate Files</h3>
       <div class="export-card-grid">
@@ -1546,7 +1593,7 @@
             <span class="file-ref">all_time_history.md</span>
             <span class="file-ref">pre_draft.md</span>
           </div>
-          <p class="muted">Compute {nextSeasonYear} power rankings first.</p>
+          <p class="muted">Select {nextSeasonYear||'next season'} in the Season dropdown above (or just click the Pre-Draft Package button — it always targets the next season).</p>
         </div>
         <div class="project-guide">
           <div class="pg-title">📋 Draft Grades</div>
@@ -1655,6 +1702,7 @@
   select, button { padding: 0.5rem 1rem; font-size: 0.93rem; border-radius: 6px; border: 1px solid #ccc; }
   button { cursor: pointer; background: #f5f5f5; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  select:disabled { opacity: 0.5; }
   .status-msg { padding: 2rem; background: #f0f0f0; border-radius: 8px; text-align: center; font-style: italic; margin-bottom: 1rem; }
   .muted { color: #888; font-size: 0.87em; }
   .explainer { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.87rem; color: #0c4a6e; line-height: 1.6; }
