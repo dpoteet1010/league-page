@@ -590,7 +590,10 @@
         text = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
+          playerResults:      allTimeHistory?.playerResults || [],
+          seasons:            allTimeHistory?.seasons || [],
+          gradedTransactions
         });
         title = 'all_time_history.md';
 
@@ -648,8 +651,7 @@
         // preview reports on).
         const yearStr = currentSeasonYears[0];
         // The package itself targets the upcoming season. Computed fresh
-        // here, independent of the Power Rankings tab's state — this is
-        // what fixes the "predraft shows the wrong year's rankings" bug.
+        // here, independent of the Power Rankings tab's state.
         const targetYear = nextSeasonYear || (yearStr ? String(Number(yearStr) + 1) : null);
 
         const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
@@ -657,7 +659,10 @@
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
+          playerResults:      allTimeHistory?.playerResults || [],
+          seasons:            allTimeHistory?.seasons || [],
+          gradedTransactions
         });
         const seasonText = exportSeasonStats({
           year: yearStr, standings: seasonData?.standings || [],
@@ -772,7 +777,10 @@
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
+          playerResults:      allTimeHistory?.playerResults || [],
+          seasons:            allTimeHistory?.seasons || [],
+          gradedTransactions
         });
         text = [
           `# TEST BUNDLE: End of Season Recap — ${yearStr}`,
@@ -796,7 +804,10 @@
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
+          playerResults:      allTimeHistory?.playerResults || [],
+          seasons:            allTimeHistory?.seasons || [],
+          gradedTransactions
         });
         text = [
           `# TEST BUNDLE: Draft Grades — ${yearStr}`,
