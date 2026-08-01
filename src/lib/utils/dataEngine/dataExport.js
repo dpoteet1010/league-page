@@ -945,10 +945,64 @@ function computeAllTimeRegularSeasonLosers(managers, managersSnapshot) {
 }
 
 /**
+ * Best waiver pickup OR best trade return for one manager in one specific
+ * season, whichever had the higher PAR — powers the Hall of Fame's "Best
+ * Transaction" column for that year's champion.
+ */
+function getManagerBestTransactionForYear(gradedTransactions, year, managerId, managersSnapshot) {
+  const waiver = getManagerBestWaiver(gradedTransactions, year, managerId);
+  const trade  = getManagerBestTrade(gradedTransactions, year, managerId, managersSnapshot);
+  const waiverVal = waiver?.par ?? -Infinity;
+  const tradeVal  = trade?.parTotal ?? -Infinity;
+  if (waiver && waiverVal >= tradeVal) {
+    return { description: `+${waiver.name} (${waiver.position}) waiver pickup — ${signedFp(waiver.par)} PAR` };
+  }
+  if (trade) {
+    return { description: trade.description };
+  }
+  return null;
+}
+
+/**
+ * One entry per season: that year's champion, their regular-season record
+ * and PPG, best draft pick (from that year's post-season draft grades), and
+ * best transaction (waiver or trade). Powers the Hall of Fame section in
+ * exportAllTimeHistory. Includes every champion in league history, not just
+ * current members — this is a historical record, unlike the superlatives.
+ */
+function computeHallOfFame(managers, gradedTransactions, draftGradesFullByYear, managersSnapshot) {
+  const mn = (id) => mgrName(id, managersSnapshot);
+  const byYear = {};
+  Object.entries(managers || {}).forEach(([id, data]) => {
+    (data.seasons || []).forEach((s) => {
+      if (s.finalPlacement !== 1) return;
+      const year = String(s.year);
+      const rs = s.regularSeason || {};
+      const gp = (rs.wins || 0) + (rs.losses || 0) + (rs.ties || 0);
+      const ppg = gp > 0 ? (rs.fptsFor || 0) / gp : null;
+
+      const draftGrade = draftGradesFullByYear?.[year];
+      const teamEntry = draftGrade?.teamRankings?.find((t) => t.managerId === id);
+      const bestPick = teamEntry?.bestPick || null;
+
+      const bestTransaction = getManagerBestTransactionForYear(gradedTransactions, year, id, managersSnapshot);
+
+      byYear[year] = {
+        year, managerId: id, displayName: mn(id),
+        wins: rs.wins || 0, losses: rs.losses || 0, ties: rs.ties || 0, ppg,
+        bestPick, bestTransaction
+      };
+    });
+  });
+  return Object.values(byYear).sort((a, b) => Number(a.year) - Number(b.year));
+}
+
+/**
  * Finds the single highest-PAR transaction across every season — either a
  * waiver pickup or one side of a trade (including composite multi-team
  * trades). Requires the FULL unfiltered gradedTransactions array (not
  * scoped to one season), unlike the season-level trade/waiver helpers.
+ * Only considers CURRENT league members (see All-Time Superlatives).
  */
 function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapshot) {
   const mn = (id) => mgrName(id, managersSnapshot);
@@ -958,14 +1012,17 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
     const season = tx.seasonKey || tx.season;
 
     if (tx.type === 'waiver' && !tx.isPartOfComposite && tx.grade?.par != null) {
+      const mgrId = tx.managerIds?.[0];
+      if (!managersSnapshot?.users?.[mgrId]) return;
       if (!best || tx.grade.par > best.value) {
         best = {
           value: tx.grade.par,
-          description: `${mn(tx.managerIds?.[0])} — waiver pickup of ${tx.grade.name} (${tx.grade.position}), ${season} — ${signedFp(tx.grade.par)} PAR`
+          description: `${mn(mgrId)} — waiver pickup of ${tx.grade.name} (${tx.grade.position}), ${season} — ${signedFp(tx.grade.par)} PAR`
         };
       }
     } else if (tx.isComposite && tx.grade?.teamGrades) {
       tx.grade.teamGrades.forEach((t) => {
+        if (!managersSnapshot?.users?.[t.managerId]) return;
         if (t.parTotal != null && (!best || t.parTotal > best.value)) {
           best = {
             value: t.parTotal,
@@ -975,10 +1032,12 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
       });
     } else if (tx.type === 'trade' && !tx.isPartOfComposite && tx.grade?.side0 && tx.grade?.side1) {
       [tx.grade.side0, tx.grade.side1].forEach((side, idx) => {
+        const mgrId = tx.managerIds?.[idx];
+        if (!managersSnapshot?.users?.[mgrId]) return;
         if (side?.parTotal != null && (!best || side.parTotal > best.value)) {
           best = {
             value: side.parTotal,
-            description: `${mn(tx.managerIds?.[idx])} — trade return, ${season} — ${signedFp(side.parTotal)} PAR`
+            description: `${mn(mgrId)} — trade return, ${season} — ${signedFp(side.parTotal)} PAR`
           };
         }
       });
@@ -995,10 +1054,12 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
  */
 function computeAllTimeSuperlatives({ allTimeManagerGrades, managers, seasonSOSByYear, playerResults, seasons, gradedTransactions, managersSnapshot }) {
   const mn = (id) => mgrName(id, managersSnapshot);
+  const isCurrentMember = (id) => !!managersSnapshot?.users?.[id];
 
   const pickFromAllTime = (field, isBetter) => {
     let bestId = null, bestVal = null;
     Object.entries(allTimeManagerGrades || {}).forEach(([id, data]) => {
+      if (!isCurrentMember(id)) return; // current league members only
       const val = data[field];
       if (val == null) return;
       if (bestVal === null || isBetter(val, bestVal)) { bestVal = val; bestId = id; }
@@ -1017,12 +1078,14 @@ function computeAllTimeSuperlatives({ allTimeManagerGrades, managers, seasonSOSB
   const chugTallyAllTime = (playerResults && seasons) ? computeAllTimeChugTally(playerResults, seasons) : {};
   let chugKing = null;
   Object.entries(chugTallyAllTime).forEach(([id, val]) => {
+    if (!isCurrentMember(id)) return; // current league members only
     if (!chugKing || val > chugKing.value) chugKing = { managerId: id, displayName: mn(id), value: val };
   });
 
   const expectedRecords = computeAllTimeExpectedRecord(managers, seasonSOSByYear);
   let luckiest = null, unluckiest = null;
   Object.entries(expectedRecords).forEach(([id, rec]) => {
+    if (!isCurrentMember(id)) return; // current league members only
     if (rec.luckDiff == null) return;
     if (!luckiest || rec.luckDiff > luckiest.rec.luckDiff) luckiest = { managerId: id, displayName: mn(id), rec };
     if (!unluckiest || rec.luckDiff < unluckiest.rec.luckDiff) unluckiest = { managerId: id, displayName: mn(id), rec };
@@ -1347,7 +1410,7 @@ export function exportAllTimeHistory({
   allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
   allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
   managers, managersSnapshot,
-  playerResults, seasons, gradedTransactions
+  playerResults, seasons, gradedTransactions, draftGradesFullByYear
 }) {
   const mn    = (id) => mgrName(id, managersSnapshot);
   const lines = [];
@@ -1430,8 +1493,8 @@ export function exportAllTimeHistory({
     });
 
   lines.push('');
-  lines.push('## All-Time Superlatives (Pre-computed — use these, don\'t recompute)');
-  lines.push('*Career-spanning stats across every season each manager has played. Use exactly as given — don\'t recalculate or guess.*');
+lines.push('## All-Time Superlatives (Pre-computed — use these, don\'t recompute)');
+  lines.push('*Career-spanning stats, limited to CURRENT league members only (departed managers are excluded from these picks, but still appear in Hall of Fame/Shame below since those are historical records). Use exactly as given — don\'t recalculate or guess.*');
   lines.push('');
   const allTimeSup = computeAllTimeSuperlatives({ allTimeManagerGrades, managers, seasonSOSByYear, playerResults, seasons, gradedTransactions, managersSnapshot });
   if (allTimeSup.bestManager)  lines.push(`- 🏆 **Best Manager All-Time**: ${allTimeSup.bestManager.displayName} (Grade: ${toLetter(allTimeSup.bestManager.value)})`);
@@ -1453,6 +1516,20 @@ export function exportAllTimeHistory({
     lines.push(`- 🐍 **Unluckiest Manager All-Time**: ${allTimeSup.unluckiest.displayName} — ${actualStr} actual record, expected ${r.expected.wins}-${r.expected.losses} based on weekly scoring (${fp(Math.abs(r.luckDiff))} wins unluckier than deserved)`);
   }
   if (allTimeSup.bestSingleTransaction) lines.push(`- 🎯 **Best Single Transaction All-Time**: ${allTimeSup.bestSingleTransaction.description}`);
+
+const hallOfFame = computeHallOfFame(managers, gradedTransactions, draftGradesFullByYear, managersSnapshot);
+  if (hallOfFame.length > 0) {
+    lines.push('');
+    lines.push('## Hall of Fame — Champions By Year');
+    lines.push('*One bullet per season — that year\'s champion, their regular season record/PPG, best draft pick, and best transaction. League canon, use exactly as given, don\'t invent details not in the data.*');
+    lines.push('');
+    hallOfFame.forEach((h) => {
+      const record = `${h.wins}-${h.losses}${h.ties>0?`-${h.ties}`:''}`;
+      const pickStr = h.bestPick ? `${h.bestPick.playerName} (Rd ${h.bestPick.round}, ${signedFp(h.bestPick.adjustedPAR)} PAR)` : 'not available';
+      const transStr = h.bestTransaction ? h.bestTransaction.description : 'none recorded';
+      lines.push(`- **${h.year}**: ${h.displayName} (${record}, ${h.ppg!=null?fp(h.ppg):'—'} ppg) — Best draft pick: ${pickStr}. Best transaction: ${transStr}.`);
+    });
+  }
 
   const allTimeLosers = computeAllTimeRegularSeasonLosers(managers, managersSnapshot);
   if (allTimeLosers.length > 0) {
@@ -1899,11 +1976,11 @@ STRUCTURE:
 
 **Season Recap** (~250 words) — champion, last place, Draft Order Bowl, 3-4 stat-backed moments
 
-**All-Time Superlatives** — pull directly from the "All-Time Superlatives (Pre-computed)" data in all_time_history.md, don't recompute or guess any of them. One sentence of trash talk/context per superlative.
+**All-Time Superlatives** — pull directly from the "All-Time Superlatives (Pre-computed)" data in all_time_history.md, don't recompute or guess any of them. Only current league members are eligible for these — don't second-guess it or wonder aloud why a departed manager isn't listed. One sentence of trash talk/context per superlative.
 
-**Hall of Shame — Regular Season Losers By Year** — use the "Hall of Shame — Regular Season Last Place By Year" list from the data directly, one bullet per year as given. A short punchy aside per year is fine, but don't invent details not in the data.
+**Hall of Fame — Champions By Year** — use the "Hall of Fame — Champions By Year" list from the data directly, one bullet per year as given (this includes every champion in league history, even managers who've since left the league). A short punchy aside per year is fine, but don't invent details not in the data.
 
-**Storylines Heading Into the Draft** — 3-4 forward-looking items only
+**Hall of Shame — Regular Season Losers By Year** — use the "Hall of Shame — Regular Season Last Place By Year" list from the data directly, one bullet per year as given. A short punchy aside per year is fine, but don't invent details not in the data.**Storylines Heading Into the Draft** — 3-4 forward-looking items only
 
 **Pre-Draft Power Rankings** — copy the table exactly as given. Then, for EACH manager, write 2-4 sentences of forward-looking narrative commentary. Do NOT just restate their letter grades from the table — that's boring and it's already right there. Instead, use the "Manager Grades by Season" and "Final Placement by Season" tables in the data to find and describe real patterns across their years (boom-bust cycles, a specific great or disastrous season, a consistent strength or weakness, an "every other year" pattern, etc.), and end with a specific forward-looking question or expectation for this draft/season. Grades can be mentioned in passing if it helps, but they should never be the core of what you're saying — the pattern and the narrative are the point. For example, instead of "Haskin (#1) — Defending champ, best all-time trader, F on waivers and still nobody can touch him. Terrifying," write something like "Haskin (#1) — The defending champ and the best all-time trader in the league. He's generationally awful at waivers, but that didn't stop a dominant run last season. Year 1 and 3 were stellar, but Year 2 was a catastrophic collapse to a 9th place finish. Can Haskin defend his title, or does the every-other-year pattern catch up with him?"
 `.trim(),
