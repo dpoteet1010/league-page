@@ -586,14 +586,15 @@
         text  = exportLeagueContext(snap, currentSeasonYears[0]);
         title = 'league_context.md';
 
-      } else if (type === 'history') {
+} else if (type === 'history') {
         text = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
           playerResults:      allTimeHistory?.playerResults || [],
           seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions
+          gradedTransactions,
+          draftGradesFullByYear: eosCache
         });
         title = 'all_time_history.md';
 
@@ -656,13 +657,14 @@
 
         const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
         const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
-        const histText = exportAllTimeHistory({
+const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
           playerResults:      allTimeHistory?.playerResults || [],
           seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions
+          gradedTransactions,
+          draftGradesFullByYear: eosCache
         });
         const seasonText = exportSeasonStats({
           year: yearStr, standings: seasonData?.standings || [],
@@ -774,13 +776,14 @@
         title = `TEST_weekly_recap_bundle_week${testWeek}_${yearStr}.md`;
 
       } else if (articleType === 'endOfSeason') {
-        const histText = exportAllTimeHistory({
+const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
           playerResults:      allTimeHistory?.playerResults || [],
           seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions
+          gradedTransactions,
+          draftGradesFullByYear: eosCache
         });
         text = [
           `# TEST BUNDLE: End of Season Recap — ${yearStr}`,
@@ -801,13 +804,14 @@
         title = `TEST_end_of_season_bundle_${yearStr}.md`;
 
       } else if (articleType === 'draftGrades') {
-        const histText = exportAllTimeHistory({
+const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
           playerResults:      allTimeHistory?.playerResults || [],
           seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions
+          gradedTransactions,
+          draftGradesFullByYear: eosCache
         });
         text = [
           `# TEST BUNDLE: Draft Grades — ${yearStr}`,
