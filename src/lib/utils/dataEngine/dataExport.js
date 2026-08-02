@@ -998,13 +998,35 @@ function computeHallOfFame(managers, gradedTransactions, draftGradesFullByYear, 
 }
 
 /**
+ * "Current league member" = played in the most recent season present in the
+ * data. Derived entirely from the managers object itself, NOT from the live
+ * Sleeper roster snapshot — that snapshot can be stale, scoped differently,
+ * or otherwise mismatched, which was the actual cause of departed managers
+ * still showing up in the All-Time Superlatives. This is self-contained and
+ * always consistent with the rest of what's being exported.
+ */
+function getCurrentMemberIds(managers) {
+  const allYears = new Set();
+  Object.values(managers || {}).forEach((m) => (m.seasons || []).forEach((s) => allYears.add(Number(s.year))));
+  const currentIds = new Set();
+  if (!allYears.size) return currentIds;
+  const mostRecentYear = Math.max(...allYears);
+  Object.entries(managers || {}).forEach(([id, data]) => {
+    if ((data.seasons || []).some((s) => Number(s.year) === mostRecentYear)) {
+      currentIds.add(id);
+    }
+  });
+  return currentIds;
+}
+
+/**
  * Finds the single highest-PAR transaction across every season — either a
  * waiver pickup or one side of a trade (including composite multi-team
  * trades). Requires the FULL unfiltered gradedTransactions array (not
  * scoped to one season), unlike the season-level trade/waiver helpers.
  * Only considers CURRENT league members (see All-Time Superlatives).
  */
-function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapshot) {
+function computeAllTimeBestSingleTransaction(gradedTransactions, currentMemberIds, managersSnapshot) {
   const mn = (id) => mgrName(id, managersSnapshot);
   let best = null;
 
@@ -1013,7 +1035,7 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
 
     if (tx.type === 'waiver' && !tx.isPartOfComposite && tx.grade?.par != null) {
       const mgrId = tx.managerIds?.[0];
-      if (!managersSnapshot?.users?.[mgrId]) return;
+      if (!currentMemberIds.has(mgrId)) return;
       if (!best || tx.grade.par > best.value) {
         best = {
           value: tx.grade.par,
@@ -1022,7 +1044,7 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
       }
     } else if (tx.isComposite && tx.grade?.teamGrades) {
       tx.grade.teamGrades.forEach((t) => {
-        if (!managersSnapshot?.users?.[t.managerId]) return;
+        if (!currentMemberIds.has(t.managerId)) return;
         if (t.parTotal != null && (!best || t.parTotal > best.value)) {
           best = {
             value: t.parTotal,
@@ -1033,7 +1055,7 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
     } else if (tx.type === 'trade' && !tx.isPartOfComposite && tx.grade?.side0 && tx.grade?.side1) {
       [tx.grade.side0, tx.grade.side1].forEach((side, idx) => {
         const mgrId = tx.managerIds?.[idx];
-        if (!managersSnapshot?.users?.[mgrId]) return;
+        if (!currentMemberIds.has(mgrId)) return;
         if (side?.parTotal != null && (!best || side.parTotal > best.value)) {
           best = {
             value: side.parTotal,
@@ -1054,7 +1076,10 @@ function computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapsho
  */
 function computeAllTimeSuperlatives({ allTimeManagerGrades, managers, seasonSOSByYear, playerResults, seasons, gradedTransactions, managersSnapshot }) {
   const mn = (id) => mgrName(id, managersSnapshot);
-  const isCurrentMember = (id) => !!managersSnapshot?.users?.[id];
+  // Derived from the managers data itself, not the live Sleeper snapshot —
+  // see getCurrentMemberIds for why.
+  const currentMemberIds = getCurrentMemberIds(managers);
+  const isCurrentMember = (id) => currentMemberIds.has(id);
 
   const pickFromAllTime = (field, isBetter) => {
     let bestId = null, bestVal = null;
@@ -1091,7 +1116,7 @@ function computeAllTimeSuperlatives({ allTimeManagerGrades, managers, seasonSOSB
     if (!unluckiest || rec.luckDiff < unluckiest.rec.luckDiff) unluckiest = { managerId: id, displayName: mn(id), rec };
   });
 
-  const bestSingleTransaction = computeAllTimeBestSingleTransaction(gradedTransactions, managersSnapshot);
+  const bestSingleTransaction = computeAllTimeBestSingleTransaction(gradedTransactions, currentMemberIds, managersSnapshot);
 
   return { bestManager, worstManager, bestTrader, worstTrader, bestWaiver, worstWaiver, lineupGenius, chugKing, luckiest, unluckiest, bestSingleTransaction };
 }
