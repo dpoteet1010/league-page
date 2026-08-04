@@ -1923,10 +1923,118 @@ export function exportWeeklyData({
   return lines.join('\n');
 }
 
-// ── Pre-draft package ─────────────────────────────────────────────────────────
+// ── Draft results export (for vibes-based Draft Grades article) ──────────────
+
+/**
+ * Dumps the actual draft board for one draft — every pick in order, grouped
+ * by round, with manager/player/position/team. This is the ONLY data source
+ * the Draft Grades prompt needs: no PAR, no season stats exist yet (the
+ * draft just happened), so grading is necessarily vibes-based off real
+ * picks + the model's own knowledge of ADP/expert consensus at draft time.
+ */
+export function exportDraftResults({ draft, managersSnapshot }) {
+  const mn = (id) => mgrName(id, managersSnapshot);
+  if (!draft || !draft.picks?.length) {
+    return `# NLFL ${draft?.year || ''} Draft Results\n\n*No draft data available for this year.*`;
+  }
+
+  const lines = [];
+  lines.push(`# NLFL ${draft.year} Draft Results`);
+  lines.push('');
+  lines.push(`${draft.numTeams}-team, ${draft.rounds}-round ${draft.draftType || 'snake'} draft.`);
+  lines.push('*This is the complete, real draft board — no performance data exists yet since the season hasn\'t started. Grade using industry ADP/expert consensus knowledge for these specific players at the time of this draft.*');
+  lines.push('');
+
+  const byRound = {};
+  draft.picks.forEach((p) => {
+    if (!byRound[p.round]) byRound[p.round] = [];
+    byRound[p.round].push(p);
+  });
+
+  Object.keys(byRound)
+    .sort((a, b) => Number(a) - Number(b))
+    .forEach((round) => {
+      lines.push(`## Round ${round}`);
+      lines.push('');
+      lines.push('| Pick | Manager | Player | Pos | Team |');
+      lines.push('|------|---------|--------|-----|------|');
+      byRound[round]
+        .sort((a, b) => a.pickNo - b.pickNo)
+        .forEach((p) => {
+          lines.push(`| #${p.pickNo} | ${mn(p.managerId)} | ${p.playerName} | ${p.position || '—'} | ${p.team || '—'} |`);
+        });
+      lines.push('');
+    });
+
+  lines.push('## Full Roster By Manager (draft order)');
+  lines.push('');
+  const byManager = {};
+  draft.picks.forEach((p) => {
+    if (!byManager[p.managerId]) byManager[p.managerId] = [];
+    byManager[p.managerId].push(p);
+  });
+  Object.entries(byManager).forEach(([mgrId, picks]) => {
+    lines.push(`**${mn(mgrId)}**`);
+    picks
+      .sort((a, b) => a.pickNo - b.pickNo)
+      .forEach((p) => {
+        lines.push(`- R${p.round} (#${p.pickNo}): ${p.playerName} (${p.position || '—'}, ${p.team || '—'})`);
+      });
+    lines.push('');
+  });
+
+  return lines.join('\n');
+}
+
+// ── Vibes-grade calibration export ────────────────────────────────────────────
+
+/**
+ * Reports on how past vibes-based draft grades (issued right after each
+ * draft) compared to that same draft's actual data-based end-of-season
+ * grade. This is fed into the Draft Grades prompt as a bias check — not as
+ * ground truth for grading the current draft, since this year's draft
+ * genuinely has no performance data yet.
+ */
+export function exportDraftCalibration({ overallSummary, yearlyComparisons, managersSnapshot }) {
+  const mn = (id) => mgrName(id, managersSnapshot);
+  const lines = [];
+  lines.push('# Vibes-Grade Calibration History');
+  lines.push('*Compares past pre-draft vibes-based grades (issued right after each draft) against that same draft\'s actual end-of-season data-based grade. Use this ONLY to calibrate how generous or harsh to be in general — it is NOT ground truth for grading THIS draft, and individual manager tendencies here should not be assumed to repeat.*');
+  lines.push('');
+
+  if (!overallSummary) {
+    lines.push('*No calibration history yet — no past vibes grades have been recorded against end-of-season results.*');
+    return lines.join('\n');
+  }
+
+  lines.push(`**Overall pattern (${overallSummary.totalDraftsCompared} team-drafts across ${overallSummary.yearsIncluded.join(', ')}):** ${overallSummary.bias}`);
+  lines.push(`- Average bias: ${overallSummary.avgDelta > 0 ? '+' : ''}${overallSummary.avgDelta} GPA points (positive = grades issued at draft time run higher than how the draft actually performed; negative = run lower)`);
+  lines.push(`- Average absolute error: ${overallSummary.avgAbsError} GPA points`);
+  lines.push('');
+  lines.push('## By Year');
+  lines.push('');
+  lines.push('| Year | Avg Bias | Avg Abs Error |');
+  lines.push('|------|----------|----------------|');
+  overallSummary.byYear.forEach((y) => {
+    lines.push(`| ${y.year} | ${y.avgDelta > 0 ? '+' : ''}${y.avgDelta} | ${y.avgAbsError} |`);
+  });
+
+  (yearlyComparisons || []).filter(Boolean).forEach((cmp) => {
+    lines.push('');
+    lines.push(`### ${cmp.year} Detail`);
+    lines.push('');
+    lines.push('| Manager | Vibes Grade (at draft) | Actual EOS Grade | Bias |');
+    lines.push('|---------|--------------------------|-------------------|------|');
+    cmp.rows.forEach((r) => {
+      lines.push(`| ${mn(r.managerId)} | ${r.vibesGrade} | ${r.eosGrade} | ${r.delta > 0 ? '+' : ''}${r.delta} (${r.label}) |`);
+    });
+  });
+
+  return lines.join('\n');
+}
 
 export function exportPreDraftPackage({
-  year, allTimeExport, latestSeasonExport, preSeasonRankings, managersSnapshot
+  year, allTimeExport, latestSeasonExport, preSeasonRankings, managersSnapshot, draftCalibrationText
 }) {
   const lines = [];
 
@@ -1967,6 +2075,13 @@ export function exportPreDraftPackage({
   lines.push('---');
   lines.push('');
   lines.push(allTimeExport || '*(All-time history not available)*');
+
+  if (draftCalibrationText) {
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(draftCalibrationText);
+  }
 
   return lines.join('\n');
 }
@@ -2010,20 +2125,29 @@ STRUCTURE:
 **Pre-Draft Power Rankings** — copy the table exactly as given. Then, for EACH manager, write 2-4 sentences of forward-looking narrative commentary. Do NOT just restate their letter grades from the table — that's boring and it's already right there. Instead, use the "Manager Grades by Season" and "Final Placement by Season" tables in the data to find and describe real patterns across their years (boom-bust cycles, a specific great or disastrous season, a consistent strength or weakness, an "every other year" pattern, etc.), and end with a specific forward-looking question or expectation for this draft/season. Grades can be mentioned in passing if it helps, but they should never be the core of what you're saying — the pattern and the narrative are the point. For example, instead of "Haskin (#1) — Defending champ, best all-time trader, F on waivers and still nobody can touch him. Terrifying," write something like "Haskin (#1) — The defending champ and the best all-time trader in the league. He's generationally awful at waivers, but that didn't stop a dominant run last season. Year 1 and 3 were stellar, but Year 2 was a catastrophic collapse to a 9th place finish. Can Haskin defend his title, or does the every-other-year pattern catch up with him?"
 `.trim(),
 
-  draftGrades: `
-You are grading the just-completed NLFL draft.
+draftGrades: `
+You are grading the just-completed NLFL draft, using the draft board provided (current_draft.md) plus league history for context.
 
 VOICE: Commissioner with opinions. You watched every pick. You are not being diplomatic.
 
+CRITICAL CONTEXT: No season has been played yet — there is no PAR or performance data for this draft. This grade is 100% vibes-based: your own knowledge of where these specific players were being drafted around the league (ADP) and what experts/rankings thought of them at the time, compared to where each manager actually took them. Do not pretend this is data-driven. Reaches = took a player notably earlier than typical ADP or grabbed a player with real red flags experts were down on. Steals = took a player notably later than typical ADP.
+
+If a "Vibes-Grade Calibration History" section is present in the data, silently use its overall bias finding to adjust your grading instinct this year (e.g. if the pattern shows grades historically run too generous, be tougher; if too harsh, ease up). Never mention the calibration data, its existence, or its mechanics anywhere in the article — it's an internal input, not narrative content.
+
 RULES:
 - REAL NAMES only
-- LETTER GRADES ONLY
-- Reference prior draft grades when calling out patterns
+- LETTER GRADES ONLY, and use the FULL range with +/- (A+ through F) — spread managers across the scale based on genuine differences in their draft. Do NOT cluster everyone into B/B-/C+. If a draft was genuinely mediocre across the board, still differentiate — someone has the best team, someone has the most question marks, grade accordingly.
+- Every manager's grade must be justified by at least one SPECIFIC pick (round + player), not just vibes about "their team." Cite good picks AND bad/risky picks — most managers should have both.
+- Reference prior draft grades / manager tendencies from all_time_history.md when it adds color (e.g. "same guy who reached for a QB in round 3 last year")
 - Keep the personality in the stats and history, not background details
 
-FOR EACH MANAGER: grade + 2-3 sentences + one season prediction
+FOR EACH MANAGER (in draft order or grade order, your call): grade + 2-3 sentences citing specific picks by round + one season prediction
 
-FINISH WITH: best draft (specific pick), worst draft (specific pick that doomed them), one sleeper pick
+FINISH WITH:
+- 🏆 Best Draft — specific team, with the 2-3 picks that make the case
+- 💀 Worst Draft — specific team, with the pick(s) that doomed them
+- 💎 Sleeper Pick of the Draft — one specific late-round pick you'd bet on
+- 🎯 Reach of the Draft — one specific pick taken well ahead of ADP
 `.trim(),
 
   weeklyRecap: `
