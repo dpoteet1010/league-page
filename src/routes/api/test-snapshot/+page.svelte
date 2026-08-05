@@ -6,7 +6,7 @@
   import { getTransactionHistory, getAllTimeTransactionTotals, getSeasonTransactionTotals } from '$lib/utils/dataEngine/allTransactions.js';
   import { gradeTradeByPAR, gradeWaiverByPAR, gradeCompositeTrade } from '$lib/utils/dataEngine/parGrading.js';
   import { getAllDrafts } from '$lib/utils/dataEngine/allDrafts.js';
-  import { gradeDraftPreSeason, gradeDraftEndOfSeason } from '$lib/utils/dataEngine/draftAnalysis.js';
+  import { gradeDraftPreSeason, gradeDraftEndOfSeason, compareVibesToActual, summarizeCalibration } from '$lib/utils/dataEngine/draftAnalysis.js';
   import { getSeasonStatTotals } from '$lib/utils/dataEngine/allPlayerSeasonStats.js';
   import { computeRoundBaselines } from '$lib/utils/dataEngine/draftBaselines.js';
   import { getAllRosterStats } from '$lib/utils/dataEngine/allRosterStats.js';
@@ -15,8 +15,9 @@
   import { computeSeasonSOS, computeAllTimeSOS } from '$lib/utils/dataEngine/strengthOfSchedule.js';
   import {
     exportLeagueContext, exportSeasonStats, exportAllTimeHistory,
-    exportWeeklyData, exportPreDraftPackage, PROMPTS
+    exportWeeklyData, exportPreDraftPackage, exportDraftResults, exportDraftCalibration, PROMPTS
   } from '$lib/utils/dataEngine/dataExport.js';
+  import { loadVibesGrades, saveVibesGradesForYear } from '$lib/utils/dataEngine/vibesGradesStore.js';
   import { getRealName, MANAGERS } from '$lib/utils/leagueManagers.js';
   import { teamManagersStore } from '$lib/stores';
 
@@ -56,7 +57,15 @@
   let draftGradesByYear = {};
   const eosCache        = {};
 
-  // ── Manager grades ──────────────────────────────────────────────────────────
+  // ── Vibes-grade calibration ───────────────────────────────────────────────
+  const GRADE_OPTIONS = ['A+','A','A-','B+','B','B-','C+','C','C-','D+','D','D-','F'];
+  let vibesGrades         = {}; // { [year]: { [managerId]: 'B+' } }
+  let vibesInputByManager = {};
+  let vibesSaved          = false;
+  let calibrationByYear   = {}; // { [year]: comparisonResult }
+  let overallCalibration  = null;
+
+  // ── Manager grades ────────────────────────────────────────────────────────
   let rosterStats           = null;
   let loadingManagers       = false;
   let managerDebug          = [];
@@ -101,7 +110,9 @@
     { key: 'history',  title: 'All-Time History',     filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history.', freq: 'Replace each year' },
     { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Season stats to date for the selected season/week.', freq: 'Replace each week' },
     { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "The selected week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
-    { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats — always generated fresh for next season.', freq: 'Generate before the draft' }
+    { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats — always generated fresh for next season.', freq: 'Generate before the draft' },
+    { key: 'draftresults', title: 'Current Draft Board', filename: 'current_draft.md', desc: 'The just-completed draft — every pick, for vibes-based Draft Grades.', freq: 'Generate right after the draft' },
+    { key: 'draftcalibration', title: 'Vibes-Grade Calibration', filename: 'draft_calibration.md', desc: 'History of how past vibes-based draft grades compared to actual end-of-season results.', freq: 'Regenerate as more years accumulate' }
   ];
 
   const PROMPT_LABELS = {
@@ -124,9 +135,6 @@
     ? [nextSeasonYear, ...currentSeasonYears]
     : currentSeasonYears;
 
-  // Same list, used for the Export tab's Season dropdown — the next
-  // (upcoming, not-yet-played) season is a valid selection there too, since
-  // that's what the Pre-Draft Package targets.
   $: exportYearOptions = nextSeasonYear
     ? [nextSeasonYear, ...currentSeasonYears]
     : currentSeasonYears;
@@ -143,11 +151,8 @@
     );
   }
 
-  // On mount, default testYear to most recent season
   $: if (currentSeasonYears.length && !testYear) testYear = currentSeasonYears[0];
 
-  // Export tab: default season to most recent COMPLETED season, and compute
-  // which weeks actually have data for the selected season.
   $: if (currentSeasonYears.length && !exportSeasonYear) exportSeasonYear = currentSeasonYears[0];
 
   $: exportWeekOptions = (() => {
@@ -160,10 +165,6 @@
     return [...weeks].sort((a, b) => a - b);
   })();
 
-  // Auto-jump to the latest played week whenever the available weeks for the
-  // selected season change (including on first load, or when Season changes).
-  // For a not-yet-started season (e.g. next year), this list is naturally
-  // empty and exportWeek is simply left alone/unused.
   $: if (exportWeekOptions.length && !exportWeekOptions.includes(exportWeek)) {
     exportWeek = exportWeekOptions[exportWeekOptions.length - 1];
   }
@@ -253,6 +254,10 @@
     return (seasonData?.standings || []).map((t) => t.managerId).filter(Boolean);
   }
 
+  function getLatestDraftForYear(year) {
+    return allDrafts.find((d) => String(d.year) === String(year)) || null;
+  }
+
   async function clipboardCopy(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
   }
@@ -270,6 +275,42 @@
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  // ── Vibes-grade calibration helpers ──────────────────────────────────────────
+
+  function initVibesInputsForYear(year) {
+    if (!year) return;
+    const ys = String(year);
+    const draft = allDrafts.find((d) => d.year === year);
+    const mgrIds = draft ? [...new Set(draft.picks.map((p) => p.managerId))] : [];
+    const existing = vibesGrades[ys] || {};
+    const next = {};
+    mgrIds.forEach((id) => { next[id] = existing[id] || ''; });
+    vibesInputByManager = next;
+  }
+
+  function recalcCalibration() {
+    const results = {};
+    Object.keys(vibesGrades).forEach((ys) => {
+      const eos = eosCache[ys];
+      if (!eos) return;
+      const cmp = compareVibesToActual(vibesGrades[ys], eos);
+      if (cmp) results[ys] = cmp;
+    });
+    calibrationByYear  = results;
+    overallCalibration = summarizeCalibration(Object.values(results));
+  }
+
+  function saveVibesForYear(year) {
+    const ys = String(year);
+    const cleaned = {};
+    Object.entries(vibesInputByManager).forEach(([id, g]) => { if (g) cleaned[id] = g; });
+    vibesGrades = { ...vibesGrades, [ys]: cleaned };
+    saveVibesGradesForYear(ys, cleaned);
+    recalcCalibration();
+    vibesSaved = true;
+    setTimeout(() => { vibesSaved = false; }, 2000);
   }
 
   // ── Core loader ───────────────────────────────────────────────────────────────
@@ -358,6 +399,9 @@
         preSeasonGrade    = gradeDraftPreSeason(allDrafts[0]);
         endOfSeasonGrade  = eosCache[String(selectedDraftYear)] || null;
       }
+      vibesGrades = loadVibesGrades();
+      recalcCalibration();
+      initVibesInputsForYear(selectedDraftYear);
     } catch (e) {
       console.error(e); draftDebug.push(`Crash: ${e.message}`);
     } finally { loadingDrafts = false; }
@@ -401,6 +445,8 @@
     endOfSeasonGrade = eosCache[String(year)] || await computeEOS(year);
     if (endOfSeasonGrade) draftDebug.push(...(endOfSeasonGrade.debug || []));
     draftDebug = [...draftDebug];
+    recalcCalibration();
+    initVibesInputsForYear(year);
   }
 
   // ── Manager grades ────────────────────────────────────────────────────────────
@@ -467,14 +513,6 @@
 
   // ── Power rankings ────────────────────────────────────────────────────────────
 
-  /**
-   * Computes pre-season power rankings for a given year WITHOUT touching any
-   * shared component state (powerYear, preSeasonRankings, etc). Used by both
-   * loadPowerRankings (for the Power Rankings tab's display) and by the
-   * Export tab's Pre-Draft Package generator, so the export is never at the
-   * mercy of whatever year was last selected/computed in the Power Rankings
-   * tab — it always computes fresh for the exact year it needs.
-   */
   async function computePreSeasonRankingsFresh(year) {
     await ensureHistory();
     const ys = String(year);
@@ -586,7 +624,7 @@
         text  = exportLeagueContext(snap, currentSeasonYears[0]);
         title = 'league_context.md';
 
-} else if (type === 'history') {
+      } else if (type === 'history') {
         text = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
@@ -646,18 +684,26 @@
         });
         title = 'current_week.md';
 
+      } else if (type === 'draftresults') {
+        const draft = getLatestDraftForYear(exportSeasonYear);
+        text = exportDraftResults({ draft, managersSnapshot: snap });
+        title = 'current_draft.md';
+
+      } else if (type === 'draftcalibration') {
+        text = exportDraftCalibration({
+          overallSummary: overallCalibration,
+          yearlyComparisons: Object.values(calibrationByYear),
+          managersSnapshot: snap
+        });
+        title = 'draft_calibration.md';
+
       } else if (type === 'predraft') {
-        // Season stats + all-time history always come from the most
-        // recently COMPLETED season (that's the "last season" a pre-draft
-        // preview reports on).
         const yearStr = currentSeasonYears[0];
-        // The package itself targets the upcoming season. Computed fresh
-        // here, independent of the Power Rankings tab's state.
         const targetYear = nextSeasonYear || (yearStr ? String(Number(yearStr) + 1) : null);
 
         const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
         const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
-const histText = exportAllTimeHistory({
+        const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
@@ -685,12 +731,17 @@ const histText = exportAllTimeHistory({
           ? await computePreSeasonRankingsFresh(targetYear)
           : null;
 
+        const calibrationText = overallCalibration
+          ? exportDraftCalibration({ overallSummary: overallCalibration, yearlyComparisons: Object.values(calibrationByYear), managersSnapshot: snap })
+          : null;
+
         text = exportPreDraftPackage({
           year:               targetYear,
           allTimeExport:      histText,
           latestSeasonExport: seasonText,
           preSeasonRankings:  freshPreSeasonRankings,
-          managersSnapshot:   snap
+          managersSnapshot:   snap,
+          draftCalibrationText: calibrationText
         });
         title = 'pre_draft.md';
       }
@@ -776,7 +827,7 @@ const histText = exportAllTimeHistory({
         title = `TEST_weekly_recap_bundle_week${testWeek}_${yearStr}.md`;
 
       } else if (articleType === 'endOfSeason') {
-const histText = exportAllTimeHistory({
+        const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
@@ -804,7 +855,7 @@ const histText = exportAllTimeHistory({
         title = `TEST_end_of_season_bundle_${yearStr}.md`;
 
       } else if (articleType === 'draftGrades') {
-const histText = exportAllTimeHistory({
+        const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
           managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
@@ -813,9 +864,15 @@ const histText = exportAllTimeHistory({
           gradedTransactions,
           draftGradesFullByYear: eosCache
         });
+        const draftForYear = getLatestDraftForYear(yearStr);
+        const draftResultsText = exportDraftResults({ draft: draftForYear, managersSnapshot: snap });
+        const calibrationText = overallCalibration
+          ? exportDraftCalibration({ overallSummary: overallCalibration, yearlyComparisons: Object.values(calibrationByYear), managersSnapshot: snap })
+          : null;
+
         text = [
           `# TEST BUNDLE: Draft Grades — ${yearStr}`,
-          '*Contains league_context.md + current_season.md + all_time_history.md bundled together for testing (mirrors pre_draft.md contents).*',
+          '*Contains league_context.md + current_draft.md + current_season.md + all_time_history.md (+ calibration history if recorded) bundled together for testing.*',
           '',
           '---',
           '',
@@ -823,11 +880,16 @@ const histText = exportAllTimeHistory({
           '',
           '---',
           '',
+          draftResultsText,
+          '',
+          '---',
+          '',
           seasonText,
           '',
           '---',
           '',
-          histText
+          histText,
+          ...(calibrationText ? ['', '---', '', calibrationText] : [])
         ].join('\n');
         title = `TEST_draft_grades_bundle_${yearStr}.md`;
       }
@@ -1009,6 +1071,7 @@ const histText = exportAllTimeHistory({
         <div class="tab-group">
           <button class="tab-btn {draftActiveTab==='end'?'active':''}" on:click={() => (draftActiveTab='end')}>Post-Season</button>
           <button class="tab-btn {draftActiveTab==='pre'?'active':''}" on:click={() => (draftActiveTab='pre')}>Pre-Season</button>
+          <button class="tab-btn {draftActiveTab==='vibes'?'active':''}" on:click={() => { draftActiveTab='vibes'; initVibesInputsForYear(selectedDraftYear); }}>Vibes Calibration</button>
         </div>
       </div>
       {#if draftActiveTab === 'end'}
@@ -1119,6 +1182,9 @@ const histText = exportAllTimeHistory({
       {:else if draftActiveTab === 'pre'}
         {#if preSeasonGrade}
           <h3>{preSeasonGrade.year} Pre-Season Grade</h3>
+          <div class="explainer">
+            This "positional scarcity" grade compares each pick only against ADP <em>within this draft room</em> — it is NOT the vibes-based grade used in the published Draft Grades article (that's LLM-authored using real industry ADP; see the Export tab and the Vibes Calibration sub-tab).
+          </div>
           <table class="data-table">
             <thead><tr><th>#</th><th>Manager</th><th>Grade</th><th>Avg vs Market</th><th>Best Pick</th><th>Worst Pick</th></tr></thead>
             <tbody>
@@ -1134,6 +1200,61 @@ const histText = exportAllTimeHistory({
             </tbody>
           </table>
         {:else}<div class="status-msg">Load Draft Data first.</div>{/if}
+      {:else if draftActiveTab === 'vibes'}
+        <div class="explainer">
+          After you publish the Draft Grades article (vibes-based, written by the LLM right after the draft using real ADP/expert knowledge), record each manager's issued grade here. Once end-of-season data-based grades exist for that year (Post-Season tab), this compares them and tracks whether the vibes-grading process runs too generous, too harsh, or accurate — feeding that bias back into future Draft Grades prompts via the calibration export.
+        </div>
+        {@const draft = allDrafts.find((d) => d.year === selectedDraftYear)}
+        {@const mgrIds = draft ? [...new Set(draft.picks.map((p) => p.managerId))] : []}
+        <h3>{selectedDraftYear} — Record Vibes Grades</h3>
+        {#if !eosCache[String(selectedDraftYear)]}
+          <div class="warn-banner">⚠ No end-of-season data-based grade computed yet for {selectedDraftYear} — you can still record vibes grades now, but the comparison won't show until the season's data is available (switch to the Post-Season tab to compute it).</div>
+        {/if}
+        <table class="data-table">
+          <thead><tr><th>Manager</th><th>Vibes Grade (from article)</th></tr></thead>
+          <tbody>
+            {#each mgrIds as mgrId}
+              <tr>
+                <td><strong>{mdn(mgrId)}</strong></td>
+                <td>
+                  <select bind:value={vibesInputByManager[mgrId]}>
+                    <option value="">—</option>
+                    {#each GRADE_OPTIONS as g}<option value={g}>{g}</option>{/each}
+                  </select>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <div class="control-row">
+          <button on:click={() => saveVibesForYear(selectedDraftYear)}>{vibesSaved?'✓ Saved!':'Save Vibes Grades'}</button>
+        </div>
+
+        {#if calibrationByYear[String(selectedDraftYear)]}
+          {@const cmp = calibrationByYear[String(selectedDraftYear)]}
+          <h4>{selectedDraftYear} Vibes vs. Actual</h4>
+          <table class="data-table">
+            <thead><tr><th>Manager</th><th>Vibes Grade</th><th>Actual EOS Grade</th><th>Bias</th></tr></thead>
+            <tbody>
+              {#each cmp.rows as r}
+                <tr>
+                  <td>{mdn(r.managerId)}</td>
+                  <td>{r.vibesGrade}</td>
+                  <td>{r.eosGrade}</td>
+                  <td class="{parClass(r.delta)}">{r.delta>0?'+':''}{r.delta} ({r.label})</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+
+        {#if overallCalibration}
+          <h4>All-Time Calibration Summary</h4>
+          <div class="explainer">
+            Across {overallCalibration.totalDraftsCompared} recorded team-drafts ({overallCalibration.yearsIncluded.join(', ')}): {overallCalibration.bias}.
+            Average bias: {overallCalibration.avgDelta>0?'+':''}{overallCalibration.avgDelta} GPA pts · Average absolute error: {overallCalibration.avgAbsError} GPA pts.
+          </div>
+        {/if}
       {/if}
       <div class="control-row" style="margin-top:1rem;">
         <button on:click={() => (showDraftDebug=!showDraftDebug)}>{showDraftDebug?'Hide':'Show'} Debug</button>
@@ -1493,7 +1614,6 @@ const histText = exportAllTimeHistory({
     <h2>Export for LLM</h2>
     <div class="explainer">
       Export data as Markdown for a <strong>Claude Project</strong>. Files download automatically + copy to clipboard.
-      Always overwrite — 4 files max, never accumulate.
     </div>
     {#if !allTimeHistory}
       <div class="status-msg">Load data first — try the 🚀 Load All Data button at the top, or load each category individually.</div>
@@ -1523,12 +1643,17 @@ const histText = exportAllTimeHistory({
       {/if}
 
       <div class="file-guide">
-        <h4>4 Files, Always (overwrite, never add new ones)</h4>
+        <h4>Core Files (overwrite each time, don't accumulate)</h4>
         <div class="file-grid">
           <div class="file-pill static"><div class="file-name">league_context.md</div><div class="file-freq">Upload once</div></div>
           <div class="file-pill yearly"><div class="file-name">all_time_history.md</div><div class="file-freq">Replace each year</div></div>
           <div class="file-pill weekly"><div class="file-name">current_season.md</div><div class="file-freq">Replace each week</div></div>
           <div class="file-pill weekly"><div class="file-name">current_week.md</div><div class="file-freq">Replace each week</div></div>
+        </div>
+        <h4 style="margin-top:0.75rem;">Draft-Time Files (generate around draft day)</h4>
+        <div class="file-grid">
+          <div class="file-pill weekly"><div class="file-name">current_draft.md</div><div class="file-freq">Generate right after draft</div></div>
+          <div class="file-pill yearly"><div class="file-name">draft_calibration.md</div><div class="file-freq">Regenerate as history grows</div></div>
         </div>
       </div>
 
@@ -1543,12 +1668,12 @@ const histText = exportAllTimeHistory({
         <select bind:value={exportWeek} disabled={exportSeasonYear===nextSeasonYear}>
           {#each exportWeekOptions as w}<option value={w}>Week {w}</option>{/each}
         </select>
-        <span class="muted">Defaults to the most recent season and its latest played week. current_season.md reflects totals through whatever's actually in the data for that season — for the live season that's automatically "to date."</span>
+        <span class="muted">Defaults to the most recent season and its latest played week. current_season.md reflects totals through whatever's actually in the data for that season — for the live season that's automatically "to date." Current Draft Board uses the draft found for the selected season.</span>
       </div>
 
       {#if exportSeasonYear === nextSeasonYear}
         <div class="info-banner">
-          ℹ️ {nextSeasonYear} hasn't started yet, so current_season.md and current_week.md don't apply — there's no game data. Use the <strong>Pre-Draft Package</strong> card below instead; it always targets {nextSeasonYear} regardless of this dropdown.
+          ℹ️ {nextSeasonYear} hasn't started yet, so current_season.md and current_week.md don't apply — there's no game data. Use the <strong>Pre-Draft Package</strong> card below instead; it always targets {nextSeasonYear} regardless of this dropdown. Once that draft happens, come back and generate <strong>Current Draft Board</strong>.
         </div>
       {/if}
 
@@ -1608,16 +1733,16 @@ const histText = exportAllTimeHistory({
             <span class="file-ref">all_time_history.md</span>
             <span class="file-ref">pre_draft.md</span>
           </div>
-          <p class="muted">Select {nextSeasonYear||'next season'} in the Season dropdown above (or just click the Pre-Draft Package button — it always targets the next season).</p>
+          <p class="muted">Select {nextSeasonYear||'next season'} in the Season dropdown above (or just click the Pre-Draft Package button — it always targets the next season). pre_draft.md auto-includes vibes-grade calibration history if any has been recorded.</p>
         </div>
         <div class="project-guide">
           <div class="pg-title">📋 Draft Grades</div>
           <div class="pg-files">
             <span class="file-ref">league_context.md</span>
             <span class="file-ref">all_time_history.md</span>
-            <span class="file-ref">pre_draft.md</span>
+            <span class="file-ref">current_draft.md</span>
           </div>
-          <p class="muted">Re-export pre_draft.md right after draft.</p>
+          <p class="muted">Generate current_draft.md right after the draft — that's what makes the grading possible. all_time_history.md gives manager tendency context.</p>
         </div>
       </div>
 
@@ -1661,6 +1786,11 @@ const histText = exportAllTimeHistory({
             Go to the Power Rankings tab, select {testYear}, and click Compute Rankings first if you want that section included.
           </div>
         {/if}
+        {#if testYear && !getLatestDraftForYear(testYear)}
+          <div class="warn-banner">
+            ⚠ No draft data found for {testYear} — the Draft Grades test bundle's current_draft.md section will be empty. Load Draft Data in the Draft tab first.
+          </div>
+        {/if}
         <div class="test-card-grid">
           <div class="test-card">
             <div class="test-card-title">📅 Weekly Recap Test</div>
@@ -1676,7 +1806,7 @@ const histText = exportAllTimeHistory({
           </div>
           <div class="test-card">
             <div class="test-card-title">📋 Draft Grades Test</div>
-            <p class="muted">Bundles league_context + current_season + all_time_history for {testYear} into one file.</p>
+            <p class="muted">Bundles league_context + current_draft + current_season + all_time_history (+ calibration history) for {testYear} into one file.</p>
             <button class="copy-btn" on:click={() => generateTestExport('draftGrades')}>Download Test Bundle</button>
             <div class="test-prompt-ref">Use prompt: <strong>📋 Draft Grades</strong></div>
           </div>
