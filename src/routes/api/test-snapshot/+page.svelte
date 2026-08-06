@@ -6,7 +6,7 @@
   import { getTransactionHistory, getAllTimeTransactionTotals, getSeasonTransactionTotals } from '$lib/utils/dataEngine/allTransactions.js';
   import { gradeTradeByPAR, gradeWaiverByPAR, gradeCompositeTrade } from '$lib/utils/dataEngine/parGrading.js';
   import { getAllDrafts } from '$lib/utils/dataEngine/allDrafts.js';
-  import { gradeDraftPreSeason, gradeDraftEndOfSeason, compareVibesToActual, summarizeCalibration } from '$lib/utils/dataEngine/draftAnalysis.js';
+  import { gradeDraftEndOfSeason } from '$lib/utils/dataEngine/draftAnalysis.js';
   import { getSeasonStatTotals } from '$lib/utils/dataEngine/allPlayerSeasonStats.js';
   import { computeRoundBaselines } from '$lib/utils/dataEngine/draftBaselines.js';
   import { getAllRosterStats } from '$lib/utils/dataEngine/allRosterStats.js';
@@ -15,9 +15,8 @@
   import { computeSeasonSOS, computeAllTimeSOS } from '$lib/utils/dataEngine/strengthOfSchedule.js';
   import {
     exportLeagueContext, exportSeasonStats, exportAllTimeHistory,
-    exportWeeklyData, exportPreDraftPackage, exportDraftResults, exportDraftCalibration, PROMPTS
+    exportWeeklyData, exportPreDraftPackage, exportDraftResults, PROMPTS
   } from '$lib/utils/dataEngine/dataExport.js';
-  import { loadVibesGrades, saveVibesGradesForYear } from '$lib/utils/dataEngine/vibesGradesStore.js';
   import { getRealName, MANAGERS } from '$lib/utils/leagueManagers.js';
   import { teamManagersStore } from '$lib/stores';
 
@@ -36,7 +35,7 @@
   let loadingTransactions       = false;
   let gradedTransactions        = [];
   let allTimeTransactionTotals  = [];
-  let selectedTransactionSeason = '';
+  let selectedTransactionSeason = 'ALL_TIME';
   let seasonTransactionTotals   = [];
   let txFilter         = 'all';
   let showTxDebug      = false;
@@ -45,25 +44,15 @@
   let managerTradePARBySeason  = {};
   let managerWaiverPARBySeason = {};
 
-  // ── Drafts ──────────────────────────────────────────────────────────────────
+  // ── Drafts ────────────────────────────────────────────────────────────────
   let allDrafts         = [];
   let loadingDrafts     = false;
   let draftDebug        = [];
   let showDraftDebug    = false;
   let selectedDraftYear = null;
-  let preSeasonGrade    = null;
   let endOfSeasonGrade  = null;
-  let draftActiveTab    = 'end';
   let draftGradesByYear = {};
   const eosCache        = {};
-
-  // ── Vibes-grade calibration ───────────────────────────────────────────────
-  const GRADE_OPTIONS = ['A+','A','A-','B+','B','B-','C+','C','C-','D+','D','D-','F'];
-  let vibesGrades         = {}; // { [year]: { [managerId]: 'B+' } }
-  let vibesInputByManager = {};
-  let vibesSaved          = false;
-  let calibrationByYear   = {}; // { [year]: comparisonResult }
-  let overallCalibration  = null;
 
   // ── Manager grades ────────────────────────────────────────────────────────
   let rosterStats           = null;
@@ -72,7 +61,7 @@
   let showManagerDebug      = false;
   let seasonManagerGrades   = {};
   let allTimeManagerGrades  = {};
-  let managerGradeYear      = null;
+  let managerGradeYear      = 'ALL_TIME';
   let managerLineupIQBySeason = {};
 
   // ── SOS ─────────────────────────────────────────────────────────────────────
@@ -91,36 +80,34 @@
   // ── Export ──────────────────────────────────────────────────────────────────
   let exportPreview      = '';
   let exportPreviewTitle = '';
-  let exportPreviewType  = '';
   let exportCopied       = {};
   let promptCopied       = {};
   let mainCopied         = false;
   let exportSeasonYear   = null;
   let exportWeek         = null;
 
-  // ── Prompt testing ────────────────────────────────────────────────────────
-  let testYear       = null;
-  let testWeek       = 1;
-  let testExportText  = '';
-  let testExportTitle = '';
-  let testCopied      = false;
-
-  const EXPORT_CONFIGS = [
-    { key: 'context',  title: 'League Context',       filename: 'league_context.md',   desc: 'League rules, scoring, manager names, glossary.', freq: 'Upload once — re-upload if rules change' },
-    { key: 'history',  title: 'All-Time History',     filename: 'all_time_history.md', desc: 'Career records, all-time grades, SOS, draft/trade/waiver history.', freq: 'Replace each year' },
-    { key: 'season',   title: 'Current Season Stats', filename: 'current_season.md',   desc: 'Season stats to date for the selected season/week.', freq: 'Replace each week' },
-    { key: 'week',     title: 'Current Week',         filename: 'current_week.md',     desc: "The selected week's matchup results, waivers, standings, power rankings.", freq: 'Replace each week' },
-    { key: 'predraft', title: 'Pre-Draft Package',    filename: 'pre_draft.md',        desc: 'Pre-season power rankings + all-time history + last season stats — always generated fresh for next season.', freq: 'Generate before the draft' },
-    { key: 'draftresults', title: 'Current Draft Board', filename: 'current_draft.md', desc: 'The just-completed draft — every pick, for vibes-based Draft Grades.', freq: 'Generate right after the draft' },
-    { key: 'draftcalibration', title: 'Vibes-Grade Calibration', filename: 'draft_calibration.md', desc: 'History of how past vibes-based draft grades compared to actual end-of-season results.', freq: 'Regenerate as more years accumulate' }
+  const ARTICLE_PACKAGES = [
+    {
+      key: 'weeklyRecap',
+      label: '📅 Weekly Recap',
+      desc: 'league_context + current_season + current week — for the selected Season/Week above.'
+    },
+    {
+      key: 'draftGrades',
+      label: '📋 Draft Grades',
+      desc: 'league_context + current draft board + all_time_history — for the selected Season above.'
+    },
+    {
+      key: 'preDraftRecap',
+      label: '📰 Pre-Draft Recap',
+      desc: 'league_context + all_time_history + last season stats + pre-draft power rankings — always targets next season automatically.'
+    },
+    {
+      key: 'endOfSeasonRecap',
+      label: '🏆 End of Season Recap',
+      desc: 'league_context + current_season + all_time_history — for the selected Season above.'
+    }
   ];
-
-  const PROMPT_LABELS = {
-    preDraftRecap:    '📰 Pre-Draft Recap',
-    draftGrades:      '📋 Draft Grades',
-    weeklyRecap:      '📅 Weekly Recap',
-    endOfSeasonRecap: '🏆 End of Season Recap'
-  };
 
   // ── Reactive ────────────────────────────────────────────────────────────────
   $: currentSeasonYears = allTimeHistory
@@ -135,6 +122,9 @@
     ? [nextSeasonYear, ...currentSeasonYears]
     : currentSeasonYears;
 
+  // Same list, used for the Export tab's Season dropdown — the next
+  // (upcoming, not-yet-played) season is a valid selection there too, since
+  // that's what the Draft Grades package targets on draft day.
   $: exportYearOptions = nextSeasonYear
     ? [nextSeasonYear, ...currentSeasonYears]
     : currentSeasonYears;
@@ -144,15 +134,15 @@
   $: filteredTransactions = gradedTransactions
     .filter((tx) => !tx.isPartOfComposite)
     .filter((tx) => txFilter === 'all' || tx.type === txFilter);
-  $: if (transactionHistory && selectedTransactionSeason) {
+  $: if (transactionHistory && selectedTransactionSeason && selectedTransactionSeason !== 'ALL_TIME') {
     const snap = get(teamManagersStore) || {};
     seasonTransactionTotals = getSeasonTransactionTotals(
       transactionHistory.totals, selectedTransactionSeason, snap
     );
   }
 
-  $: if (currentSeasonYears.length && !testYear) testYear = currentSeasonYears[0];
-
+  // Export tab: default season to most recent COMPLETED season, and compute
+  // which weeks actually have data for the selected season.
   $: if (currentSeasonYears.length && !exportSeasonYear) exportSeasonYear = currentSeasonYears[0];
 
   $: exportWeekOptions = (() => {
@@ -165,6 +155,10 @@
     return [...weeks].sort((a, b) => a - b);
   })();
 
+  // Auto-jump to the latest played week whenever the available weeks for the
+  // selected season change (including on first load, or when Season changes).
+  // For a not-yet-started season (e.g. next year), this list is naturally
+  // empty and exportWeek is simply left alone/unused.
   $: if (exportWeekOptions.length && !exportWeekOptions.includes(exportWeek)) {
     exportWeek = exportWeekOptions[exportWeekOptions.length - 1];
   }
@@ -277,42 +271,6 @@
     document.body.removeChild(a); URL.revokeObjectURL(url);
   }
 
-  // ── Vibes-grade calibration helpers ──────────────────────────────────────────
-
-  function initVibesInputsForYear(year) {
-    if (!year) return;
-    const ys = String(year);
-    const draft = allDrafts.find((d) => d.year === year);
-    const mgrIds = draft ? [...new Set(draft.picks.map((p) => p.managerId))] : [];
-    const existing = vibesGrades[ys] || {};
-    const next = {};
-    mgrIds.forEach((id) => { next[id] = existing[id] || ''; });
-    vibesInputByManager = next;
-  }
-
-  function recalcCalibration() {
-    const results = {};
-    Object.keys(vibesGrades).forEach((ys) => {
-      const eos = eosCache[ys];
-      if (!eos) return;
-      const cmp = compareVibesToActual(vibesGrades[ys], eos);
-      if (cmp) results[ys] = cmp;
-    });
-    calibrationByYear  = results;
-    overallCalibration = summarizeCalibration(Object.values(results));
-  }
-
-  function saveVibesForYear(year) {
-    const ys = String(year);
-    const cleaned = {};
-    Object.entries(vibesInputByManager).forEach(([id, g]) => { if (g) cleaned[id] = g; });
-    vibesGrades = { ...vibesGrades, [ys]: cleaned };
-    saveVibesGradesForYear(ys, cleaned);
-    recalcCalibration();
-    vibesSaved = true;
-    setTimeout(() => { vibesSaved = false; }, 2000);
-  }
-
   // ── Core loader ───────────────────────────────────────────────────────────────
   async function ensureHistory() {
     if (allTimeHistory) return;
@@ -358,8 +316,7 @@
       allTimeTransactionTotals = getAllTimeTransactionTotals(txResult.totals, snap);
       const avail = Object.keys(txResult.totals.seasons || {}).sort((a,b) => Number(b)-Number(a));
       if (avail.length) {
-        selectedTransactionSeason = avail[0];
-        seasonTransactionTotals   = getSeasonTransactionTotals(txResult.totals, avail[0], snap);
+        seasonTransactionTotals = getSeasonTransactionTotals(txResult.totals, avail[0], snap);
       }
 
       managerTradePARBySeason  = {};
@@ -386,6 +343,12 @@
     } finally { loadingTransactions = false; }
   }
 
+  function onTransactionSeasonChange() {
+    if (selectedTransactionSeason === 'ALL_TIME') return;
+    const snap = get(teamManagersStore) || {};
+    seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, snap);
+  }
+
   // ── Drafts ────────────────────────────────────────────────────────────────────
   async function loadDrafts() {
     loadingDrafts = true; draftDebug = [];
@@ -396,12 +359,8 @@
       for (const draft of allDrafts) await computeEOS(draft.year, true);
       if (allDrafts.length) {
         selectedDraftYear = allDrafts[0].year;
-        preSeasonGrade    = gradeDraftPreSeason(allDrafts[0]);
         endOfSeasonGrade  = eosCache[String(selectedDraftYear)] || null;
       }
-      vibesGrades = loadVibesGrades();
-      recalcCalibration();
-      initVibesInputsForYear(selectedDraftYear);
     } catch (e) {
       console.error(e); draftDebug.push(`Crash: ${e.message}`);
     } finally { loadingDrafts = false; }
@@ -440,13 +399,9 @@
 
   async function selectDraft(year) {
     selectedDraftYear = year;
-    const draft = allDrafts.find((d) => d.year === year);
-    preSeasonGrade   = gradeDraftPreSeason(draft);
     endOfSeasonGrade = eosCache[String(year)] || await computeEOS(year);
     if (endOfSeasonGrade) draftDebug.push(...(endOfSeasonGrade.debug || []));
     draftDebug = [...draftDebug];
-    recalcCalibration();
-    initVibesInputsForYear(year);
   }
 
   // ── Manager grades ────────────────────────────────────────────────────────────
@@ -486,7 +441,6 @@
       });
       allTimeSOS = computeAllTimeSOS(seasonSOSByYear, allManagerIds);
 
-      managerGradeYear = currentSeasonYears[0];
       recomputeGrades();
       managerDebug.push('Manager grades computed.');
     } catch (e) {
@@ -513,6 +467,14 @@
 
   // ── Power rankings ────────────────────────────────────────────────────────────
 
+  /**
+   * Computes pre-season power rankings for a given year WITHOUT touching any
+   * shared component state (powerYear, preSeasonRankings, etc). Used by both
+   * loadPowerRankings (for the Power Rankings tab's display) and by the
+   * Export tab's Pre-Draft Recap package generator, so the export is never
+   * at the mercy of whatever year was last selected/computed in the Power
+   * Rankings tab — it always computes fresh for the exact year it needs.
+   */
   async function computePreSeasonRankingsFresh(year) {
     await ensureHistory();
     const ys = String(year);
@@ -614,33 +576,26 @@
   }
 
   // ── Export ────────────────────────────────────────────────────────────────────
-  async function generateExport(type) {
-    const snap = get(teamManagersStore) || {};
+
+  /**
+   * Builds and downloads one self-contained package for the given article
+   * type. Every package includes league_context inline (there's no more
+   * separately-uploaded "core files" concept) so each one is a straight
+   * drop-in replacement in a Claude Project.
+   */
+  async function generatePackage(articleType) {
+    const snap    = get(teamManagersStore) || {};
+    const yearStr = exportSeasonYear || currentSeasonYears[0];
+    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
+    const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
     const allTimeWeeklyResults = allTimeHistory?.weeklyResults || [];
     let text = '', title = '';
 
     try {
-      if (type === 'context') {
-        text  = exportLeagueContext(snap, currentSeasonYears[0]);
-        title = 'league_context.md';
+      const contextText = exportLeagueContext(snap, yearStr);
 
-      } else if (type === 'history') {
-        text = exportAllTimeHistory({
-          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
-          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
-          playerResults:      allTimeHistory?.playerResults || [],
-          seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions,
-          draftGradesFullByYear: eosCache
-        });
-        title = 'all_time_history.md';
-
-      } else if (type === 'season') {
-        const yearStr = exportSeasonYear || currentSeasonYears[0];
-        const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-        const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
-        text = exportSeasonStats({
+      if (articleType === 'weeklyRecap') {
+        const seasonText = exportSeasonStats({
           year: yearStr,
           standings:      seasonData?.standings || [],
           weeklyResults:  seasonWeeklyResults,
@@ -655,17 +610,12 @@
           playerResults:     allTimeHistory?.playerResults  || [],
           rosterToManagerId: seasonData?.rosterToManagerId  || {}
         });
-        title = 'current_season.md';
 
-      } else if (type === 'week') {
-        const yearStr = exportSeasonYear || currentSeasonYears[0];
-        const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-        const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
-        const weekResults = seasonWeeklyResults.filter((r) => r.week === exportWeek);
         const usePR  = powerYear === yearStr;
         const pr     = usePR ? (weeklyProgressionData[exportWeek] || null) : null;
         const prevPR = usePR && exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
-        text = exportWeeklyData({
+        const weekResults = seasonWeeklyResults.filter((r) => r.week === exportWeek);
+        const weekText = exportWeeklyData({
           year:                  yearStr,
           week:                  exportWeek,
           weeklyResults:         weekResults,
@@ -682,27 +632,66 @@
           allPlayersData:        allTimeHistory?.allPlayersData || {},
           rosterToManagerId:     seasonData?.rosterToManagerId  || {}
         });
-        title = 'current_week.md';
 
-      } else if (type === 'draftresults') {
-        const draft = getLatestDraftForYear(exportSeasonYear);
-        text = exportDraftResults({ draft, managersSnapshot: snap });
-        title = 'current_draft.md';
+        text = [contextText, '', '---', '', seasonText, '', '---', '', weekText].join('\n');
+        title = `weekly_recap_${yearStr}_wk${exportWeek}.md`;
 
-      } else if (type === 'draftcalibration') {
-        text = exportDraftCalibration({
-          overallSummary: overallCalibration,
-          yearlyComparisons: Object.values(calibrationByYear),
-          managersSnapshot: snap
+      } else if (articleType === 'draftGrades') {
+        const draft = getLatestDraftForYear(yearStr);
+        const draftText = exportDraftResults({ draft, managersSnapshot: snap });
+        const histText = exportAllTimeHistory({
+          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
+          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
+          playerResults:      allTimeHistory?.playerResults || [],
+          seasons:            allTimeHistory?.seasons || [],
+          gradedTransactions,
+          draftGradesFullByYear: eosCache
         });
-        title = 'draft_calibration.md';
 
-      } else if (type === 'predraft') {
-        const yearStr = currentSeasonYears[0];
-        const targetYear = nextSeasonYear || (yearStr ? String(Number(yearStr) + 1) : null);
+        text = [contextText, '', '---', '', draftText, '', '---', '', histText].join('\n');
+        title = `draft_grades_${yearStr}.md`;
 
-        const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-        const seasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === yearStr) || [];
+      } else if (articleType === 'endOfSeasonRecap') {
+        const seasonText = exportSeasonStats({
+          year: yearStr,
+          standings:      seasonData?.standings || [],
+          weeklyResults:  seasonWeeklyResults,
+          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
+          seasonSOS:      seasonSOSByYear[yearStr] || null,
+          draftEndOfSeasonGrade: eosCache[yearStr] || null,
+          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
+          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
+          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+          rosterStats, managersSnapshot: snap,
+          gradedTransactions,
+          playerResults:     allTimeHistory?.playerResults  || [],
+          rosterToManagerId: seasonData?.rosterToManagerId  || {}
+        });
+        const histText = exportAllTimeHistory({
+          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
+          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
+          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
+          playerResults:      allTimeHistory?.playerResults || [],
+          seasons:            allTimeHistory?.seasons || [],
+          gradedTransactions,
+          draftGradesFullByYear: eosCache
+        });
+
+        text = [contextText, '', '---', '', seasonText, '', '---', '', histText].join('\n');
+        title = `end_of_season_${yearStr}.md`;
+
+      } else if (articleType === 'preDraftRecap') {
+        // Season stats + all-time history always come from the most
+        // recently COMPLETED season (that's the "last season" a pre-draft
+        // preview reports on) — independent of the Season dropdown above.
+        const baseYearStr = currentSeasonYears[0];
+        const targetYear  = nextSeasonYear || (baseYearStr ? String(Number(baseYearStr) + 1) : null);
+
+        const baseSeasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === baseYearStr);
+        const baseSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter((r) => String(r.year) === baseYearStr) || [];
+
+        const baseContextText = exportLeagueContext(snap, baseYearStr);
         const histText = exportAllTimeHistory({
           allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
           allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
@@ -713,194 +702,43 @@
           draftGradesFullByYear: eosCache
         });
         const seasonText = exportSeasonStats({
-          year: yearStr, standings: seasonData?.standings || [],
-          weeklyResults: seasonWeeklyResults,
-          seasonManagerGrades: seasonManagerGrades[yearStr] || {},
-          seasonSOS: seasonSOSByYear[yearStr] || null,
-          draftEndOfSeasonGrade: eosCache[yearStr] || null,
-          managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
-          managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
-          managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
+          year: baseYearStr, standings: baseSeasonData?.standings || [],
+          weeklyResults: baseSeasonWeeklyResults,
+          seasonManagerGrades: seasonManagerGrades[baseYearStr] || {},
+          seasonSOS: seasonSOSByYear[baseYearStr] || null,
+          draftEndOfSeasonGrade: eosCache[baseYearStr] || null,
+          managerTradePAR:  managerTradePARBySeason[baseYearStr]  || {},
+          managerWaiverPAR: managerWaiverPARBySeason[baseYearStr] || {},
+          managerLineupIQ:  managerLineupIQBySeason[baseYearStr]  || {},
           rosterStats, managersSnapshot: snap,
           gradedTransactions,
           playerResults:     allTimeHistory?.playerResults  || [],
-          rosterToManagerId: seasonData?.rosterToManagerId  || {}
+          rosterToManagerId: baseSeasonData?.rosterToManagerId  || {}
         });
 
         const freshPreSeasonRankings = targetYear
           ? await computePreSeasonRankingsFresh(targetYear)
           : null;
 
-        const calibrationText = overallCalibration
-          ? exportDraftCalibration({ overallSummary: overallCalibration, yearlyComparisons: Object.values(calibrationByYear), managersSnapshot: snap })
-          : null;
-
-        text = exportPreDraftPackage({
+        const bundleBody = exportPreDraftPackage({
           year:               targetYear,
           allTimeExport:      histText,
           latestSeasonExport: seasonText,
           preSeasonRankings:  freshPreSeasonRankings,
-          managersSnapshot:   snap,
-          draftCalibrationText: calibrationText
+          managersSnapshot:   snap
         });
-        title = 'pre_draft.md';
+
+        text = [baseContextText, '', '---', '', bundleBody].join('\n');
+        title = `pre_draft_recap_${targetYear}.md`;
       }
 
       exportPreview      = text;
       exportPreviewTitle = title;
-      exportPreviewType  = type;
       downloadMarkdown(text, title);
       await clipboardCopy(text);
-      exportCopied = { ...exportCopied, [type]: true };
-      setTimeout(() => { exportCopied = { ...exportCopied, [type]: false }; }, 2000);
-    } catch (e) { console.error('Export error:', e); }
-  }
-
-  // ── Prompt testing ────────────────────────────────────────────────────────────
-  async function generateTestExport(articleType) {
-    const snap    = get(teamManagersStore) || {};
-    const yearStr = testYear || currentSeasonYears[0];
-    const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === yearStr);
-    const allSeasonWeeklyResults = allTimeHistory?.weeklyResults?.filter(
-      (r) => String(r.year) === yearStr
-    ) || [];
-    const allTimeWeeklyResults = allTimeHistory?.weeklyResults || [];
-    let text = '', title = '';
-
-    const contextText = exportLeagueContext(snap, yearStr);
-    const seasonText = exportSeasonStats({
-      year: yearStr,
-      standings:      seasonData?.standings || [],
-      weeklyResults:  allSeasonWeeklyResults,
-      seasonManagerGrades: seasonManagerGrades[yearStr] || {},
-      seasonSOS:      seasonSOSByYear[yearStr] || null,
-      draftEndOfSeasonGrade: eosCache[yearStr] || null,
-      managerTradePAR:  managerTradePARBySeason[yearStr]  || {},
-      managerWaiverPAR: managerWaiverPARBySeason[yearStr] || {},
-      managerLineupIQ:  managerLineupIQBySeason[yearStr]  || {},
-      rosterStats, managersSnapshot: snap,
-      gradedTransactions,
-      playerResults:     allTimeHistory?.playerResults  || [],
-      rosterToManagerId: seasonData?.rosterToManagerId  || {}
-    });
-
-    try {
-      if (articleType === 'weeklyRecap') {
-        const weekResults = allSeasonWeeklyResults.filter((r) => r.week === testWeek);
-        const usePR  = powerYear === yearStr;
-        const pr     = usePR ? (weeklyProgressionData[testWeek] || null) : null;
-        const prevPR = usePR && testWeek > 0 ? weeklyProgressionData[testWeek - 1] : null;
-        const weekText = exportWeeklyData({
-          year:                  yearStr,
-          week:                  testWeek,
-          weeklyResults:         weekResults,
-          allSeasonWeeklyResults,
-          allTimeWeeklyResults,
-          gradedTransactions,
-          currentStandings:      null,
-          powerRankings:         pr,
-          previousPowerRankings: prevPR?.rankings || [],
-          nextWeekMatchups:      null,
-          isTestMode:            true,
-          managersSnapshot:      snap,
-          playerResults:         allTimeHistory?.playerResults  || [],
-          allPlayersData:        allTimeHistory?.allPlayersData || {},
-          rosterToManagerId:     seasonData?.rosterToManagerId  || {}
-        });
-
-        text = [
-          `# TEST BUNDLE: Weekly Recap — Week ${testWeek}, ${yearStr}`,
-          '*Contains league_context.md + current_season.md + current_week.md bundled together for testing. In production these are three separate files.*',
-          '',
-          '---',
-          '',
-          contextText,
-          '',
-          '---',
-          '',
-          seasonText,
-          '',
-          '---',
-          '',
-          weekText
-        ].join('\n');
-        title = `TEST_weekly_recap_bundle_week${testWeek}_${yearStr}.md`;
-
-      } else if (articleType === 'endOfSeason') {
-        const histText = exportAllTimeHistory({
-          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
-          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
-          playerResults:      allTimeHistory?.playerResults || [],
-          seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions,
-          draftGradesFullByYear: eosCache
-        });
-        text = [
-          `# TEST BUNDLE: End of Season Recap — ${yearStr}`,
-          '*Contains league_context.md + current_season.md + all_time_history.md bundled together for testing.*',
-          '',
-          '---',
-          '',
-          contextText,
-          '',
-          '---',
-          '',
-          seasonText,
-          '',
-          '---',
-          '',
-          histText
-        ].join('\n');
-        title = `TEST_end_of_season_bundle_${yearStr}.md`;
-
-      } else if (articleType === 'draftGrades') {
-        const histText = exportAllTimeHistory({
-          allTimeManagerGrades, allTimeSOS, seasonManagerGrades, seasonSOSByYear,
-          allDrafts, draftGradesByYear, managerTradePARBySeason, managerWaiverPARBySeason,
-          managers: allTimeHistory?.managers || {}, managersSnapshot: snap,
-          playerResults:      allTimeHistory?.playerResults || [],
-          seasons:            allTimeHistory?.seasons || [],
-          gradedTransactions,
-          draftGradesFullByYear: eosCache
-        });
-        const draftForYear = getLatestDraftForYear(yearStr);
-        const draftResultsText = exportDraftResults({ draft: draftForYear, managersSnapshot: snap });
-        const calibrationText = overallCalibration
-          ? exportDraftCalibration({ overallSummary: overallCalibration, yearlyComparisons: Object.values(calibrationByYear), managersSnapshot: snap })
-          : null;
-
-        text = [
-          `# TEST BUNDLE: Draft Grades — ${yearStr}`,
-          '*Contains league_context.md + current_draft.md + current_season.md + all_time_history.md (+ calibration history if recorded) bundled together for testing.*',
-          '',
-          '---',
-          '',
-          contextText,
-          '',
-          '---',
-          '',
-          draftResultsText,
-          '',
-          '---',
-          '',
-          seasonText,
-          '',
-          '---',
-          '',
-          histText,
-          ...(calibrationText ? ['', '---', '', calibrationText] : [])
-        ].join('\n');
-        title = `TEST_draft_grades_bundle_${yearStr}.md`;
-      }
-
-      testExportText  = text;
-      testExportTitle = title;
-      downloadMarkdown(text, title);
-      await clipboardCopy(text);
-      testCopied = true;
-      setTimeout(() => { testCopied = false; }, 2000);
-    } catch (e) { console.error('Test export error:', e); }
+      exportCopied = { ...exportCopied, [articleType]: true };
+      setTimeout(() => { exportCopied = { ...exportCopied, [articleType]: false }; }, 2000);
+    } catch (e) { console.error('Package export error:', e); }
   }
 
   // ── SVG chart ─────────────────────────────────────────────────────────────────
@@ -954,23 +792,21 @@
     {#if loadingTransactions}
       <div class="status-msg">Grading transactions...</div>
     {:else if transactionHistory}
-      <h4>All-Time Totals</h4>
-      <table class="data-table">
-        <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
-        <tbody>{#each allTimeTransactionTotals as m}<tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>{/each}</tbody>
-      </table>
-      <h4>Season Totals</h4>
+      <h4>Totals</h4>
       <div class="control-row">
-        <select bind:value={selectedTransactionSeason} on:change={() => {
-          const s = get(teamManagersStore)||{};
-          seasonTransactionTotals = getSeasonTransactionTotals(transactionHistory.totals, selectedTransactionSeason, s);
-        }}>
+        <select bind:value={selectedTransactionSeason} on:change={onTransactionSeasonChange}>
+          <option value="ALL_TIME">All Time</option>
           {#each Object.keys(transactionHistory.totals.seasons||{}).sort((a,b)=>Number(b)-Number(a)) as yr}
             <option value={yr}>{yr}</option>
           {/each}
         </select>
       </div>
-      {#if seasonTransactionTotals.length}
+      {#if selectedTransactionSeason === 'ALL_TIME'}
+        <table class="data-table">
+          <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
+          <tbody>{#each allTimeTransactionTotals as m}<tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>{/each}</tbody>
+        </table>
+      {:else if seasonTransactionTotals.length}
         <table class="data-table">
           <thead><tr><th>Manager</th><th>Trades</th><th>Waivers</th><th>Total</th></tr></thead>
           <tbody>{#each seasonTransactionTotals as m}<tr><td>{m.displayName}</td><td>{m.trades}</td><td>{m.waivers}</td><td>{m.total}</td></tr>{/each}</tbody>
@@ -1068,194 +904,111 @@
         <select bind:value={selectedDraftYear} on:change={() => selectDraft(selectedDraftYear)}>
           {#each draftYearOptions as yr}<option value={yr}>{yr}</option>{/each}
         </select>
-        <div class="tab-group">
-          <button class="tab-btn {draftActiveTab==='end'?'active':''}" on:click={() => (draftActiveTab='end')}>Post-Season</button>
-          <button class="tab-btn {draftActiveTab==='pre'?'active':''}" on:click={() => (draftActiveTab='pre')}>Pre-Season</button>
-          <button class="tab-btn {draftActiveTab==='vibes'?'active':''}" on:click={() => { draftActiveTab='vibes'; initVibesInputsForYear(selectedDraftYear); }}>Vibes Calibration</button>
-        </div>
       </div>
-      {#if draftActiveTab === 'end'}
-        {#if endOfSeasonGrade}
-          <h3>{endOfSeasonGrade.year} Post-Season Draft Grade</h3>
-          <div class="explainer">
-            <strong>Adjusted PAR = Actual PAR − Expected PAR.</strong>
-            Actual PAR = actual pts − positional replacement level.
-            Expected PAR = historical avg per round (baseline: {endOfSeasonGrade.baselineSeasons?.join(', ')}).
-          </div>
-          <div class="ref-grid">
-            <div class="ref-panel">
-              <div class="ref-title">📊 Expected PAR by Round</div>
-              <div class="baseline-pills">
-                {#each Object.entries(endOfSeasonGrade.expectedPARByRound||{}).sort(([a],[b])=>Number(a)-Number(b)) as [r,v]}
-                  <div class="baseline-pill"><span class="bl-round">R{r}</span><span class="bl-pts">{signedFp(v)}</span><span class="bl-n muted">{endOfSeasonGrade.sampleSizes?.[r]}yr</span></div>
-                {/each}
-              </div>
-            </div>
-            <div class="ref-panel">
-              <div class="ref-title">🔄 Replacement Levels</div>
-              <div class="rep-pills">
-                {#each Object.entries(endOfSeasonGrade.replacementLevels||{}).sort(([a],[b])=>a.localeCompare(b)) as [pos,pts]}
-                  <div class="rep-pill"><span class="rp-pos">{pos}</span><span class="rp-pts">{fp(pts)}</span><span class="rp-name muted">{endOfSeasonGrade.replacementNames?.[pos]||'?'}</span></div>
-                {/each}
-              </div>
-            </div>
-          </div>
-          <h4>Team Grades</h4>
-          <table class="data-table">
-            <thead><tr><th>#</th><th>Manager</th><th>Grade</th><th>Adj PAR</th><th>Actual Pts</th><th>Best Pick</th><th>Worst Pick</th></tr></thead>
-            <tbody>
-              {#each endOfSeasonGrade.teamRankings as team, i}
-                <tr>
-                  <td>#{i+1}</td><td><strong>{mdn(team.managerId)}</strong></td>
-                  <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
-                  <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
-                  <td>{fp(team.totalActualPts)}</td>
-                  <td>{team.bestPick?`${team.bestPick.playerName} R${team.bestPick.round}`:''}</td>
-                  <td>{team.worstPick?`${team.worstPick.playerName} R${team.worstPick.round}`:''}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-          <div class="two-col">
-            <div>
-              <h4>🔥 Biggest Steals</h4>
-              <table class="data-table">
-                <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
-                <tbody>{#each endOfSeasonGrade.leagueTopSteals as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="positive">{signedFp(p.adjustedPAR)}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
-              </table>
-            </div>
-            <div>
-              <h4>💀 Biggest Busts</h4>
-              <table class="data-table">
-                <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
-                <tbody>{#each endOfSeasonGrade.leagueTopBusts as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="negative">{signedFp(p.adjustedPAR)}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
-              </table>
-            </div>
-          </div>
-          <h4>Full Team Breakdowns</h4>
-          {#each endOfSeasonGrade.teamRankings as team}
-            <div class="team-block">
-              <div class="team-header">
-                <span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span>
-                <strong>{mdn(team.managerId)}</strong>
-                <span class="header-stat">Adj PAR: <span class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</span></span>
-                <span class="header-stat muted">{fp(team.totalActualPts)} pts</span>
-              </div>
-              <div class="table-scroll">
-                <table class="data-table mini">
-                  <thead><tr><th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th><th>Actual</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Label</th></tr></thead>
-                  <tbody>
-                    {#each team.picks as p}
-                      <tr>
-                        <td>{p.round}</td><td>#{p.pickNo}</td>
-                        <td>{p.playerName}</td>
-                        <td><span class="pos">{p.pos}</span></td>
-                        <td>{fp(p.actualPts)}</td>
-                        <td class="muted">{signedFp(p.actualPAR)}</td>
-                        <td class="muted">{p.noRoundAdjustment?'0 (K/DEF)':signedFp(p.expectedPAR)}</td>
-                        <td class="{parClass(p.adjustedPAR)}">{p.adjustedPAR!=null?signedFp(p.adjustedPAR):'—'}</td>
-                        <td><span class="vl-tag {valueLabelClass(p.valueLabel)}">{p.valueLabel}</span></td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-              <div class="pos-breakdown">
-                {#each Object.entries(team.byPosition).sort(([a],[b])=>a.localeCompare(b)) as [pos,data]}
-                  <div class="pos-card">
-                    <div class="pos-label">{pos}</div>
-                    <div class="pos-stat">{data.picks} picks</div>
-                    <div class="pos-stat">{fp(data.totalActualPts)} pts</div>
-                    <div class="pos-par {data.totalAdjustedPAR>=0?'positive':'negative'}">{signedFp(data.totalAdjustedPAR)}</div>
-                  </div>
-                {/each}
-              </div>
-              <div class="round-breakdown">
-                <span class="muted">Adj PAR by round:</span>
-                {#each Object.entries(team.byRound).sort(([a],[b])=>Number(a)-Number(b)) as [rnd,data]}
-                  <span class="round-pill {data.totalAdjustedPAR>=0?'positive-bg':'negative-bg'}">R{rnd}: {signedFp(data.totalAdjustedPAR)}</span>
-                {/each}
-              </div>
-            </div>
-          {/each}
-        {:else}<div class="status-msg">Load Draft Data to see grades.</div>{/if}
-      {:else if draftActiveTab === 'pre'}
-        {#if preSeasonGrade}
-          <h3>{preSeasonGrade.year} Pre-Season Grade</h3>
-          <div class="explainer">
-            This "positional scarcity" grade compares each pick only against ADP <em>within this draft room</em> — it is NOT the vibes-based grade used in the published Draft Grades article (that's LLM-authored using real industry ADP; see the Export tab and the Vibes Calibration sub-tab).
-          </div>
-          <table class="data-table">
-            <thead><tr><th>#</th><th>Manager</th><th>Grade</th><th>Avg vs Market</th><th>Best Pick</th><th>Worst Pick</th></tr></thead>
-            <tbody>
-              {#each preSeasonGrade.teamRankings as team, i}
-                <tr>
-                  <td>#{i+1}</td><td>{mdn(team.managerId)}</td>
-                  <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
-                  <td class="{(parseFloat(team.avgVsMarket)||0)>=0?'positive':'negative'}">{signedFp(team.avgVsMarket)} picks</td>
-                  <td>{team.bestValuePick?`${team.bestValuePick.playerName} R${team.bestValuePick.round}`:''}</td>
-                  <td>{team.worstValuePick?`${team.worstValuePick.playerName} R${team.worstValuePick.round}`:''}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {:else}<div class="status-msg">Load Draft Data first.</div>{/if}
-      {:else if draftActiveTab === 'vibes'}
+      {#if endOfSeasonGrade}
+        <h3>{endOfSeasonGrade.year} Post-Season Draft Grade</h3>
         <div class="explainer">
-          After you publish the Draft Grades article (vibes-based, written by the LLM right after the draft using real ADP/expert knowledge), record each manager's issued grade here. Once end-of-season data-based grades exist for that year (Post-Season tab), this compares them and tracks whether the vibes-grading process runs too generous, too harsh, or accurate — feeding that bias back into future Draft Grades prompts via the calibration export.
+          <strong>Adjusted PAR = Actual PAR − Expected PAR.</strong>
+          Actual PAR = actual pts − positional replacement level.
+          Expected PAR = historical avg per round (baseline: {endOfSeasonGrade.baselineSeasons?.join(', ')}).
         </div>
-        {@const draft = allDrafts.find((d) => d.year === selectedDraftYear)}
-        {@const mgrIds = draft ? [...new Set(draft.picks.map((p) => p.managerId))] : []}
-        <h3>{selectedDraftYear} — Record Vibes Grades</h3>
-        {#if !eosCache[String(selectedDraftYear)]}
-          <div class="warn-banner">⚠ No end-of-season data-based grade computed yet for {selectedDraftYear} — you can still record vibes grades now, but the comparison won't show until the season's data is available (switch to the Post-Season tab to compute it).</div>
-        {/if}
+        <div class="ref-grid">
+          <div class="ref-panel">
+            <div class="ref-title">📊 Expected PAR by Round</div>
+            <div class="baseline-pills">
+              {#each Object.entries(endOfSeasonGrade.expectedPARByRound||{}).sort(([a],[b])=>Number(a)-Number(b)) as [r,v]}
+                <div class="baseline-pill"><span class="bl-round">R{r}</span><span class="bl-pts">{signedFp(v)}</span><span class="bl-n muted">{endOfSeasonGrade.sampleSizes?.[r]}yr</span></div>
+              {/each}
+            </div>
+          </div>
+          <div class="ref-panel">
+            <div class="ref-title">🔄 Replacement Levels</div>
+            <div class="rep-pills">
+              {#each Object.entries(endOfSeasonGrade.replacementLevels||{}).sort(([a],[b])=>a.localeCompare(b)) as [pos,pts]}
+                <div class="rep-pill"><span class="rp-pos">{pos}</span><span class="rp-pts">{fp(pts)}</span><span class="rp-name muted">{endOfSeasonGrade.replacementNames?.[pos]||'?'}</span></div>
+              {/each}
+            </div>
+          </div>
+        </div>
+        <h4>Team Grades</h4>
         <table class="data-table">
-          <thead><tr><th>Manager</th><th>Vibes Grade (from article)</th></tr></thead>
+          <thead><tr><th>#</th><th>Manager</th><th>Grade</th><th>Adj PAR</th><th>Actual Pts</th><th>Best Pick</th><th>Worst Pick</th></tr></thead>
           <tbody>
-            {#each mgrIds as mgrId}
+            {#each endOfSeasonGrade.teamRankings as team, i}
               <tr>
-                <td><strong>{mdn(mgrId)}</strong></td>
-                <td>
-                  <select bind:value={vibesInputByManager[mgrId]}>
-                    <option value="">—</option>
-                    {#each GRADE_OPTIONS as g}<option value={g}>{g}</option>{/each}
-                  </select>
-                </td>
+                <td>#{i+1}</td><td><strong>{mdn(team.managerId)}</strong></td>
+                <td><span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span></td>
+                <td class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</td>
+                <td>{fp(team.totalActualPts)}</td>
+                <td>{team.bestPick?`${team.bestPick.playerName} R${team.bestPick.round}`:''}</td>
+                <td>{team.worstPick?`${team.worstPick.playerName} R${team.worstPick.round}`:''}</td>
               </tr>
             {/each}
           </tbody>
         </table>
-        <div class="control-row">
-          <button on:click={() => saveVibesForYear(selectedDraftYear)}>{vibesSaved?'✓ Saved!':'Save Vibes Grades'}</button>
-        </div>
-
-        {#if calibrationByYear[String(selectedDraftYear)]}
-          {@const cmp = calibrationByYear[String(selectedDraftYear)]}
-          <h4>{selectedDraftYear} Vibes vs. Actual</h4>
-          <table class="data-table">
-            <thead><tr><th>Manager</th><th>Vibes Grade</th><th>Actual EOS Grade</th><th>Bias</th></tr></thead>
-            <tbody>
-              {#each cmp.rows as r}
-                <tr>
-                  <td>{mdn(r.managerId)}</td>
-                  <td>{r.vibesGrade}</td>
-                  <td>{r.eosGrade}</td>
-                  <td class="{parClass(r.delta)}">{r.delta>0?'+':''}{r.delta} ({r.label})</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-
-        {#if overallCalibration}
-          <h4>All-Time Calibration Summary</h4>
-          <div class="explainer">
-            Across {overallCalibration.totalDraftsCompared} recorded team-drafts ({overallCalibration.yearsIncluded.join(', ')}): {overallCalibration.bias}.
-            Average bias: {overallCalibration.avgDelta>0?'+':''}{overallCalibration.avgDelta} GPA pts · Average absolute error: {overallCalibration.avgAbsError} GPA pts.
+        <div class="two-col">
+          <div>
+            <h4>🔥 Biggest Steals</h4>
+            <table class="data-table">
+              <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
+              <tbody>{#each endOfSeasonGrade.leagueTopSteals as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="positive">{signedFp(p.adjustedPAR)}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
+            </table>
           </div>
-        {/if}
-      {/if}
+          <div>
+            <h4>💀 Biggest Busts</h4>
+            <table class="data-table">
+              <thead><tr><th>Player</th><th>Pos</th><th>Rd</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Manager</th></tr></thead>
+              <tbody>{#each endOfSeasonGrade.leagueTopBusts as p}<tr><td>{p.playerName}</td><td>{p.pos}</td><td>{p.round}</td><td class="muted">{signedFp(p.actualPAR)}</td><td class="muted">{p.noRoundAdjustment?'0':signedFp(p.expectedPAR)}</td><td class="negative">{signedFp(p.adjustedPAR)}</td><td>{mdn(p.managerId)}</td></tr>{/each}</tbody>
+            </table>
+          </div>
+        </div>
+        <h4>Full Team Breakdowns</h4>
+        {#each endOfSeasonGrade.teamRankings as team}
+          <div class="team-block">
+            <div class="team-header">
+              <span class="grade-badge {gradeColor(team.grade)}">{team.grade}</span>
+              <strong>{mdn(team.managerId)}</strong>
+              <span class="header-stat">Adj PAR: <span class="{parClass(team.totalAdjustedPAR)}">{signedFp(team.totalAdjustedPAR)}</span></span>
+              <span class="header-stat muted">{fp(team.totalActualPts)} pts</span>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table mini">
+                <thead><tr><th>Rd</th><th>Pick</th><th>Player</th><th>Pos</th><th>Actual</th><th>Act PAR</th><th>Exp PAR</th><th>Adj PAR</th><th>Label</th></tr></thead>
+                <tbody>
+                  {#each team.picks as p}
+                    <tr>
+                      <td>{p.round}</td><td>#{p.pickNo}</td>
+                      <td>{p.playerName}</td>
+                      <td><span class="pos">{p.pos}</span></td>
+                      <td>{fp(p.actualPts)}</td>
+                      <td class="muted">{signedFp(p.actualPAR)}</td>
+                      <td class="muted">{p.noRoundAdjustment?'0 (K/DEF)':signedFp(p.expectedPAR)}</td>
+                      <td class="{parClass(p.adjustedPAR)}">{p.adjustedPAR!=null?signedFp(p.adjustedPAR):'—'}</td>
+                      <td><span class="vl-tag {valueLabelClass(p.valueLabel)}">{p.valueLabel}</span></td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+            <div class="pos-breakdown">
+              {#each Object.entries(team.byPosition).sort(([a],[b])=>a.localeCompare(b)) as [pos,data]}
+                <div class="pos-card">
+                  <div class="pos-label">{pos}</div>
+                  <div class="pos-stat">{data.picks} picks</div>
+                  <div class="pos-stat">{fp(data.totalActualPts)} pts</div>
+                  <div class="pos-par {data.totalAdjustedPAR>=0?'positive':'negative'}">{signedFp(data.totalAdjustedPAR)}</div>
+                </div>
+              {/each}
+            </div>
+            <div class="round-breakdown">
+              <span class="muted">Adj PAR by round:</span>
+              {#each Object.entries(team.byRound).sort(([a],[b])=>Number(a)-Number(b)) as [rnd,data]}
+                <span class="round-pill {data.totalAdjustedPAR>=0?'positive-bg':'negative-bg'}">R{rnd}: {signedFp(data.totalAdjustedPAR)}</span>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      {:else}<div class="status-msg">Load Draft Data to see grades.</div>{/if}
       <div class="control-row" style="margin-top:1rem;">
         <button on:click={() => (showDraftDebug=!showDraftDebug)}>{showDraftDebug?'Hide':'Show'} Debug</button>
       </div>
@@ -1277,11 +1030,39 @@
     {#if Object.keys(seasonManagerGrades).length}
       <div class="control-row">
         <label><strong>Season:</strong></label>
-        <select bind:value={managerGradeYear} on:change={recomputeGrades}>
+        <select bind:value={managerGradeYear}>
+          <option value="ALL_TIME">All Time</option>
           {#each currentSeasonYears as yr}<option value={yr}>{yr}</option>{/each}
         </select>
       </div>
-      {#if managerGradeYear}
+      {#if managerGradeYear === 'ALL_TIME'}
+        {#if Object.keys(allTimeManagerGrades).length}
+          <h3>All-Time Manager Grades</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Manager</th><th>All-Time</th><th>Avg Draft</th><th>Avg Trades</th><th>Avg Waivers</th><th>Avg Lineup IQ</th><th>Seasons</th></tr>
+            </thead>
+            <tbody>
+              {#each Object.entries(allTimeManagerGrades).sort(([,a],[,b])=>(b.allTimeGrade??-1)-(a.allTimeGrade??-1)) as [mgrId, data]}
+                <tr>
+                  <td><strong>{mdn(mgrId)}</strong></td>
+                  <td>{#if data.allTimeGrade!=null}<span class="score-pill" style="background:{scoreColor(data.allTimeGrade)};">{scoreToLetter(data.allTimeGrade)}</span>{:else}—{/if}</td>
+                  <td>{#if data.avgNormDraft!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormDraft)};font-size:0.85em;">{scoreToLetter(data.avgNormDraft)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawDraftPAR)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                  <td>{#if data.avgNormTrade!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormTrade)};font-size:0.85em;">{scoreToLetter(data.avgNormTrade)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawTradePAR)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                  <td>{#if data.avgNormWaiver!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormWaiver)};font-size:0.85em;">{scoreToLetter(data.avgNormWaiver)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawWaiverPAR)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                  <td>{#if data.avgNormLineup!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormLineup)};font-size:0.85em;">{scoreToLetter(data.avgNormLineup)}</span><div class="muted" style="font-size:0.78em;">{pct(data.avgRawLineupIQ)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
+                  <td>
+                    <span class="muted">{data.years?.join(', ')}</span>
+                    {#each (data.perSeason||[]) as s}
+                      <div style="font-size:0.76em;color:#888;">{s.year}: {s.overallGrade!=null?scoreToLetter(s.overallGrade):'—'}</div>
+                    {/each}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      {:else}
         {@const yg = seasonManagerGrades[String(managerGradeYear)] || {}}
         {@const activeIds = getActiveManagerIds(managerGradeYear)}
         <h3>{managerGradeYear} Season Grades</h3>
@@ -1312,32 +1093,6 @@
                   {:else}<span class="muted">—</span>{/if}
                 </td>
                 <td class="muted">{r?.missingComponents?.join(', ')||'—'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      {/if}
-      {#if Object.keys(allTimeManagerGrades).length}
-        <h3>All-Time Manager Grades</h3>
-        <table class="data-table">
-          <thead>
-            <tr><th>Manager</th><th>All-Time</th><th>Avg Draft</th><th>Avg Trades</th><th>Avg Waivers</th><th>Avg Lineup IQ</th><th>Seasons</th></tr>
-          </thead>
-          <tbody>
-            {#each Object.entries(allTimeManagerGrades).sort(([,a],[,b])=>(b.allTimeGrade??-1)-(a.allTimeGrade??-1)) as [mgrId, data]}
-              <tr>
-                <td><strong>{mdn(mgrId)}</strong></td>
-                <td>{#if data.allTimeGrade!=null}<span class="score-pill" style="background:{scoreColor(data.allTimeGrade)};">{scoreToLetter(data.allTimeGrade)}</span>{:else}—{/if}</td>
-                <td>{#if data.avgNormDraft!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormDraft)};font-size:0.85em;">{scoreToLetter(data.avgNormDraft)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawDraftPAR)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>{#if data.avgNormTrade!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormTrade)};font-size:0.85em;">{scoreToLetter(data.avgNormTrade)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawTradePAR)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>{#if data.avgNormWaiver!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormWaiver)};font-size:0.85em;">{scoreToLetter(data.avgNormWaiver)}</span><div class="muted" style="font-size:0.78em;">{signedFp(data.avgRawWaiverPAR)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>{#if data.avgNormLineup!=null}<span class="score-pill" style="background:{scoreColor(data.avgNormLineup)};font-size:0.85em;">{scoreToLetter(data.avgNormLineup)}</span><div class="muted" style="font-size:0.78em;">{pct(data.avgRawLineupIQ)} avg</div>{:else}<span class="muted">—</span>{/if}</td>
-                <td>
-                  <span class="muted">{data.years?.join(', ')}</span>
-                  {#each (data.perSeason||[]) as s}
-                    <div style="font-size:0.76em;color:#888;">{s.year}: {s.overallGrade!=null?scoreToLetter(s.overallGrade):'—'}</div>
-                  {/each}
-                </td>
               </tr>
             {/each}
           </tbody>
@@ -1613,7 +1368,7 @@
   {:else if mainTab === 'export'}
     <h2>Export for LLM</h2>
     <div class="explainer">
-      Export data as Markdown for a <strong>Claude Project</strong>. Files download automatically + copy to clipboard.
+      Generate one self-contained package per article type — each already includes league context, so it's a straight drop-in replacement in your Claude Project. Download & copy on the left, matching prompt on the right.
     </div>
     {#if !allTimeHistory}
       <div class="status-msg">Load data first — try the 🚀 Load All Data button at the top, or load each category individually.</div>
@@ -1632,66 +1387,55 @@
       {/if}
 
       {#if nextSeasonYear}
-        <div class="info-banner">✓ Pre-Draft Package for {nextSeasonYear} is computed fresh every time you click its button below — no separate setup needed, and it's always in sync with the current data.</div>
+        <div class="info-banner">✓ Pre-Draft Recap always targets {nextSeasonYear} automatically, regardless of the Season dropdown below.</div>
       {/if}
 
       {#if exportSeasonYear && exportSeasonYear !== nextSeasonYear && powerYear !== exportSeasonYear}
         <div class="warn-banner">
-          ⚠ Power Rankings haven't been computed for {exportSeasonYear} — current_week.md will be missing that section.
+          ⚠ Power Rankings haven't been computed for {exportSeasonYear} — the Weekly Recap package will be missing that section.
           Go to the Power Rankings tab, select {exportSeasonYear}, and click Compute Rankings first if you want it included.
         </div>
       {/if}
 
-      <div class="file-guide">
-        <h4>Core Files (overwrite each time, don't accumulate)</h4>
-        <div class="file-grid">
-          <div class="file-pill static"><div class="file-name">league_context.md</div><div class="file-freq">Upload once</div></div>
-          <div class="file-pill yearly"><div class="file-name">all_time_history.md</div><div class="file-freq">Replace each year</div></div>
-          <div class="file-pill weekly"><div class="file-name">current_season.md</div><div class="file-freq">Replace each week</div></div>
-          <div class="file-pill weekly"><div class="file-name">current_week.md</div><div class="file-freq">Replace each week</div></div>
+      {#if exportSeasonYear && !getLatestDraftForYear(exportSeasonYear)}
+        <div class="warn-banner">
+          ⚠ No draft data found for {exportSeasonYear} — the Draft Grades package's draft board section will be empty. Load Draft Data in the Draft tab first.
         </div>
-        <h4 style="margin-top:0.75rem;">Draft-Time Files (generate around draft day)</h4>
-        <div class="file-grid">
-          <div class="file-pill weekly"><div class="file-name">current_draft.md</div><div class="file-freq">Generate right after draft</div></div>
-          <div class="file-pill yearly"><div class="file-name">draft_calibration.md</div><div class="file-freq">Regenerate as history grows</div></div>
-        </div>
-      </div>
+      {/if}
 
       <div class="control-row">
         <label><strong>Season:</strong></label>
         <select bind:value={exportSeasonYear}>
           {#each exportYearOptions as yr}
-            <option value={yr}>{yr}{yr===nextSeasonYear?' (Next Season — Pre-Draft)':''}</option>
+            <option value={yr}>{yr}{yr===nextSeasonYear?' (Next Season)':''}</option>
           {/each}
         </select>
         <label><strong>Week:</strong></label>
         <select bind:value={exportWeek} disabled={exportSeasonYear===nextSeasonYear}>
           {#each exportWeekOptions as w}<option value={w}>Week {w}</option>{/each}
         </select>
-        <span class="muted">Defaults to the most recent season and its latest played week. current_season.md reflects totals through whatever's actually in the data for that season — for the live season that's automatically "to date." Current Draft Board uses the draft found for the selected season.</span>
+        <span class="muted">Used by Weekly Recap (season + week), Draft Grades (season), and End of Season Recap (season). Pre-Draft Recap ignores this and always targets {nextSeasonYear||'next season'}.</span>
       </div>
 
-      {#if exportSeasonYear === nextSeasonYear}
-        <div class="info-banner">
-          ℹ️ {nextSeasonYear} hasn't started yet, so current_season.md and current_week.md don't apply — there's no game data. Use the <strong>Pre-Draft Package</strong> card below instead; it always targets {nextSeasonYear} regardless of this dropdown. Once that draft happens, come back and generate <strong>Current Draft Board</strong>.
-        </div>
-      {/if}
-
-      <h3>Generate Files</h3>
-      <div class="export-card-grid">
-        {#each EXPORT_CONFIGS as config}
-          <div class="export-card {exportPreviewType===config.key?'active-card':''}">
-            <div class="export-card-header">
-              <div>
-                <div class="export-card-title">{config.title}</div>
-                <code class="export-filename">{config.filename}</code>
-              </div>
-              <button class="copy-btn {exportCopied[config.key]?'copied':''}" on:click={() => generateExport(config.key)}>
-                {exportCopied[config.key]?'✓ Downloaded!':'Download & Copy'}
+      <div class="package-list">
+        {#each ARTICLE_PACKAGES as pkg}
+          <div class="article-pairing">
+            <div class="package-card">
+              <div class="package-card-title">{pkg.label}</div>
+              <p class="export-desc">{pkg.desc}</p>
+              <button class="copy-btn {exportCopied[pkg.key]?'copied':''}" on:click={() => generatePackage(pkg.key)}>
+                {exportCopied[pkg.key]?'✓ Downloaded!':'Download & Copy Package'}
               </button>
             </div>
-            <p class="export-desc">{config.desc}</p>
-            <div class="export-freq">{config.freq}</div>
+            <div class="prompt-card-narrow">
+              <div class="prompt-card-header">
+                <strong>Prompt</strong>
+                <button class="copy-btn {promptCopied[pkg.key]?'copied':''}" on:click={() => copyPromptFn(pkg.key, PROMPTS[pkg.key])}>
+                  {promptCopied[pkg.key]?'✓ Copied!':'Copy Prompt'}
+                </button>
+              </div>
+              <pre class="prompt-text narrow">{PROMPTS[pkg.key]}</pre>
+            </div>
           </div>
         {/each}
       </div>
@@ -1714,122 +1458,6 @@
           <pre class="export-preview-text">{exportPreview}</pre>
         </div>
       {/if}
-
-      <h3>Project Guides</h3>
-      <div class="project-guide-grid">
-        <div class="project-guide">
-          <div class="pg-title">📅 Weekly Recap</div>
-          <div class="pg-files">
-            <span class="file-ref">league_context.md</span>
-            <span class="file-ref">current_season.md</span>
-            <span class="file-ref">current_week.md</span>
-          </div>
-          <p class="muted">Replace season + week files each week.</p>
-        </div>
-        <div class="project-guide">
-          <div class="pg-title">📰 Pre-Draft / End of Season</div>
-          <div class="pg-files">
-            <span class="file-ref">league_context.md</span>
-            <span class="file-ref">all_time_history.md</span>
-            <span class="file-ref">pre_draft.md</span>
-          </div>
-          <p class="muted">Select {nextSeasonYear||'next season'} in the Season dropdown above (or just click the Pre-Draft Package button — it always targets the next season). pre_draft.md auto-includes vibes-grade calibration history if any has been recorded.</p>
-        </div>
-        <div class="project-guide">
-          <div class="pg-title">📋 Draft Grades</div>
-          <div class="pg-files">
-            <span class="file-ref">league_context.md</span>
-            <span class="file-ref">all_time_history.md</span>
-            <span class="file-ref">current_draft.md</span>
-          </div>
-          <p class="muted">Generate current_draft.md right after the draft — that's what makes the grading possible. all_time_history.md gives manager tendency context.</p>
-        </div>
-      </div>
-
-      <h3>Article Prompts</h3>
-      <p class="muted">Paste as your first message in the relevant Claude Project.</p>
-      <div class="prompt-list">
-        {#each Object.entries(PROMPTS) as [key, prompt]}
-          <div class="prompt-card">
-            <div class="prompt-card-header">
-              <strong>{PROMPT_LABELS[key]||key}</strong>
-              <button class="copy-btn {promptCopied[key]?'copied':''}" on:click={() => copyPromptFn(key, prompt)}>
-                {promptCopied[key]?'✓ Copied!':'Copy Prompt'}
-              </button>
-            </div>
-            <pre class="prompt-text">{prompt}</pre>
-          </div>
-        {/each}
-      </div>
-
-      <!-- ── Prompt Testing Panel ──────────────────────────────────────── -->
-      <h3>🧪 Test Prompts with Historical Data</h3>
-      <div class="explainer">
-        Test all article types using completed season data. Each test file is a bundle of everything that
-        article type needs (league context + the relevant stats) — download it and upload as a single file
-        to a Claude Project, then paste the matching prompt.
-      </div>
-      <div class="test-panel">
-        <div class="control-row">
-          <label><strong>Test season:</strong></label>
-          <select bind:value={testYear}>
-            {#each currentSeasonYears as yr}<option value={yr}>{yr}</option>{/each}
-          </select>
-          <label><strong>Week (weekly recap):</strong></label>
-          <select bind:value={testWeek}>
-            {#each Array.from({length:14},(_,i)=>i+1) as w}<option value={w}>Week {w}</option>{/each}
-          </select>
-        </div>
-        {#if testYear && powerYear !== testYear}
-          <div class="warn-banner">
-            ⚠ Power Rankings haven't been computed for {testYear} yet, so the Weekly Recap test bundle's Power Rankings section will be empty.
-            Go to the Power Rankings tab, select {testYear}, and click Compute Rankings first if you want that section included.
-          </div>
-        {/if}
-        {#if testYear && !getLatestDraftForYear(testYear)}
-          <div class="warn-banner">
-            ⚠ No draft data found for {testYear} — the Draft Grades test bundle's current_draft.md section will be empty. Load Draft Data in the Draft tab first.
-          </div>
-        {/if}
-        <div class="test-card-grid">
-          <div class="test-card">
-            <div class="test-card-title">📅 Weekly Recap Test</div>
-            <p class="muted">Bundles league_context + current_season + week {testWeek} data from {testYear} into one file.</p>
-            <button class="copy-btn" on:click={() => generateTestExport('weeklyRecap')}>Download Test Bundle</button>
-            <div class="test-prompt-ref">Use prompt: <strong>📅 Weekly Recap</strong></div>
-          </div>
-          <div class="test-card">
-            <div class="test-card-title">🏆 End of Season Test</div>
-            <p class="muted">Bundles league_context + current_season + all_time_history for {testYear} into one file.</p>
-            <button class="copy-btn" on:click={() => generateTestExport('endOfSeason')}>Download Test Bundle</button>
-            <div class="test-prompt-ref">Use prompt: <strong>🏆 End of Season Recap</strong></div>
-          </div>
-          <div class="test-card">
-            <div class="test-card-title">📋 Draft Grades Test</div>
-            <p class="muted">Bundles league_context + current_draft + current_season + all_time_history (+ calibration history) for {testYear} into one file.</p>
-            <button class="copy-btn" on:click={() => generateTestExport('draftGrades')}>Download Test Bundle</button>
-            <div class="test-prompt-ref">Use prompt: <strong>📋 Draft Grades</strong></div>
-          </div>
-        </div>
-        {#if testExportText}
-          <div class="preview-panel" style="margin-top:1rem;">
-            <div class="preview-header">
-              <div>
-                <h4 style="margin:0;">{testExportTitle}</h4>
-                <span class="muted">{testExportText.split('\n').length} lines — upload to Claude Project</span>
-              </div>
-              <button class="copy-btn {testCopied?'copied':''}" on:click={() => {
-                downloadMarkdown(testExportText,testExportTitle);
-                clipboardCopy(testExportText);
-                testCopied=true; setTimeout(()=>testCopied=false,2000);
-              }}>
-                {testCopied?'✓ Downloaded!':'Download Again'}
-              </button>
-            </div>
-            <pre class="export-preview-text">{testExportText.slice(0,3000)}{testExportText.length>3000?'\n\n...(truncated for display)':''}</pre>
-          </div>
-        {/if}
-      </div>
     {/if}
   {/if}
 
@@ -1855,7 +1483,6 @@
   .info-banner { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.87rem; color: #14532d; }
 
   .main-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 2rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
-  .tab-group { display: flex; gap: 0.4rem; }
   .tab-btn { padding: 0.4rem 0.85rem; border-radius: 6px 6px 0 0; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; font-size: 0.88rem; }
   .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
   .season-badge { display: inline-block; margin-left: 0.5rem; font-size: 0.72em; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; vertical-align: middle; }
@@ -1952,39 +1579,18 @@
   .hover-tooltip { position: absolute; top: 12px; right: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82em; box-shadow: 0 2px 8px rgba(0,0,0,0.12); min-width: 180px; }
   .tooltip-row { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.2rem; justify-content: space-between; }
 
-  .file-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
-  .file-grid  { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
-  .file-pill  { border-radius: 6px; padding: 0.5rem 0.75rem; min-width: 160px; }
-  .file-pill.static { background: #dbeafe; border: 1px solid #93c5fd; }
-  .file-pill.yearly { background: #d1fae5; border: 1px solid #6ee7b7; }
-  .file-pill.weekly { background: #fef3c7; border: 1px solid #fcd34d; }
-  .file-name  { font-family: monospace; font-size: 0.85em; font-weight: 700; color: #1e293b; }
-  .file-freq  { font-size: 0.76em; color: #64748b; margin-top: 0.15rem; }
-  .export-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-  .export-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; }
-  .export-card.active-card { border-color: #2563eb; background: #eff6ff; }
-  .export-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.5rem; }
-  .export-card-title { font-weight: 700; font-size: 0.95em; color: #1e293b; }
-  .export-filename { font-size: 0.8em; color: #2563eb; display: block; margin-top: 0.15rem; }
-  .export-desc { font-size: 0.83em; color: #555; margin: 0 0 0.4rem; }
-  .export-freq { font-size: 0.78em; color: #888; font-style: italic; }
+  .package-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
+  .article-pairing { display: flex; gap: 1rem; align-items: stretch; flex-wrap: wrap; }
+  .package-card { flex: 1.4; min-width: 280px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .package-card-title { font-weight: 700; font-size: 0.98em; color: #1e293b; }
+  .export-desc { font-size: 0.83em; color: #555; margin: 0; }
+  .prompt-card-narrow { flex: 1; max-width: 380px; min-width: 240px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; display: flex; flex-direction: column; }
   .preview-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 2rem; }
   .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
   .export-preview-text { white-space: pre-wrap; font-family: monospace; font-size: 0.77em; background: #1e1e1e; color: #d4d4d4; padding: 0.75rem; border-radius: 6px; max-height: 500px; overflow-y: auto; margin: 0; }
-  .project-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 1rem; margin-bottom: 2rem; }
-  .project-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
-  .pg-title { font-weight: 700; margin-bottom: 0.4rem; }
-  .pg-files { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
-  .file-ref { background: #e2e8f0; font-family: monospace; font-size: 0.78em; padding: 0.15rem 0.4rem; border-radius: 3px; color: #374151; }
-  .prompt-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
-  .prompt-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem; }
-  .prompt-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .prompt-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 0.5rem; }
   .prompt-text { white-space: pre-wrap; font-size: 0.8em; color: #374151; background: #f0f4f8; padding: 0.5rem 0.75rem; border-radius: 4px; margin: 0; max-height: 160px; overflow-y: auto; }
-  .test-panel { background: #fafafa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 2rem; }
-  .test-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 1rem; margin-top: 1rem; }
-  .test-card { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; }
-  .test-card-title { font-weight: 700; margin-bottom: 0.4rem; }
-  .test-prompt-ref { font-size: 0.8em; color: #64748b; margin-top: 0.5rem; }
+  .prompt-text.narrow { font-size: 0.74em; max-height: 220px; }
 
   .badge { padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.72em; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
   .badge.trade     { background: #dbeafe; color: #1d4ed8; }
