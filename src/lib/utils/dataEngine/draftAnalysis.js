@@ -1,19 +1,13 @@
 // draftAnalysis.js
 //
-// POST-DRAFT (gradeDraftPreSeason): positional scarcity — no projections needed.
 // POST-SEASON (gradeDraftEndOfSeason): adjusted PAR vs historical round baselines.
 //   adjustedPAR = actualPAR − expectedPAR[round]
 //   K/DEF: expectedPAR forced to 0, adjustedPAR = actualPAR directly.
-// Injury tracking removed entirely.
 //
-// VIBES-GRADE CALIBRATION: the actual "Draft Grades" article is written by
-// an LLM right after the draft using industry ADP/expert knowledge — there's
-// no performance data yet, so it's inherently a vibes call, not something
-// this file computes. What THIS file can do is compare those vibes grades
-// (recorded manually once issued) against the real data-based grade computed
-// here once the season ends, to see if the vibes-grading process runs too
-// generous, too harsh, or roughly accurate — see compareVibesToActual /
-// summarizeCalibration at the bottom.
+// The actual "Draft Grades" article (right after the draft) is LLM-authored
+// using real ADP/expert knowledge — see dataExport.js exportDraftResults +
+// PROMPTS.draftGrades. This file only computes the data-based grade once a
+// season is complete.
 
 const PICK_THRESHOLDS = {
   eliteSteal: 80, steal: 40, value: 15, asExpected: -15, slightBust: -35, bust: -70
@@ -60,86 +54,7 @@ function getTeamGrade(totalAdjustedPAR) {
   return 'F';
 }
 
-// ── POST-DRAFT: positional scarcity grade ──────────────────────────────────
-//
-// NOTE: this is a self-referential metric (compares each pick to the
-// positional ADP within THIS draft only, not real industry ADP) — it's
-// useful as an internal "who reached within our own room" signal but is NOT
-// the vibes-based grade shown to the league. The actual Draft Grades article
-// is LLM-authored using real ADP/expert knowledge (see dataExport.js
-// exportDraftResults + PROMPTS.draftGrades).
-
-function buildPositionalADP(picks) {
-  const groups = {};
-  picks.forEach((pick) => {
-    const pos = normalizePos(pick.position, pick.playerId);
-    if (!pos) return;
-    if (!groups[pos]) groups[pos] = [];
-    groups[pos].push(pick.pickNo);
-  });
-  const adp = {};
-  Object.entries(groups).forEach(([pos, pickNums]) => {
-    pickNums.sort((a, b) => a - b);
-    adp[pos] = { count: pickNums.length, avgPick: pickNums.reduce((s, v) => s + v, 0) / pickNums.length, bySlot: pickNums };
-  });
-  return adp;
-}
-
-function pickValueScore(pickNo, totalPicks) {
-  if (!totalPicks || totalPicks <= 1) return 0;
-  return Math.round(Math.sqrt((totalPicks - pickNo) / (totalPicks - 1)) * 100 * 10) / 10;
-}
-
-export function gradeDraftPreSeason(draft) {
-  if (!draft?.picks?.length) return null;
-  const { picks, numTeams, rounds } = draft;
-  const totalPicks    = numTeams * rounds;
-  const positionalADP = buildPositionalADP(picks);
-  const posPickCount  = {};
-
-  const gradedPicks = picks.slice().sort((a, b) => a.pickNo - b.pickNo).map((pick) => {
-    const pos = normalizePos(pick.position, pick.playerId);
-    if (!posPickCount[pos]) posPickCount[pos] = 0;
-    posPickCount[pos]++;
-    const positionalRank = posPickCount[pos];
-    const avgPickAtRank  = positionalADP[pos]?.bySlot?.[positionalRank - 1] ?? pick.pickNo;
-    const vsMarket       = avgPickAtRank - pick.pickNo;
-    return {
-      ...pick, pos, positionalRank,
-      pickValue: pickValueScore(pick.pickNo, totalPicks),
-      vsMarket: fp(vsMarket), avgPickAtRank: fp(avgPickAtRank),
-      valueLabel: vsMarket > 15 ? 'steal' : vsMarket > 5 ? 'value' : vsMarket < -15 ? 'reach' : vsMarket < -5 ? 'slight reach' : 'fair'
-    };
-  });
-
-  const byRoster = {};
-  gradedPicks.forEach((pick) => {
-    const r = pick.rosterId;
-    if (!byRoster[r]) byRoster[r] = { rosterId: r, managerId: pick.managerId, picks: [], vsMarketSum: 0, steals: [], reaches: [] };
-    byRoster[r].picks.push(pick);
-    byRoster[r].vsMarketSum += pick.vsMarket || 0;
-    if (pick.valueLabel === 'steal') byRoster[r].steals.push(pick);
-    if (pick.valueLabel.includes('reach')) byRoster[r].reaches.push(pick);
-  });
-
-  Object.values(byRoster).forEach((team) => {
-    const sorted = [...team.picks].sort((a, b) => (b.vsMarket || 0) - (a.vsMarket || 0));
-    team.bestValuePick  = sorted[0] || null;
-    team.worstValuePick = sorted[sorted.length - 1] || null;
-    const avg = team.picks.length > 0 ? team.vsMarketSum / team.picks.length : 0;
-    team.avgVsMarket = fp(avg);
-    team.grade = avg > 8 ? 'A' : avg > 3 ? 'B' : avg > -3 ? 'C' : avg > -8 ? 'D' : 'F';
-  });
-
-  return {
-    year: draft.year, draftType: draft.draftType, totalPicks, positionalADP, gradedPicks, byRoster,
-    teamRankings: Object.values(byRoster).sort((a, b) => b.vsMarketSum - a.vsMarketSum),
-    leagueTopSteals:  [...gradedPicks].sort((a, b) => (b.vsMarket || 0) - (a.vsMarket || 0)).slice(0, 5),
-    leagueTopReaches: [...gradedPicks].sort((a, b) => (a.vsMarket || 0) - (b.vsMarket || 0)).slice(0, 5)
-  };
-}
-
-// ── POST-SEASON: data-based PAR grade (injury tracking removed) ────────────
+// ── POST-SEASON: data-based PAR grade ───────────────────────────────────────
 
 /**
  * @param {Object} draft              - from getAllDrafts()
@@ -255,96 +170,5 @@ export function gradeDraftEndOfSeason(
       .sort((a, b) => parseFloat(b.adjustedPAR) - parseFloat(a.adjustedPAR)).slice(0, 10),
     leagueTopBusts: [...gradedPicks].filter((p) => p.adjustedPAR != null)
       .sort((a, b) => parseFloat(a.adjustedPAR) - parseFloat(b.adjustedPAR)).slice(0, 10)
-  };
-}
-
-// ── Vibes-grade calibration ──────────────────────────────────────────────────
-//
-// The Draft Grades article's letter grades are issued by an LLM right after
-// the draft (vibes-based — no performance data exists yet). Once a season
-// finishes and gradeDraftEndOfSeason() produces a real data-based grade for
-// that same draft, these two functions compare "what we said at the time"
-// to "how it actually turned out," to check whether the vibes-grading
-// process runs too generous, too harsh, or roughly accurate — and by how
-// much — so future Draft Grades prompts can be calibrated against that bias.
-
-export const GRADE_GPA = {
-  'A+': 4.3, 'A': 4.0, 'A-': 3.7,
-  'B+': 3.3, 'B': 3.0, 'B-': 2.7,
-  'C+': 2.3, 'C': 2.0, 'C-': 1.7,
-  'D+': 1.3, 'D': 1.0, 'D-': 0.7,
-  'F': 0
-};
-
-export function gradeToGPA(letterGrade) {
-  if (!letterGrade) return null;
-  return GRADE_GPA[String(letterGrade).trim().toUpperCase()] ?? null;
-}
-
-/**
- * Compares one year's vibes-based draft grades (issued by the LLM right
- * after the draft, manually recorded by the commissioner afterward) against
- * that same year's data-based end-of-season grade. Per manager: how far off
- * was the vibes grade, and in which direction.
- *
- * @param {Object} vibesGradesForYear - { [managerId]: 'B+' }
- * @param {Object} eosGrade           - result of gradeDraftEndOfSeason for that year
- */
-export function compareVibesToActual(vibesGradesForYear, eosGrade) {
-  if (!vibesGradesForYear || !eosGrade?.byRoster) return null;
-
-  const rows = [];
-  Object.values(eosGrade.byRoster).forEach((team) => {
-    const vibesLetter = vibesGradesForYear[team.managerId];
-    if (!vibesLetter) return;
-    const vibesGPA = gradeToGPA(vibesLetter);
-    const eosGPA   = gradeToGPA(team.grade);
-    if (vibesGPA == null || eosGPA == null) return;
-    const delta = fp(vibesGPA - eosGPA, 2); // positive = graded more generously than it performed
-    rows.push({
-      managerId: team.managerId,
-      vibesGrade: vibesLetter,
-      eosGrade: team.grade,
-      vibesGPA, eosGPA, delta,
-      label: delta > 0.7  ? 'significantly overrated'
-           : delta > 0.25 ? 'slightly overrated'
-           : delta < -0.7  ? 'significantly underrated'
-           : delta < -0.25 ? 'slightly underrated'
-           : 'accurate'
-    });
-  });
-
-  if (rows.length === 0) return null;
-
-  const avgDelta    = fp(rows.reduce((s, r) => s + r.delta, 0) / rows.length, 2);
-  const avgAbsError = fp(rows.reduce((s, r) => s + Math.abs(r.delta), 0) / rows.length, 2);
-
-  return { year: eosGrade.year, rows, avgDelta, avgAbsError };
-}
-
-/**
- * Aggregates multiple years of compareVibesToActual() output into an
- * overall calibration summary.
- *
- * @param {Array} yearlyComparisons - array of compareVibesToActual() results (may include nulls)
- */
-export function summarizeCalibration(yearlyComparisons) {
-  const valid = (yearlyComparisons || []).filter(Boolean);
-  if (valid.length === 0) return null;
-
-  const allRows     = valid.flatMap((c) => c.rows);
-  const avgDelta     = fp(allRows.reduce((s, r) => s + r.delta, 0) / allRows.length, 2);
-  const avgAbsError  = fp(allRows.reduce((s, r) => s + Math.abs(r.delta), 0) / allRows.length, 2);
-
-  let bias;
-  if (avgDelta > 0.3)       bias = 'tends to grade drafts more generously than they turn out to perform';
-  else if (avgDelta < -0.3) bias = 'tends to grade drafts more harshly than they turn out to perform';
-  else                       bias = 'grades drafts roughly in line with how they end up performing';
-
-  return {
-    yearsIncluded: valid.map((c) => c.year),
-    totalDraftsCompared: allRows.length,
-    avgDelta, avgAbsError, bias,
-    byYear: valid.map((c) => ({ year: c.year, avgDelta: c.avgDelta, avgAbsError: c.avgAbsError }))
   };
 }
