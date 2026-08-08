@@ -1966,7 +1966,8 @@ export function exportDraftResults({ draft, managersSnapshot }) {
       lines.push('');
     });
 
-  lines.push('## Full Roster By Manager (draft order)');
+lines.push('## Full Roster By Manager (draft order)');
+  lines.push('*Draft Slot is each manager\'s position in the draft order (their Round 1 pick number) — use it directly if the article structure calls for it, don\'t infer it from pick numbers elsewhere.*');
   lines.push('');
   const byManager = {};
   draft.picks.forEach((p) => {
@@ -1974,12 +1975,12 @@ export function exportDraftResults({ draft, managersSnapshot }) {
     byManager[p.managerId].push(p);
   });
   Object.entries(byManager).forEach(([mgrId, picks]) => {
-    lines.push(`**${mn(mgrId)}**`);
-    picks
-      .sort((a, b) => a.pickNo - b.pickNo)
-      .forEach((p) => {
-        lines.push(`- R${p.round} (#${p.pickNo}): ${p.playerName} (${p.position || '—'}, ${p.team || '—'})`);
-      });
+    const sortedPicks = [...picks].sort((a, b) => a.pickNo - b.pickNo);
+    const slot = sortedPicks.find((p) => Number(p.round) === 1)?.slot ?? sortedPicks[0]?.slot ?? '?';
+    lines.push(`**${mn(mgrId)} (Draft Slot #${slot})**`);
+    sortedPicks.forEach((p) => {
+      lines.push(`- R${p.round} (#${p.pickNo}): ${p.playerName} (${p.position || '—'}, ${p.team || '—'})`);
+    });
     lines.push('');
   });
 
@@ -2088,14 +2089,16 @@ RULES:
 - Every manager's grade must be justified by at least one SPECIFIC pick (round + player), not just vibes about "their team." Cite good picks AND bad/risky picks — most managers should have both.
 - Reference prior draft grades / manager tendencies from the data when it adds color (e.g. "same guy who reached for a QB in round 3 last year")
 - Keep the personality in the stats and history, not background details
+- All-Time Draft Grade = pull directly from the "All-Time Manager Grades" table's Draft column in the data (this is a real data-based average across past seasons, not a vibes call) — reproduce it exactly, don't recompute or estimate it. If a manager has no prior seasons, use "—" or "(new)".
+- Draft Slot = pull directly from the data (each manager's Round 1 pick number) — don't infer it from scanning picks yourself.
 
-FOR EACH MANAGER (in draft order or grade order, your call): grade + 2-3 sentences citing specific picks by round + one season prediction
+STRUCTURE:
 
-FINISH WITH:
-- 🏆 Best Draft — specific team, with the 2-3 picks that make the case
-- 💀 Worst Draft — specific team, with the pick(s) that doomed them
-- 💎 Sleeper Pick of the Draft — one specific late-round pick you'd bet on
-- 🎯 Reach of the Draft — one specific pick taken well ahead of ADP
+**Draft Grades at a Glance** — a single summary table, before anything else, with these columns in this order: Manager | Draft Slot | Grade | All-Time Draft Grade | Best/Sleeper Pick | Worst/Reach Pick. "Best/Sleeper Pick" and "Worst/Reach Pick" are one specific pick each (format: Player Name, Round X) — your own vibes-based judgment call per manager, consistent with the grade and reasoning you give that manager below. No commentary in the table itself, just the data — keep cells short.
+
+**Team-by-Team Breakdown** — for each manager (in draft order or grade order, your call), give the grade again + 2-3 sentences citing specific picks by round + one season prediction. This is where the personality and trash talk lives — the table above is just the scannable reference.
+
+Do not add any other sections (no league-wide "best/worst draft" or "sleeper/reach of the draft" callouts beyond what's already in the table and the per-manager breakdowns above).
 `.trim(),
 
   weeklyRecap: `
