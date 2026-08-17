@@ -131,9 +131,13 @@
     }
 
     :global(.body table) {
-        margin: 1em 2em;
-        min-width: 80%;
-	    border: 1px solid var(--ddd);
+        display: block;
+        margin: 1em 0;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid var(--ddd);
         border-collapse: collapse;
     }
 
@@ -142,14 +146,29 @@
     }
 
     :global(.body td) {
-        padding: 0.5em 0;
-	    text-align:center;
+        padding: 0.6em 1em;
+        text-align: center;
+        white-space: nowrap;
     }
 
     :global(.body th) {
-        padding: 0.8em 0;
+        padding: 0.8em 1em;
         background-color: var(--blueOne);
         color: #fff;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 600px) {
+        :global(.body td),
+        :global(.body th) {
+            padding: 0.5em 0.6em;
+            font-size: 0.9em;
+        }
+
+        :global(.body table) {
+            margin: 1em 2em;
+            width: auto;
+        }
     }
 
     .divider {
