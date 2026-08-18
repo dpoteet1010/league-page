@@ -81,8 +81,29 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	const year = leagueData.season;
 	const regularSeasonLength = leagueData.settings.playoff_week_start - 1;
 
+	// Only fetch/process weeks whose games have actually concluded. Sleeper's
+	// matchups endpoint returns real starter/lineup data for FUTURE weeks too
+	// (as soon as managers set lineups), with pointsTotal sitting at 0 since
+	// the games haven't been played — which is indistinguishable from a real
+	// 0-point chug-worthy performance unless we stop before those weeks.
+	// This was previously uncapped (always looped through week 18), which
+	// inflated season-in-progress chug tallies by counting every future
+	// week's not-yet-played starters as a chug.
+	let lastCompletedWeek = FINAL_POSSIBLE_WEEK;
+	if (nflState.season_type === 'regular') {
+		// display_week is the current, still-in-progress week — its games
+		// aren't final yet, so the last CONFIRMED-complete week is the one before it.
+		lastCompletedWeek = nflState.display_week - 1;
+	} else if (nflState.season_type === 'post') {
+		// Playoffs: everything through the current display_week is final
+		// (regular season is fully done by this point).
+		lastCompletedWeek = nflState.display_week;
+	}
+	// season_type 'off': leave at FINAL_POSSIBLE_WEEK — the season is fully over, all weeks are final.
+
 	const matchupsPromises = [];
 	for (let i = 1; i <= FINAL_POSSIBLE_WEEK; i++) {
+		if (i > lastCompletedWeek) break;
 		matchupsPromises.push(
 			fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`, { compress: true })
 		);
