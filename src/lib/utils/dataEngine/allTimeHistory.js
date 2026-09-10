@@ -57,98 +57,109 @@ export async function getAllSeasonsHistory() {
   const managers         = {};
 
   for (const { year, id } of seasons) {
-    await getLeagueData(id).catch((err) => {
-      debug.push(`[${year}] getLeagueData note: ${err.message}`);
-    });
+    // Everything below is per-season. A single season's data quirk (a bad
+    // matchup shape, an unexpected null somewhere in getLeagueState, etc.)
+    // must not throw uncaught here — that would reject getAllSeasonsHistory
+    // entirely and discard allWeeklyResults/allPlayerResults/managers/
+    // seasonOutputs for every OTHER season already processed, not just
+    // this one. So we isolate each season and skip only the bad one.
+    try {
+      await getLeagueData(id).catch((err) => {
+        debug.push(`[${year}] getLeagueData note: ${err.message}`);
+      });
 
-    const allMetadata     = get(leagueDataStore) || {};
-    const resolvedYear    = resolveYear(id, allMetadata) || year;
-    const managersForYear = buildManagersForYear(managersSnapshot, resolvedYear);
-    const numRosters      = Object.keys(managersForYear).length;
+      const allMetadata     = get(leagueDataStore) || {};
+      const resolvedYear    = resolveYear(id, allMetadata) || year;
+      const managersForYear = buildManagersForYear(managersSnapshot, resolvedYear);
+      const numRosters      = Object.keys(managersForYear).length;
 
-    const matchupsData = await getSpecificYearMatchups(id).catch((err) => {
-      debug.push(`[${year}] getSpecificYearMatchups failed: ${err.message}`);
-      return null;
-    });
+      const matchupsData = await getSpecificYearMatchups(id).catch((err) => {
+        debug.push(`[${year}] getSpecificYearMatchups failed: ${err.message}`);
+        return null;
+      });
 
-    if (!matchupsData) {
-      debug.push(`[${year}] No matchups data — skipping season.`);
+      if (!matchupsData) {
+        debug.push(`[${year}] No matchups data — skipping season.`);
+        continue;
+      }
+
+      const playoffData = await getLeaguePlayoffs(id);
+      debug.push(...playoffData.debug.map((line) => `[${year}] ${line}`));
+
+      const result = getLeagueState(
+        matchupsData,
+        managersForYear,
+        allMetadata?.[id] || null,
+        {
+          winnersBracket: playoffData.winnersBracket,
+          losersBracket:  playoffData.losersBracket,
+          numRosters
+        }
+      );
+      debug.push(...result.debug.map((line) => `[${year}] ${line}`));
+
+      // Build roster → managerId map for this season
+      const rosterToManagerId = {};
+      Object.entries(managersForYear).forEach(([rosterId, info]) => {
+        rosterToManagerId[String(rosterId)] = info.managerId;
+      });
+
+      result.weeklyResults.forEach((row) => {
+        const managerId         = rosterToManagerId[String(row.rosterId)];
+        const opponentManagerId = rosterToManagerId[String(row.opponentRosterId)];
+        if (managerId == null || opponentManagerId == null) {
+          debug.push(`[${year}] Week ${row.week}: couldn't resolve manager for roster ${row.rosterId} or ${row.opponentRosterId} — skipped.`);
+          return;
+        }
+        allWeeklyResults.push({ ...row, year: resolvedYear, managerId, opponentManagerId });
+      });
+
+      result.playerResults.forEach((pr) => {
+        const managerId = rosterToManagerId[String(pr.rosterId)];
+        if (managerId == null) return;
+        allPlayerResults.push({ ...pr, managerId, year: resolvedYear });
+      });
+
+      result.standings.forEach((team) => {
+        const managerId = rosterToManagerId[String(team.rosterId)];
+        if (managerId == null) return;
+        if (!managers[managerId]) {
+          managers[managerId] = {
+            managerId,
+            displayName: managersSnapshot.users?.[managerId]?.display_name || 'Unknown',
+            seasons:     []
+          };
+        }
+        managers[managerId].seasons.push({
+          year:           resolvedYear,
+          teamName:       team.name,
+          regularSeason:  team.regularSeason,
+          playoffs:       team.playoffs,
+          finalPlacement: team.finalPlacement,
+          numRosters
+        });
+      });
+
+      // KEY FIX: enrich standings with managerId so downstream consumers
+      // (SOS, power rankings) can look up managers without needing a separate map
+      const enrichedStandings = (result.standings || []).map((team) => ({
+        ...team,
+        managerId: rosterToManagerId[String(team.rosterId)] ?? null
+      }));
+
+      seasonOutputs.push({
+        year:            resolvedYear,
+        leagueId:        id,
+        numTeams:        numRosters,
+        scoringSettings: allMetadata?.[id]?.scoring_settings || null,
+        rosterToManagerId,  // expose for downstream use
+        ...result,
+        standings: enrichedStandings  // override with enriched version
+      });
+    } catch (err) {
+      debug.push(`[${year}] Unexpected error processing season — skipping: ${err.message}`);
       continue;
     }
-
-    const playoffData = await getLeaguePlayoffs(id);
-    debug.push(...playoffData.debug.map((line) => `[${year}] ${line}`));
-
-    const result = getLeagueState(
-      matchupsData,
-      managersForYear,
-      allMetadata?.[id] || null,
-      {
-        winnersBracket: playoffData.winnersBracket,
-        losersBracket:  playoffData.losersBracket,
-        numRosters
-      }
-    );
-    debug.push(...result.debug.map((line) => `[${year}] ${line}`));
-
-    // Build roster → managerId map for this season
-    const rosterToManagerId = {};
-    Object.entries(managersForYear).forEach(([rosterId, info]) => {
-      rosterToManagerId[String(rosterId)] = info.managerId;
-    });
-
-    result.weeklyResults.forEach((row) => {
-      const managerId         = rosterToManagerId[String(row.rosterId)];
-      const opponentManagerId = rosterToManagerId[String(row.opponentRosterId)];
-      if (managerId == null || opponentManagerId == null) {
-        debug.push(`[${year}] Week ${row.week}: couldn't resolve manager for roster ${row.rosterId} or ${row.opponentRosterId} — skipped.`);
-        return;
-      }
-      allWeeklyResults.push({ ...row, year: resolvedYear, managerId, opponentManagerId });
-    });
-
-    result.playerResults.forEach((pr) => {
-      const managerId = rosterToManagerId[String(pr.rosterId)];
-      if (managerId == null) return;
-      allPlayerResults.push({ ...pr, managerId, year: resolvedYear });
-    });
-
-    result.standings.forEach((team) => {
-      const managerId = rosterToManagerId[String(team.rosterId)];
-      if (managerId == null) return;
-      if (!managers[managerId]) {
-        managers[managerId] = {
-          managerId,
-          displayName: managersSnapshot.users?.[managerId]?.display_name || 'Unknown',
-          seasons:     []
-        };
-      }
-      managers[managerId].seasons.push({
-        year:           resolvedYear,
-        teamName:       team.name,
-        regularSeason:  team.regularSeason,
-        playoffs:       team.playoffs,
-        finalPlacement: team.finalPlacement,
-        numRosters
-      });
-    });
-
-    // KEY FIX: enrich standings with managerId so downstream consumers
-    // (SOS, power rankings) can look up managers without needing a separate map
-    const enrichedStandings = (result.standings || []).map((team) => ({
-      ...team,
-      managerId: rosterToManagerId[String(team.rosterId)] ?? null
-    }));
-
-    seasonOutputs.push({
-      year:            resolvedYear,
-      leagueId:        id,
-      numTeams:        numRosters,
-      scoringSettings: allMetadata?.[id]?.scoring_settings || null,
-      rosterToManagerId,  // expose for downstream use
-      ...result,
-      standings: enrichedStandings  // override with enriched version
-    });
   }
 
   debug.push(
@@ -184,19 +195,27 @@ export async function getAllSeasonsHistory() {
     const yearStr = String(output.year);
     debug.push(`[Stats ${yearStr}] Fetching season stats...`);
 
-    const statsResult = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
-      debug.push(`[Stats ${yearStr}] Failed: ${err.message}`);
-      return { totals: {}, gamesPlayed: {} };
-    });
+    // Same isolation as the main loop above: a single season's PAR table
+    // build failing must not blow away allSeasonStats/parTablesBySeason for
+    // every other season (or worse, reject the whole function and discard
+    // everything built in the loop above too).
+    try {
+      const statsResult = await getSeasonStatTotals(yearStr, sharedScoringSettings).catch((err) => {
+        debug.push(`[Stats ${yearStr}] Failed: ${err.message}`);
+        return { totals: {}, gamesPlayed: {} };
+      });
 
-    allSeasonStats[yearStr] = statsResult;
-    const playerCount = Object.keys(statsResult.totals || {}).length;
-    debug.push(`[Stats ${yearStr}] ${playerCount} players with stats.`);
+      allSeasonStats[yearStr] = statsResult;
+      const playerCount = Object.keys(statsResult.totals || {}).length;
+      debug.push(`[Stats ${yearStr}] ${playerCount} players with stats.`);
 
-    const flexSlots = getFlexSlotsForYear(yearStr);
-    const parTables = buildSeasonPARTables(statsResult.totals, allPlayersData, output.numTeams, flexSlots);
-    parTablesBySeason[yearStr] = parTables;
-    debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
+      const flexSlots = getFlexSlotsForYear(yearStr);
+      const parTables = buildSeasonPARTables(statsResult.totals, allPlayersData, output.numTeams, flexSlots);
+      parTablesBySeason[yearStr] = parTables;
+      debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
+    } catch (err) {
+      debug.push(`[Stats ${yearStr}] Unexpected error building stats/PAR tables — skipping this season's tables: ${err.message}`);
+    }
   }
 
   return {
