@@ -25,30 +25,38 @@ async function combThroughTransactions(week, startingLeagueID) {
 
   debug.push(`Walked live league chain: ${leagueIDs.length} season(s) — ${leagueIDs.join(', ') || 'none'}`);
 
+  // Each fetch (and each JSON parse below) is isolated with its own catch.
+  // Previously all fetches shared one waitForAll(...).catch(), so a single
+  // failed request — one bad week out of potentially dozens across every
+  // season — rejected the whole batch and discarded every OTHER week's
+  // transactions too, not just the one that failed.
   const transactionPromises = [];
   for (const singleLeagueID of leagueIDs) {
     let w = week;
     while (w > 0) {
       transactionPromises.push(
         fetch(`https://api.sleeper.app/v1/league/${singleLeagueID}/transactions/${w}`, { compress: true })
+          .catch((err) => {
+            debug.push(`Transaction fetch failed for league ${singleLeagueID} week ${w}: ${err.message}`);
+            return null;
+          })
       );
       w--;
     }
   }
 
-  const transactionRess = (await waitForAll(...transactionPromises).catch((err) => {
-    debug.push(`Transaction fetch failed: ${err.message}`);
-    return [];
-  })) || [];
+  const transactionRess = await Promise.all(transactionPromises);
 
   const transactionDataPromises = transactionRess
     .filter((res) => res && res.ok)
-    .map((res) => res.json());
+    .map((res) =>
+      res.json().catch((err) => {
+        debug.push(`Transaction JSON parse failed: ${err.message}`);
+        return null;
+      })
+    );
 
-  const transactionsDataJson = (await waitForAll(...transactionDataPromises).catch((err) => {
-    debug.push(`Transaction JSON parse failed: ${err.message}`);
-    return [];
-  })) || [];
+  const transactionsDataJson = (await Promise.all(transactionDataPromises)).filter(Boolean);
 
   let transactionsData = [];
   for (const chunk of transactionsDataJson) {
