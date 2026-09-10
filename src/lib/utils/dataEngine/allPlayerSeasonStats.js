@@ -14,6 +14,12 @@
 
 const statsCache = {};
 
+// Sleeper's regular season runs weeks 1-18 (17 games + 1 bye per team,
+// same convention used for FINAL_POSSIBLE_WEEK elsewhere in this app).
+// This was previously capped at 17, which silently dropped every
+// player's week 18 stats from both totals and gamesPlayed.
+const FINAL_REGULAR_SEASON_WEEK = 18;
+
 /**
  * @param {string|number} year
  * @param {Object|null} scoringSettings - league.scoring_settings from Sleeper
@@ -24,7 +30,7 @@ export async function getSeasonStatTotals(year, scoringSettings) {
   if (statsCache[yearStr]) return statsCache[yearStr];
 
   const weekPromises = [];
-  for (let week = 1; week <= 17; week++) {
+  for (let week = 1; week <= FINAL_REGULAR_SEASON_WEEK; week++) {
     weekPromises.push(
       fetch(
         `https://api.sleeper.app/v1/stats/nfl/regular/${yearStr}/${week}`,
