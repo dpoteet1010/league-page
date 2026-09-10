@@ -36,20 +36,33 @@ export async function getAllRosterStats(seasons, rosterToManagerByYear) {
       continue;
     }
 
+    let rostersProcessed = 0;
+
+    // Each roster is handled independently. A single malformed roster
+    // (e.g. a null/orphaned roster slot that Sleeper occasionally returns)
+    // must not throw an uncaught exception here — that would propagate all
+    // the way out of getAllRosterStats and discard every manager's stats
+    // for every season already accumulated in byManager, not just this
+    // one bad roster.
     Object.entries(rostersResult.rosters).forEach(([rosterId, roster]) => {
-      const managerId = rosterMap[String(rosterId)];
-      if (!managerId) return;
+      try {
+        const managerId = rosterMap[String(rosterId)];
+        if (!managerId) return;
 
-      const settings = roster.settings || {};
-      const fpts = Number(settings.fpts || 0) + Number(settings.fpts_decimal || 0) / 100;
-      const ppts = Number(settings.ppts || 0) + Number(settings.ppts_decimal || 0) / 100;
-      const lineupIQ = ppts > 0 ? fpts / ppts : null;
+        const settings = roster?.settings || {};
+        const fpts = Number(settings.fpts || 0) + Number(settings.fpts_decimal || 0) / 100;
+        const ppts = Number(settings.ppts || 0) + Number(settings.ppts_decimal || 0) / 100;
+        const lineupIQ = ppts > 0 ? fpts / ppts : null;
 
-      if (!byManager[managerId]) byManager[managerId] = {};
-      byManager[managerId][yearStr] = { fpts, ppts, lineupIQ };
+        if (!byManager[managerId]) byManager[managerId] = {};
+        byManager[managerId][yearStr] = { fpts, ppts, lineupIQ };
+        rostersProcessed++;
+      } catch (err) {
+        debug.push(`[${yearStr}] Error processing roster ${rosterId}: ${err.message} — skipping this roster.`);
+      }
     });
 
-    debug.push(`[${yearStr}] Roster stats loaded for ${Object.keys(rostersResult.rosters).length} rosters.`);
+    debug.push(`[${yearStr}] Roster stats loaded for ${rostersProcessed} of ${Object.keys(rostersResult.rosters).length} rosters.`);
   }
 
   return { byManager, debug };
