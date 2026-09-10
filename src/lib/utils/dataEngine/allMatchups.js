@@ -101,24 +101,35 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	}
 	// season_type 'off': leave at FINAL_POSSIBLE_WEEK — the season is fully over, all weeks are final.
 
-	const matchupsPromises = [];
+	const weeksToFetch = [];
 	for (let i = 1; i <= FINAL_POSSIBLE_WEEK; i++) {
 		if (i > lastCompletedWeek) break;
-		matchupsPromises.push(
-			fetch(`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`, { compress: true })
-		);
+		weeksToFetch.push(i);
 	}
 
-	const matchupsRes = await waitForAll(...matchupsPromises);
-
-	const matchupsJsonPromises = matchupsRes.map((res) =>
-		res && res.ok ? res.json() : Promise.resolve(null)
+	// Fetch + parse each week independently. A single week's network error or
+	// bad response must NOT take every other week down with it — previously
+	// one failed fetch (via waitForAll, uncaught) or one failed .json() call
+	// (via the shared Promise.all().catch(() => [])) could wipe out the
+	// entire season's matchup data even though most weeks fetched fine.
+	const matchupsData = await Promise.all(
+		weeksToFetch.map(async (i) => {
+			try {
+				const res = await fetch(
+					`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${i}`,
+					{ compress: true }
+				);
+				if (!res.ok) {
+					console.warn(`getSpecificYearMatchups: matchups fetch for week ${i} (league ${queryLeagueID}) returned ${res.status}`);
+					return null;
+				}
+				return await res.json();
+			} catch (err) {
+				console.error(`getSpecificYearMatchups: error fetching/parsing week ${i} (league ${queryLeagueID})`, err);
+				return null;
+			}
+		})
 	);
-
-	const matchupsData = await Promise.all(matchupsJsonPromises).catch((err) => {
-		console.error("Error parsing matchups JSON:", err);
-		return [];
-	});
 
 	const matchupWeeks = [];
 	const playerResultsList = [];
