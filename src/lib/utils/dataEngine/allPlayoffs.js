@@ -11,6 +11,25 @@ import { legacyLosersBrackets } from '$lib/utils/helperFunctions/legacyLosersBra
 
 const LEGACY_YEARS = ['2023', '2024'];
 
+// Fetches a single bracket and isolates its own failure. A network error or
+// bad response for ONE bracket must not take the other bracket down with it
+// — previously both fetches shared one outer try/catch, so a losers_bracket
+// failure (say) would discard an already-successful winnersBracket too.
+async function fetchBracket(kind, leagueId, url, debug) {
+	try {
+		const res = await fetch(url, { compress: true });
+		if (!res.ok) {
+			debug.push(`${kind} bracket fetch for league ${leagueId} returned ${res.status} — treating as empty.`);
+			return [];
+		}
+		const json = await res.json();
+		return Array.isArray(json) ? json : [];
+	} catch (err) {
+		debug.push(`${kind} bracket fetch for league ${leagueId} failed: ${err.message} — treating as empty.`);
+		return [];
+	}
+}
+
 export async function getLeaguePlayoffs(leagueId) {
 	const debug = [];
 	const idStr = leagueId?.toString();
@@ -22,22 +41,14 @@ export async function getLeaguePlayoffs(leagueId) {
 		return { winnersBracket, losersBracket, debug };
 	}
 
-	try {
-		const [winnersRes, losersRes] = await Promise.all([
-			fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { compress: true }),
-			fetch(`https://api.sleeper.app/v1/league/${leagueId}/losers_bracket`, { compress: true })
-		]);
+	const [winnersBracket, losersBracket] = await Promise.all([
+		fetchBracket('Winners', leagueId, `https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, debug),
+		fetchBracket('Losers', leagueId, `https://api.sleeper.app/v1/league/${leagueId}/losers_bracket`, debug)
+	]);
 
-		const winnersBracket = winnersRes.ok ? await winnersRes.json() : [];
-		const losersBracket = losersRes.ok ? await losersRes.json() : [];
+	debug.push(`Fetched live brackets for league ${leagueId}: ${winnersBracket.length} winners matches, ${losersBracket.length} losers matches.`);
 
-		debug.push(`Fetched live brackets for league ${leagueId}: ${winnersBracket?.length || 0} winners matches, ${losersBracket?.length || 0} losers matches.`);
-
-		return { winnersBracket: winnersBracket || [], losersBracket: losersBracket || [], debug };
-	} catch (err) {
-		debug.push(`getLeaguePlayoffs fetch failed: ${err.message}`);
-		return { winnersBracket: [], losersBracket: [], debug };
-	}
+	return { winnersBracket, losersBracket, debug };
 }
 
 /**
