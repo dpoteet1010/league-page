@@ -138,74 +138,94 @@ async function buildLiveDrafts(allPlayersData, managersSnapshot) {
   let curSeason  = mainLeagueID;
   let iterations = 0;
 
-  while (curSeason && curSeason !== 0 && iterations < 10) {
+  while (curSeason && curSeason !== 0 && curSeason !== '0' && iterations < 10) {
     iterations++;
 
+    let leagueData;
     try {
-      const [leagueData, draftsRes] = await Promise.all([
-        getLeagueData(curSeason),
-        fetchWithTimeout(`https://api.sleeper.app/v1/league/${curSeason}/drafts`)
-      ]);
+      leagueData = await getLeagueData(curSeason);
+    } catch (err) {
+      console.error(`getAllDrafts: failed to load league data for season ${curSeason}`, err);
+      break; // without leagueData we have no previous_league_id, so we can't continue
+    }
 
-      if (!leagueData || !draftsRes.ok) break;
-
-      const seasonDrafts = await draftsRes.json();
-      if (!Array.isArray(seasonDrafts) || seasonDrafts.length === 0) {
-        curSeason = leagueData.previous_league_id;
-        continue;
-      }
-
-      for (const draftInfo of seasonDrafts) {
-        if (draftInfo.status !== 'complete') continue;
-
-        const draftId = draftInfo.draft_id;
-        const year    = parseInt(draftInfo.season);
-
-        try {
-          const picksRes = await fetchWithTimeout(
-            `https://api.sleeper.app/v1/draft/${draftId}/picks`,
-            { compress: true }
-          );
-
-          if (!picksRes.ok) continue;
-          const rawPicks = await picksRes.json();
-          if (!Array.isArray(rawPicks)) continue;
-
-          const rosterToManager = getRosterToManagerMap(managersSnapshot, year);
-          const leagueSettings  = extractLeagueSettings(draftInfo.settings);
-
-          const picks = rawPicks
-            .map((raw) => normalizePick(
-              raw, draftInfo.slot_to_roster_id, rosterToManager,
-              year, draftInfo.type, allPlayersData
-            ))
-            .filter((p) => p.playerId && p.round && p.pickNo)
-            .sort((a, b) => a.pickNo - b.pickNo);
-
-          if (picks.length === 0) continue;
-
-          drafts.push({
-            year,
-            draftId:        String(draftId),
-            draftType:      draftInfo.type,
-            rounds:         draftInfo.settings.rounds,
-            numTeams:       draftInfo.settings.teams || 12,
-            leagueSettings,
-            slotToRosterId: draftInfo.slot_to_roster_id,
-            rosterToManager,
-            picks
-          });
-
-        } catch {
-          continue;
-        }
-      }
-
-      curSeason = leagueData.previous_league_id;
-
-    } catch {
+    if (!leagueData) {
+      console.warn(`getAllDrafts: no league data returned for season ${curSeason}, stopping walk-back`);
       break;
     }
+
+    // Fetching this season's drafts is NOT allowed to kill the whole chain.
+    // A single failed/empty request should only skip this season, not stop
+    // us from walking back to earlier ones.
+    try {
+      const draftsRes = await fetchWithTimeout(`https://api.sleeper.app/v1/league/${curSeason}/drafts`);
+
+      if (!draftsRes.ok) {
+        console.warn(`getAllDrafts: drafts fetch for season ${curSeason} returned ${draftsRes.status}`);
+      } else {
+        const seasonDrafts = await draftsRes.json();
+
+        if (Array.isArray(seasonDrafts)) {
+          for (const draftInfo of seasonDrafts) {
+            if (draftInfo.status !== 'complete') continue;
+
+            const draftId = draftInfo.draft_id;
+            const year    = parseInt(draftInfo.season);
+
+            try {
+              const picksRes = await fetchWithTimeout(
+                `https://api.sleeper.app/v1/draft/${draftId}/picks`,
+                { compress: true }
+              );
+
+              if (!picksRes.ok) {
+                console.warn(`getAllDrafts: picks fetch for draft ${draftId} (season ${year}) returned ${picksRes.status}`);
+                continue;
+              }
+              const rawPicks = await picksRes.json();
+              if (!Array.isArray(rawPicks)) continue;
+
+              const rosterToManager = getRosterToManagerMap(managersSnapshot, year);
+              const leagueSettings  = extractLeagueSettings(draftInfo.settings);
+
+              const picks = rawPicks
+                .map((raw) => normalizePick(
+                  raw, draftInfo.slot_to_roster_id, rosterToManager,
+                  year, draftInfo.type, allPlayersData
+                ))
+                .filter((p) => p.playerId && p.round && p.pickNo)
+                .sort((a, b) => a.pickNo - b.pickNo);
+
+              if (picks.length === 0) continue;
+
+              drafts.push({
+                year,
+                draftId:        String(draftId),
+                draftType:      draftInfo.type,
+                rounds:         draftInfo.settings.rounds,
+                numTeams:       draftInfo.settings.teams || 12,
+                leagueSettings,
+                slotToRosterId: draftInfo.slot_to_roster_id,
+                rosterToManager,
+                picks
+              });
+
+            } catch (err) {
+              console.error(`getAllDrafts: error processing draft ${draftId} (season ${year})`, err);
+              continue;
+            }
+          }
+        } else {
+          console.warn(`getAllDrafts: drafts response for season ${curSeason} was not an array`);
+        }
+      }
+    } catch (err) {
+      console.error(`getAllDrafts: error fetching drafts list for season ${curSeason}`, err);
+      // fall through — we still advance to the previous season below
+    }
+
+    // Always advance, even if this season's drafts fetch failed above.
+    curSeason = leagueData.previous_league_id;
   }
 
   return drafts;
@@ -214,8 +234,8 @@ async function buildLiveDrafts(allPlayersData, managersSnapshot) {
 export async function getAllDrafts(allPlayersData = {}) {
   if (draftCache.drafts) return draftCache.drafts;
 
-  const managersSnapshot = get(teamManagersStore) || {};
   await getLeagueTeamManagers();
+  const managersSnapshot = get(teamManagersStore) || {};
 
   const legacyDrafts = buildLegacyDrafts(allPlayersData, managersSnapshot);
   const liveDrafts   = await buildLiveDrafts(allPlayersData, managersSnapshot);
