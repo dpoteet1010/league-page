@@ -156,7 +156,14 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
   const regularResults = weeklyResults.filter((r) => !r.isPlayoffs && r.week <= REGULAR_SEASON_WEEKS);
 
   const teamData = standings.map((team) => {
-    const managerId = team.managerId || rosterToManagerId(team.rosterId);
+    // rosterToManagerId is a plain { [rosterId]: managerId } map (same shape
+    // used everywhere else in this codebase, e.g. allSeasonsHistory.js), NOT
+    // a callable function. Calling it as rosterToManagerId(team.rosterId)
+    // throws a TypeError — which previously only surfaced for teams whose
+    // managerId couldn't be resolved upstream (team.managerId falsy), taking
+    // down the whole week's rankings computation for every team, not just
+    // that one.
+    const managerId = team.managerId || (rosterToManagerId?.[String(team.rosterId)] ?? null);
     const myResults = regularResults.filter((r) => r.managerId === managerId && r.week <= week);
 
     const wins   = myResults.filter((r) => r.result === 'W').length;
