@@ -1,5 +1,5 @@
 import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
+import { leagueID as mainLeagueID, userID } from '$lib/utils/leagueInfo';
 import { getNflState } from '$lib/utils/helperFunctions/nflState.js';
 import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
@@ -20,7 +20,40 @@ async function combThroughTransactions(week, startingLeagueID) {
     if (!leagueDataRes) break;
     leagueIDs.push(currentLeagueID);
     if (!currentSeason) currentSeason = leagueDataRes.season;
-    currentLeagueID = leagueDataRes.previous_league_id;
+
+    let prevLeagueID = leagueDataRes.previous_league_id;
+
+    // previous_league_id is only set when a league was "continued" into the
+    // new season from inside Sleeper's UI. If a league was ever manually
+    // recreated instead, that field comes back blank even though the same
+    // managers genuinely played together the prior year under a different
+    // league ID — so fall back to asking Sleeper what league this user was
+    // in during that prior season.
+    if (!prevLeagueID && leagueDataRes.season) {
+      const prevSeason = Number(leagueDataRes.season) - 1;
+      const prevLeagues = await fetch(
+        `https://api.sleeper.app/v1/user/${userID}/leagues/nfl/${prevSeason}`,
+        { compress: true }
+      )
+        .then((res) => (res.ok ? res.json() : null))
+        .catch((err) => {
+          debug.push(`Fallback leagues lookup failed for season ${prevSeason}: ${err.message}`);
+          return null;
+        });
+
+      if (Array.isArray(prevLeagues) && prevLeagues.length > 0) {
+        const currentName = leagueDataRes.name?.toLowerCase();
+        const matchByName = currentName
+          ? prevLeagues.find((l) => l.name?.toLowerCase() === currentName)
+          : null;
+        prevLeagueID = (matchByName || prevLeagues[0])?.league_id || null;
+        if (prevLeagueID) {
+          debug.push(`previous_league_id was blank for season ${leagueDataRes.season} — resolved season ${prevSeason} via user leagues lookup instead.`);
+        }
+      }
+    }
+
+    currentLeagueID = prevLeagueID;
   }
 
   debug.push(`Walked live league chain: ${leagueIDs.length} season(s) — ${leagueIDs.join(', ') || 'none'}`);
