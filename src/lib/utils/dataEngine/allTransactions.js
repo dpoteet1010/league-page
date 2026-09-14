@@ -5,10 +5,10 @@ import { waitForAll } from '$lib/utils/helperFunctions/multiPromise.js';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
 import { legacyTransactions as legacyTransactionData } from '$lib/utils/helperFunctions/legacyTransactions.js';
 
-async function combThroughTransactions(week, startingLeagueID) {
+async function combThroughTransactions(nflState, startingLeagueID) {
   const debug = [];
-  week = week > 0 ? week : 1;
   const leagueIDs = [];
+  const weekBySeasonLeagueID = {};
   let currentSeason = null;
   let currentLeagueID = startingLeagueID;
 
@@ -20,6 +20,27 @@ async function combThroughTransactions(week, startingLeagueID) {
     if (!leagueDataRes) break;
     leagueIDs.push(currentLeagueID);
     if (!currentSeason) currentSeason = leagueDataRes.season;
+
+    // Each season needs its OWN "how many weeks of transactions exist"
+    // number — not today's real-world current NFL week applied blindly to
+    // every season in the chain. A completed past season should fetch ALL
+    // its weeks; only the season that's actually still in progress right
+    // now should be capped at the live current week.
+    const isCurrentSeason = nflState && String(leagueDataRes.season) === String(nflState.season);
+    let seasonWeek = 18; // default: completed (or otherwise unknown) season — fetch everything
+    if (leagueDataRes.status !== 'complete') {
+      if (isCurrentSeason && nflState?.season_type === 'regular') {
+        seasonWeek = nflState.week;
+      } else if (isCurrentSeason && nflState?.season_type === 'post') {
+        seasonWeek = 18;
+      } else {
+        // Not complete and not the current season (shouldn't normally
+        // happen) — fall back to this league's own reported week.
+        seasonWeek = leagueDataRes.settings?.leg || leagueDataRes.settings?.last_scored_leg || 1;
+      }
+    }
+    weekBySeasonLeagueID[currentLeagueID] = seasonWeek > 0 ? seasonWeek : 1;
+
     currentLeagueID = leagueDataRes.previous_league_id;
   }
 
@@ -32,7 +53,8 @@ async function combThroughTransactions(week, startingLeagueID) {
   // transactions too, not just the one that failed.
   const transactionPromises = [];
   for (const singleLeagueID of leagueIDs) {
-    let w = week;
+    const seasonWeek = weekBySeasonLeagueID[singleLeagueID] || 18;
+    let w = seasonWeek;
     while (w > 0) {
       transactionPromises.push(
         fetch(`https://api.sleeper.app/v1/league/${singleLeagueID}/transactions/${w}`, { compress: true })
