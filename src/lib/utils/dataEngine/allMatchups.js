@@ -8,6 +8,15 @@ import { legacyMatchups } from '$lib/utils/helperFunctions/legacyMatchups.js';
 
 const FINAL_POSSIBLE_WEEK = 18;
 
+// Explicit list, matching allPlayoffs.js's LEGACY_YEARS — NOT a generic
+// "is this 4 digits" check. A 4-digit ID can also show up as a fallback
+// value upstream (e.g. getAllSeasons() falling back to the bare year
+// string when it can't yet resolve a season's real Sleeper league ID);
+// treating any 4-digit-looking value as legacy silently misroutes a live
+// season into a lookup with no data for it, instead of surfacing the
+// actual resolution failure.
+const LEGACY_YEARS = ['2023', '2024'];
+
 export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	const currentStore = get(engineMatchupsStore);
 
@@ -16,7 +25,7 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 		return currentStore.history[queryLeagueID];
 	}
 
-	const isLegacyYear = isNaN(queryLeagueID) === false && queryLeagueID.toString().length === 4;
+	const isLegacyYear = LEGACY_YEARS.includes(queryLeagueID?.toString());
 
 	if (isLegacyYear) {
 		const yearStr = queryLeagueID.toString();
