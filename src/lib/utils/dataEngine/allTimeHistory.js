@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { teamManagersStore, leagueData as leagueDataStore } from '$lib/stores';
+import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
 import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
 import { getSpecificYearMatchups } from './allMatchups.js';
