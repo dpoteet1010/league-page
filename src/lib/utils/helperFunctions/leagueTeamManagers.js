@@ -22,41 +22,62 @@ export const getLeagueTeamManagers = async () => {
 
     // 1. Fetch current + historical data via Sleeper API
     while (currentLeagueID && currentLeagueID != 0) {
-        console.log(`[getLeagueTeamManagers] Fetching data for leagueID=${currentLeagueID}`);
+        const thisLeagueID = currentLeagueID;
+        console.log(`[getLeagueTeamManagers] Fetching data for leagueID=${thisLeagueID}`);
 
-        const [usersRaw, leagueData, rostersRaw] = await waitForAll(
-            fetch(`https://api.sleeper.app/v1/league/${currentLeagueID}/users`, { compress: true }),
-            getLeagueData(currentLeagueID),
-            fetch(`https://api.sleeper.app/v1/league/${currentLeagueID}/rosters`, { compress: true }),
-        ).catch((err) => {
-            console.error('[getLeagueTeamManagers] Error during fetch:', err);
-            return [null, null, null];
+        // getLeagueData is the ONE call in this loop that's allowed to stop
+        // the walk-back entirely — without it we have no previous_league_id
+        // and genuinely can't continue further.
+        const leagueData = await getLeagueData(thisLeagueID).catch((err) => {
+            console.error(`[getLeagueTeamManagers] getLeagueData failed for ${thisLeagueID}:`, err);
+            return null;
         });
 
-        if (!usersRaw || !rostersRaw || !leagueData) {
-            console.warn(`[getLeagueTeamManagers] Skipping leagueID=${currentLeagueID} due to fetch error`);
+        if (!leagueData) {
+            console.warn(`[getLeagueTeamManagers] Stopping walk-back — no league data for leagueID=${thisLeagueID}`);
             break;
+        }
+
+        const year = parseInt(leagueData.season);
+        if (!currentSeason) {
+            currentSeason = year;
+        }
+
+        // Advance to the next season NOW, before fetching users/rosters
+        // below. Previously all three requests (users, leagueData, rosters)
+        // shared one waitForAll(...).catch(), and a users/rosters failure
+        // for ANY single season would `break` out of the loop entirely —
+        // silently truncating every EARLIER season too, not just the one
+        // that failed. Advancing first means a failure below only costs us
+        // this one season's data; the walk-back keeps going regardless.
+        currentLeagueID = leagueData.previous_league_id;
+
+        console.log(`[getLeagueTeamManagers] Processing season year: ${year}`);
+
+        const [usersRaw, rostersRaw] = await waitForAll(
+            fetch(`https://api.sleeper.app/v1/league/${thisLeagueID}/users`, { compress: true }),
+            fetch(`https://api.sleeper.app/v1/league/${thisLeagueID}/rosters`, { compress: true }),
+        ).catch((err) => {
+            console.error(`[getLeagueTeamManagers] Error fetching users/rosters for leagueID=${thisLeagueID} (season ${year}):`, err);
+            return [null, null];
+        });
+
+        if (!usersRaw || !rostersRaw) {
+            console.warn(`[getLeagueTeamManagers] Skipping season ${year} (leagueID=${thisLeagueID}) due to fetch error — continuing walk-back`);
+            continue;
         }
 
         const [users, rosters] = await waitForAll(
             usersRaw.json(),
             rostersRaw.json(),
         ).catch((err) => {
-            console.error('[getLeagueTeamManagers] Error parsing JSON:', err);
+            console.error(`[getLeagueTeamManagers] Error parsing JSON for leagueID=${thisLeagueID} (season ${year}):`, err);
             return [null, null];
         });
 
         if (!users || !rosters) {
-            console.warn(`[getLeagueTeamManagers] Skipping leagueID=${currentLeagueID} due to JSON parse error`);
-            break;
-        }
-
-        const year = parseInt(leagueData.season);
-        console.log(`[getLeagueTeamManagers] Processing season year: ${year}`);
-
-        currentLeagueID = leagueData.previous_league_id;
-        if (!currentSeason) {
-            currentSeason = year;
+            console.warn(`[getLeagueTeamManagers] Skipping season ${year} (leagueID=${thisLeagueID}) due to JSON parse error — continuing walk-back`);
+            continue;
         }
 
         teamManagersMap[year] = {};
