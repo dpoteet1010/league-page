@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { teamManagersStore, leagueData as leagueDataStore } from '$lib/stores';
-import { leagueID as mainLeagueID, userID } from '$lib/utils/leagueInfo';
+import { leagueID as mainLeagueID } from '$lib/utils/leagueInfo';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
 import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
 import { getSpecificYearMatchups } from './allMatchups.js';
@@ -40,14 +40,9 @@ export async function getAllSeasons() {
   // Walk the live previous_league_id chain ourselves to build an
   // authoritative year -> real Sleeper leagueID map, instead of reading
   // whatever happens to already be cached in leagueDataStore at this exact
-  // moment.
-  //
-  // previous_league_id is only set when a league was "continued" into the
-  // new season from inside Sleeper's UI. If a league was ever manually
-  // recreated instead, that field comes back blank even though the same
-  // managers genuinely played together the prior year under a different
-  // league ID — so when it's missing, fall back to asking Sleeper directly
-  // what league this user was in during that prior season.
+  // moment. previous_league_id being null just means we've reached the
+  // earliest season this league existed on Sleeper — at that point we stop
+  // and let the LEGACY_YEARS path (elsewhere) take over for anything older.
   const yearToId = {};
   let curId = mainLeagueID;
   let iterations = 0;
@@ -62,33 +57,7 @@ export async function getAllSeasons() {
     if (!data) break;
     if (data.season) yearToId[String(data.season)] = curId;
 
-    let prevId = data.previous_league_id;
-
-    if (!prevId && data.season) {
-      const prevSeason = Number(data.season) - 1;
-      const prevLeagues = await fetch(
-        `https://api.sleeper.app/v1/user/${userID}/leagues/nfl/${prevSeason}`,
-        { compress: true }
-      )
-        .then((res) => (res.ok ? res.json() : null))
-        .catch((err) => {
-          console.error(`getAllSeasons: fallback leagues lookup failed for season ${prevSeason}`, err);
-          return null;
-        });
-
-      if (Array.isArray(prevLeagues) && prevLeagues.length > 0) {
-        // If the user was in multiple leagues that season, prefer the one
-        // whose name matches the current league — best signal we have for
-        // "this is the same league, just recreated."
-        const currentName = data.name?.toLowerCase();
-        const matchByName = currentName
-          ? prevLeagues.find((l) => l.name?.toLowerCase() === currentName)
-          : null;
-        prevId = (matchByName || prevLeagues[0])?.league_id || null;
-      }
-    }
-
-    curId = prevId;
+    curId = data.previous_league_id;
   }
 
   return Object.keys(managers?.teamManagersMap || {})
