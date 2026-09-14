@@ -35,16 +35,33 @@ function buildManagersForYear(managersSnapshot, year) {
 }
 
 export async function getAllSeasons() {
-  const managers   = await getLeagueTeamManagers();
-  const allMetadata = get(leagueDataStore) || {};
+  const managers = await getLeagueTeamManagers();
+
+  // Walk the live previous_league_id chain ourselves to build an
+  // authoritative year -> real Sleeper leagueID map, instead of reading
+  // whatever happens to already be cached in leagueDataStore at this exact
+  // moment. That snapshot-based approach was fragile: right after
+  // mainLeagueID gets repointed at a new season's league, nothing has
+  // necessarily populated leagueDataStore with an entry whose `.season`
+  // matches the new year yet — so the old code's `.find()` would silently
+  // fail and fall back to using the bare year string ("2025") as the "id".
+  // That bogus id then gets misidentified as a LEGACY season downstream
+  // (getSpecificYearMatchups's isLegacyYear check), which has no data for
+  // a live season and returns null — silently producing 0 teams for it.
+  const yearToId = {};
+  let curId = mainLeagueID;
+  let iterations = 0;
+  while (curId && curId !== 0 && curId !== '0' && iterations < 25) {
+    iterations++;
+    const data = await getLeagueData(curId).catch(() => null);
+    if (!data) break;
+    if (data.season) yearToId[String(data.season)] = curId;
+    curId = data.previous_league_id;
+  }
+
   return Object.keys(managers?.teamManagersMap || {})
     .sort((a, b) => Number(a) - Number(b))
-    .map((year) => {
-      const matchedLeagueID = Object.keys(allMetadata).find(
-        (key) => allMetadata[key]?.season == year
-      );
-      return { year, id: matchedLeagueID || year };
-    });
+    .map((year) => ({ year, id: yearToId[year] || year }));
 }
 
 export async function getAllSeasonsHistory() {
