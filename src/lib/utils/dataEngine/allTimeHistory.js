@@ -3,7 +3,6 @@ import { teamManagersStore, leagueData as leagueDataStore } from '$lib/stores';
 import { leagueID as mainLeagueID, userID } from '$lib/utils/leagueInfo';
 import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
 import { getLeagueData } from '$lib/utils/helperFunctions/leagueData.js';
-import { getPreviousLeagueId } from './resolvePreviousLeagueId.js';
 import { getSpecificYearMatchups } from './allMatchups.js';
 import { getLeaguePlayoffs } from './allPlayoffs.js';
 import { getLeagueState } from './leagueState.js';
@@ -41,23 +40,55 @@ export async function getAllSeasons() {
   // Walk the live previous_league_id chain ourselves to build an
   // authoritative year -> real Sleeper leagueID map, instead of reading
   // whatever happens to already be cached in leagueDataStore at this exact
-  // moment. That snapshot-based approach was fragile: right after
-  // mainLeagueID gets repointed at a new season's league, nothing has
-  // necessarily populated leagueDataStore with an entry whose `.season`
-  // matches the new year yet — so the old code's `.find()` would silently
-  // fail and fall back to using the bare year string ("2025") as the "id".
-  // That bogus id then gets misidentified as a LEGACY season downstream
-  // (getSpecificYearMatchups's isLegacyYear check), which has no data for
-  // a live season and returns null — silently producing 0 teams for it.
+  // moment.
+  //
+  // previous_league_id is only set when a league was "continued" into the
+  // new season from inside Sleeper's UI. If a league was ever manually
+  // recreated instead, that field comes back blank even though the same
+  // managers genuinely played together the prior year under a different
+  // league ID — so when it's missing, fall back to asking Sleeper directly
+  // what league this user was in during that prior season.
   const yearToId = {};
   let curId = mainLeagueID;
   let iterations = 0;
+
   while (curId && curId !== 0 && curId !== '0' && iterations < 25) {
     iterations++;
-    const data = await getLeagueData(curId).catch(() => null);
+
+    const data = await getLeagueData(curId).catch((err) => {
+      console.error(`getAllSeasons: getLeagueData failed for ${curId}`, err);
+      return null;
+    });
     if (!data) break;
     if (data.season) yearToId[String(data.season)] = curId;
-    curId = data.previous_league_id;
+
+    let prevId = data.previous_league_id;
+
+    if (!prevId && data.season) {
+      const prevSeason = Number(data.season) - 1;
+      const prevLeagues = await fetch(
+        `https://api.sleeper.app/v1/user/${userID}/leagues/nfl/${prevSeason}`,
+        { compress: true }
+      )
+        .then((res) => (res.ok ? res.json() : null))
+        .catch((err) => {
+          console.error(`getAllSeasons: fallback leagues lookup failed for season ${prevSeason}`, err);
+          return null;
+        });
+
+      if (Array.isArray(prevLeagues) && prevLeagues.length > 0) {
+        // If the user was in multiple leagues that season, prefer the one
+        // whose name matches the current league — best signal we have for
+        // "this is the same league, just recreated."
+        const currentName = data.name?.toLowerCase();
+        const matchByName = currentName
+          ? prevLeagues.find((l) => l.name?.toLowerCase() === currentName)
+          : null;
+        prevId = (matchByName || prevLeagues[0])?.league_id || null;
+      }
+    }
+
+    curId = prevId;
   }
 
   return Object.keys(managers?.teamManagersMap || {})
