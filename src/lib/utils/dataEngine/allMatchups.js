@@ -90,25 +90,28 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 	const year = leagueData.season;
 	const regularSeasonLength = leagueData.settings.playoff_week_start - 1;
 
-	// Only fetch/process weeks whose games have actually concluded. Sleeper's
-	// matchups endpoint returns real starter/lineup data for FUTURE weeks too
-	// (as soon as managers set lineups), with pointsTotal sitting at 0 since
-	// the games haven't been played — which is indistinguishable from a real
-	// 0-point chug-worthy performance unless we stop before those weeks.
-	// This was previously uncapped (always looped through week 18), which
-	// inflated season-in-progress chug tallies by counting every future
-	// week's not-yet-played starters as a chug.
+	// Only cap at "the last completed week" using TODAY'S real-world NFL
+	// state when the season being queried is actually the current,
+	// still-in-progress one. Previously this applied unconditionally to
+	// every live (non-legacy) season query — so a fully completed past
+	// season (e.g. last year, status: "complete") got capped by THIS
+	// YEAR'S current week instead of using its own full week range,
+	// fetching zero or almost zero weeks of matchups for it.
 	let lastCompletedWeek = FINAL_POSSIBLE_WEEK;
-	if (nflState.season_type === 'regular') {
+	const isCurrentSeason = String(leagueData.season) === String(nflState.season);
+	if (leagueData.status === 'complete') {
+		lastCompletedWeek = FINAL_POSSIBLE_WEEK;
+	} else if (isCurrentSeason && nflState.season_type === 'regular') {
 		// display_week is the current, still-in-progress week — its games
 		// aren't final yet, so the last CONFIRMED-complete week is the one before it.
 		lastCompletedWeek = nflState.display_week - 1;
-	} else if (nflState.season_type === 'post') {
+	} else if (isCurrentSeason && nflState.season_type === 'post') {
 		// Playoffs: everything through the current display_week is final
 		// (regular season is fully done by this point).
 		lastCompletedWeek = nflState.display_week;
 	}
-	// season_type 'off': leave at FINAL_POSSIBLE_WEEK — the season is fully over, all weeks are final.
+	// Any other case (a live season that's neither complete nor the current
+	// one — shouldn't normally happen) falls back to FINAL_POSSIBLE_WEEK.
 
 	const weeksToFetch = [];
 	for (let i = 1; i <= FINAL_POSSIBLE_WEEK; i++) {
