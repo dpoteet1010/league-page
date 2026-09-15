@@ -92,6 +92,14 @@ export async function getAllSeasonsHistory() {
       const managersForYear = buildManagersForYear(managersSnapshot, resolvedYear);
       const numRosters      = Object.keys(managersForYear).length;
 
+      // A season is only "complete" once Sleeper itself says so. Legacy
+      // years never go through getLeagueData with a real Sleeper ID (their
+      // `id` is the bare year string as a fallback), so leagueData.status
+      // will always be missing for them — but they're historical by
+      // definition, so they're always treated as complete.
+      const isLegacyYear = LEGACY_YEARS.includes(String(resolvedYear));
+      const isComplete = isLegacyYear || allMetadata?.[id]?.status === 'complete';
+
       const matchupsData = await getSpecificYearMatchups(id).catch((err) => {
         debug.push(`[${year}] getSpecificYearMatchups failed: ${err.message}`);
         return null;
