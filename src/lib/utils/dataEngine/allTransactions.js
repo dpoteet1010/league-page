@@ -487,11 +487,9 @@ export async function getTransactionHistory(startingLeagueID = mainLeagueID, pla
     debug.push(`getNflState failed: ${err.message}`);
     return null;
   });
-  let week = 18;
-  if (nflState?.season_type === 'regular') week = nflState.week;
 
   const { transactionsData, currentSeason, debug: combDebug } = await combThroughTransactions(
-    week, startingLeagueID
+    nflState, startingLeagueID
   );
   debug.push(...combDebug);
 
