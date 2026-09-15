@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { getLeagueTeamManagers } from '$lib/utils/helperFunctions/leagueTeamManagers.js';
   import { getAllSeasonsHistory } from '$lib/utils/dataEngine/allTimeHistory.js';
@@ -278,6 +278,13 @@
     globalDebug = [...globalDebug];
     await getLeagueTeamManagers();
     allTimeHistory = await getAllSeasonsHistory();
+    // Let Svelte's reactive ($:) statements (currentSeasonYears,
+    // nextSeasonYear, etc.) actually recompute before we read them below.
+    // They only update after Svelte flushes its update cycle, not
+    // synchronously the instant allTimeHistory is reassigned — without this,
+    // the debug line below always read the PREVIOUS (empty/null) values,
+    // which is why it printed "Seasons: | Next: null" unconditionally.
+    await tick();
     const snap = get(teamManagersStore) || {};
     const users = snap?.users || {};
     globalDebug.push('── Manager IDs (for leagueManagers.js) ──');
@@ -493,9 +500,20 @@
       .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
     const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
 
-    const activeManagerIds = isNextSeason
+    // A season can already have a parTablesBySeason entry (so it shows up
+    // in currentSeasonYears / isNextSeason comes back false) while still
+    // having zero completed weeks — e.g. the current season hasn't
+    // finished week 1 yet. In that case there's no real standings data to
+    // pull "active manager ids" from for THIS season, so fall back to the
+    // same logic used for a genuinely future/not-yet-started season:
+    // previous season's roster, or every known manager. Without this,
+    // computePreSeasonRankings silently gets an empty manager list and
+    // returns an empty rankings array as soon as the new season exists at
+    // all, even before any games have been played.
+    const thisSeasonActiveIds = getActiveManagerIds(ys);
+    const activeManagerIds = (isNextSeason || thisSeasonActiveIds.length === 0)
       ? (prevStandings.length ? prevStandings.map((t) => t.managerId).filter(Boolean) : allManagerIds)
-      : getActiveManagerIds(ys);
+      : thisSeasonActiveIds;
 
     return computePreSeasonRankings(year, priorAllTimeGrades, prevStandings, activeManagerIds);
   }
