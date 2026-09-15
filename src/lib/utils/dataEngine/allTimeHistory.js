@@ -10,6 +10,13 @@ import { getAllPlayers } from './allPlayers.js';
 import { buildSeasonPARTables, getFlexSlotsForYear } from './parGrading.js';
 import { getSeasonStatTotals } from './allPlayerSeasonStats.js';
 
+// Matches the LEGACY_YEARS list in allMatchups.js / allPlayoffs.js. Legacy
+// seasons never go through getLeagueData with a real Sleeper league ID
+// (their `id` is the bare year string, a fallback), so leagueData.status
+// is never available for them — but they're historical by definition, so
+// they're always treated as complete regardless.
+const LEGACY_YEARS = ['2023', '2024'];
+
 function resolveYear(currentLeagueID, allMetadata) {
   let year = allMetadata?.[currentLeagueID]?.season;
   if (!year && !isNaN(currentLeagueID)) year = currentLeagueID.toString();
@@ -180,6 +187,7 @@ export async function getAllSeasonsHistory() {
         numTeams:        numRosters,
         scoringSettings: allMetadata?.[id]?.scoring_settings || null,
         rosterToManagerId,  // expose for downstream use
+        isComplete,         // whether this season is fully finished (or legacy) — see note above
         ...result,
         standings: enrichedStandings  // override with enriched version
       });
