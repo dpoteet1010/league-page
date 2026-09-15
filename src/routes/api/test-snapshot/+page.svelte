@@ -469,7 +469,24 @@
         activeIds
       );
     });
-    allTimeManagerGrades = computeAllTimeManagerGrades(seasonManagerGrades);
+
+    // All-time grades must only reflect FINISHED seasons. Draft PAR is
+    // graded post-season, trade/waiver PAR keeps accumulating all year, and
+    // lineup IQ is a running ratio — none of these mean anything final
+    // until a season has actually played out. Feeding an in-progress
+    // season's partial numbers into the all-time average would both skew
+    // every manager's all-time grade AND keep shifting it week to week,
+    // which defeats the point of an "all-time" figure. This also fixes
+    // Power Rankings: computePowerRankings falls back to
+    // allTimeManagerGrades whenever a manager's THIS-season grade is
+    // missing, so filtering the input here is the only change needed —
+    // powerRankings.js itself doesn't need to know about completeness at all.
+    const completedSeasonGrades = {};
+    Object.entries(seasonManagerGrades).forEach(([year, grades]) => {
+      const seasonData = allTimeHistory?.seasons?.find((s) => String(s.year) === String(year));
+      if (seasonData?.isComplete) completedSeasonGrades[year] = grades;
+    });
+    allTimeManagerGrades = computeAllTimeManagerGrades(completedSeasonGrades);
   }
 
   // ── Power rankings ────────────────────────────────────────────────────────────
@@ -497,7 +514,14 @@
     const priorSeasonGrades = {};
     currentSeasonYears
       .filter((y) => Number(y) < Number(year))
-      .forEach((y) => { if (seasonManagerGrades[y]) priorSeasonGrades[y] = seasonManagerGrades[y]; });
+      .forEach((y) => {
+        // Same completeness requirement as recomputeGrades()'s all-time
+        // aggregation: a strictly-earlier year is USUALLY already finished
+        // by the time a later season exists, but this guards the edge case
+        // directly rather than relying on that always being true.
+        const seasonData = allTimeHistory.seasons.find((s) => String(s.year) === y);
+        if (seasonManagerGrades[y] && seasonData?.isComplete) priorSeasonGrades[y] = seasonManagerGrades[y];
+      });
     const priorAllTimeGrades = computeAllTimeManagerGrades(priorSeasonGrades);
 
     // A season can already have a parTablesBySeason entry (so it shows up
