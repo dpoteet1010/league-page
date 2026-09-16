@@ -347,7 +347,16 @@
       transactionDebug.push(`Graded ${gradedTransactions.length} transactions.`);
     } catch (e) {
       console.error(e); transactionDebug.push(`Crash: ${e.message}`);
-    } finally { loadingTransactions = false; }
+    } finally {
+      loadingTransactions = false;
+      // Keep Manager Grades / All-Time Manager Grades in sync: if grades
+      // were already computed once this session, a later transactions
+      // reload changes managerTradePARBySeason/managerWaiverPARBySeason
+      // underneath them without this — leaving the Manager Grades tab
+      // showing a stale snapshot that silently drifts from whatever Power
+      // Rankings computes fresh on every call.
+      if (rosterStats) recomputeGrades();
+    }
   }
 
   function onTransactionSeasonChange() {
@@ -370,7 +379,13 @@
       }
     } catch (e) {
       console.error(e); draftDebug.push(`Crash: ${e.message}`);
-    } finally { loadingDrafts = false; }
+    } finally {
+      loadingDrafts = false;
+      // Same reasoning as loadTransactions() above — a drafts reload
+      // changes draftGradesByYear underneath any already-computed manager
+      // grades, so resync them if they exist.
+      if (rosterStats) recomputeGrades();
+    }
   }
 
   async function computeEOS(year, silent = false) {
@@ -657,6 +672,22 @@
         const pr     = usePR ? (weeklyProgressionData[exportWeek] || null) : null;
         const prevPR = usePR && exportWeek > 0 ? weeklyProgressionData[exportWeek - 1] : null;
         const weekResults = seasonWeeklyResults.filter((r) => r.week === exportWeek);
+
+        // Only use the schedule-only next-week pairings when there's no
+        // REAL result data for that week yet (i.e. exportWeek is the
+        // current/latest week). For any past week's export, real played
+        // matchups already exist in seasonWeeklyResults, and
+        // exportWeeklyData's own extractMatchupsForWeek fallback handles
+        // that correctly — overriding it here would be wrong for a
+        // historical re-export.
+        const nextWeekNum = exportWeek + 1;
+        const nextWeekAlreadyPlayed = seasonWeeklyResults.some(
+          (r) => r.week === nextWeekNum && !r.isPlayoffs
+        );
+        const resolvedNextWeekMatchups = (!nextWeekAlreadyPlayed && seasonData?.nextWeekMatchups?.length)
+          ? seasonData.nextWeekMatchups
+          : null;
+
         const weekText = exportWeeklyData({
           year:                  yearStr,
           week:                  exportWeek,
@@ -667,7 +698,7 @@
           currentStandings:      null,
           powerRankings:         pr,
           previousPowerRankings: prevPR?.rankings || [],
-          nextWeekMatchups:      null,
+          nextWeekMatchups:      resolvedNextWeekMatchups,
           isTestMode:            false,
           managersSnapshot:      snap,
           playerResults:         allTimeHistory?.playerResults  || [],
