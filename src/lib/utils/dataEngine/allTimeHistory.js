@@ -181,6 +181,17 @@ export async function getAllSeasonsHistory() {
         managerId: rosterToManagerId[String(team.rosterId)] ?? null
       }));
 
+      // Convert the schedule-only next-week pairings (roster IDs) from
+      // getSpecificYearMatchups into manager-ID pairs, same shape the
+      // export layer already expects from real (played) weeks via
+      // extractMatchupsForWeek in dataExport.js: { homeId, awayId }.
+      const nextWeekMatchups = (matchupsData.scheduledNextWeek?.pairs || [])
+        .map(({ aRosterId, bRosterId }) => ({
+          homeId: rosterToManagerId[String(aRosterId)] ?? null,
+          awayId: rosterToManagerId[String(bRosterId)] ?? null
+        }))
+        .filter((m) => m.homeId != null && m.awayId != null);
+
       seasonOutputs.push({
         year:            resolvedYear,
         leagueId:        id,
@@ -188,6 +199,8 @@ export async function getAllSeasonsHistory() {
         scoringSettings: allMetadata?.[id]?.scoring_settings || null,
         rosterToManagerId,  // expose for downstream use
         isComplete,         // whether this season is fully finished (or legacy) — see note above
+        nextWeekNumber:    matchupsData.scheduledNextWeek?.week ?? null,
+        nextWeekMatchups,  // schedule-only pairings for the next unplayed week, if any
         ...result,
         standings: enrichedStandings  // override with enriched version
       });
