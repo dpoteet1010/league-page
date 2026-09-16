@@ -160,6 +160,44 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 		}
 	}
 
+	// Separately grab the SCHEDULE (matchup pairings only — no stats) for
+	// the next upcoming, not-yet-played week, purely so a "Next Week
+	// Preview" can show real opponent pairings instead of a placeholder.
+	// This deliberately stays OUT of matchupWeeks/playerResults above: that
+	// week's games haven't happened, so it must not leak into stats or
+	// chug tallies the way lastCompletedWeek is designed to prevent.
+	let scheduledNextWeek = null;
+	const nextWeekNum = lastCompletedWeek + 1;
+	if (leagueData.status !== 'complete' && nextWeekNum <= FINAL_POSSIBLE_WEEK) {
+		try {
+			const res = await fetch(
+				`https://api.sleeper.app/v1/league/${queryLeagueID}/matchups/${nextWeekNum}`,
+				{ compress: true }
+			);
+			if (res.ok) {
+				const rawNextWeek = await res.json();
+				if (Array.isArray(rawNextWeek) && rawNextWeek.length > 0) {
+					const pairs = {};
+					rawNextWeek.forEach((entry) => {
+						if (entry.matchup_id == null) return; // bye week for this roster
+						if (!pairs[entry.matchup_id]) pairs[entry.matchup_id] = [];
+						pairs[entry.matchup_id].push(entry.roster_id);
+					});
+					const pairList = Object.values(pairs)
+						.filter((rosterIds) => rosterIds.length === 2)
+						.map(([a, b]) => ({ aRosterId: a, bRosterId: b }));
+					if (pairList.length) {
+						scheduledNextWeek = { week: nextWeekNum, pairs: pairList };
+					}
+				}
+			} else {
+				console.warn(`getSpecificYearMatchups: schedule fetch for week ${nextWeekNum} (league ${queryLeagueID}) returned ${res.status}`);
+			}
+		} catch (err) {
+			console.error(`getSpecificYearMatchups: error fetching schedule for week ${nextWeekNum} (league ${queryLeagueID})`, err);
+		}
+	}
+
 	const seasonData = {
 		matchupWeeks,
 		playerResults: playerResultsList,
@@ -167,6 +205,7 @@ export const getSpecificYearMatchups = async (queryLeagueID = mainLeagueID) => {
 		year,
 		week,
 		regularSeasonLength,
+		scheduledNextWeek,
 		debug
 	};
 
