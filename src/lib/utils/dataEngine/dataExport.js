@@ -339,13 +339,30 @@ function describeResult(row) {
 /**
  * Rough win probability from each manager's season PPG to date, converted to
  * American (moneyline) odds. This is a fun/trash-talk tool, not a rigorous
- * projection model — the scale constant (20) just keeps odds in a believable
- * range for typical weekly fantasy scoring margins.
+ * projection model.
+ *
+ * Two safeguards keep it from producing absurd lines early in a season, when
+ * "PPG" might only be 1-2 games of pure variance rather than an established
+ * scoring level:
+ *   1. Shrinkage: the raw PPG gap is scaled DOWN based on games played, so a
+ *      huge week-1 gap barely moves the needle, while the same gap built on
+ *      10+ games is trusted almost fully. K=4 means 1 game played trusts
+ *      only 1/5 of the raw gap; 4 games trusts half; 12+ games trusts ~75%+.
+ *   2. A hard clamp on the resulting probability (8%-92%) as a final floor/
+ *      ceiling, so no combination of inputs can ever print something like
+ *      -221309 — this is meant to read as a spicy trash-talk stat, not a
+ *      real sportsbook line.
  */
-function computeMatchupOdds(homePPG, awayPPG) {
+function computeMatchupOdds(homePPG, awayPPG, gamesPlayed = null) {
   if (homePPG == null || awayPPG == null) return null;
-  const diff = homePPG - awayPPG;
-  const homeProb = 1 / (1 + Math.pow(10, -diff / 20));
+
+  const rawDiff = homePPG - awayPPG;
+  const K = 4;
+  const shrinkFactor = gamesPlayed != null ? gamesPlayed / (gamesPlayed + K) : 1;
+  const diff = rawDiff * shrinkFactor;
+
+  const rawHomeProb = 1 / (1 + Math.pow(10, -diff / 20));
+  const homeProb = Math.min(0.92, Math.max(0.08, rawHomeProb));
   const awayProb = 1 - homeProb;
   return { homeOdds: americanOddsFromProb(homeProb), awayOdds: americanOddsFromProb(awayProb) };
 }
@@ -1718,12 +1735,14 @@ export function exportWeeklyData({
 
   let computedStandings = null;
   let ppgByManager = {};
+  let gpByManager = {};
   let chugTally = {};
   if (allSeasonWeeklyResults) {
     computedStandings = buildStandingsThroughWeek(allSeasonWeeklyResults, year, week);
     computedStandings.forEach(rec => {
       const gp = rec.wins + rec.losses + rec.ties;
       ppgByManager[rec.managerId] = gp > 0 ? rec.pf / gp : null;
+      gpByManager[rec.managerId] = gp;
     });
   }
   if (playerResults && rosterToManagerId) {
@@ -1881,7 +1900,7 @@ export function exportWeeklyData({
       const awayName = mn(awayId);
       const homePPG  = ppgByManager[homeId];
       const awayPPG  = ppgByManager[awayId];
-      const odds     = computeMatchupOdds(homePPG, awayPPG);
+      const odds     = computeMatchupOdds(homePPG, awayPPG, Math.min(gpByManager[homeId] ?? 0, gpByManager[awayId] ?? 0));
 
       const homeOddsStr = odds ? formatAmericanOdds(odds.homeOdds) : null;
       const awayOddsStr = odds ? formatAmericanOdds(odds.awayOdds) : null;
@@ -2209,7 +2228,7 @@ STRUCTURE:
 🤡 Annual Clown Award (worst grades + most embarrassing moment — specific evidence required, be mean)
 🎯 Best Single Transaction
 
-**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given, including all five grade columns (Overall, Draft, Trade, Waiver, Lineup IQ) and the Record (Expected) column showing each manager's actual record against what their record "should" have been. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytelling.
+**Manager Season Recap Cards** — reproduce the "Manager Season Recap Cards" table from the data EXACTLY as given, including all five grade columns (Overall, Draft, Trade, Waiver, Lineup IQ) and the Record (Expected) column showing each manager's actual record against what their record "should" have been. Add at most one dry, one-line caption above the table — no per-row commentary or narration. This section is a scannable per-manager reference, not additional storytleing.
 `.trim()
 
 };
