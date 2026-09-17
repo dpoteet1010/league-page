@@ -213,10 +213,35 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
 
 /**
  * Computes rankings for ALL weeks 0-14 for the line chart.
+ *
+ * Week 0 ("Pre") is passed in directly as preSeasonRankings — the SAME
+ * result computePreSeasonRankings produces for the Pre-Season Rankings
+ * table (60% all-time grade + 20% prior regular season + 20% prior
+ * post-season). Previously week 0 was computed separately via
+ * computePowerRankings(0, ...), which maps to the 'preseason' phase
+ * weights (managerGrade: 1.0, everything else 0) — 100% manager grade with
+ * NO weight on prior season standings at all. That produced a different
+ * manager order than the Pre-Season Rankings table for what's supposed to
+ * be the same starting point, which showed up as the rank-progression
+ * chart (and the Weekly Recap's week 1 Δ/NEW movement, computed against
+ * this week-0 baseline) disagreeing with the table.
  */
-export function computeAllWeekRankings(standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
+export function computeAllWeekRankings(standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId, preSeasonRankings = null) {
   const all = [];
   for (let w = 0; w <= REGULAR_SEASON_WEEKS; w++) {
+    if (w === 0 && preSeasonRankings?.rankings?.length) {
+      all.push({
+        phase: 'preseason',
+        weights: PHASE_WEIGHTS.preseason,
+        week: 0,
+        rankings: preSeasonRankings.rankings.map((t) => ({
+          ...t,
+          compositeScore: t.score,
+          wins: 0, losses: 0, ties: 0, pf: 0
+        }))
+      });
+      continue;
+    }
     all.push(computePowerRankings(w, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId));
   }
   return all;
