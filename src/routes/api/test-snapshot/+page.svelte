@@ -597,7 +597,7 @@
           const mgrGrades     = seasonManagerGrades[ys] || {};
 
           weeklyProgressionData = computeAllWeekRankings(
-            standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr
+            standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr, preSeasonRankings
           );
           endOfSeasonRankings = weeklyProgressionData[REGULAR_SEASON_WEEKS];
         }
