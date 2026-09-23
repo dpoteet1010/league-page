@@ -1189,7 +1189,7 @@ export function exportLeagueContext(managersSnapshot, mostRecentYear = null) {
   lines.push('- Inside jokes and callbacks to prior seasons or past games make it hit harder');
   lines.push('- Keep sentences short and punchy. No flowery sports journalism language.');
   lines.push('- Stick to real names, in-league history, and stats to make it hit hard.');
-  lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, trade header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> anywhere in your own writing — they don\'t render reliably in most viewers. The ONE exception is the manager names inside a Next Week Preview matchup title line: those already come to you pre-wrapped in <u> tags in the data (e.g. "**<u>Harrison</u> (171.5 ppg, -467) vs. <u>Stolze</u> (104.6 ppg, +467)**") — reproduce that line exactly as given, tags included, rather than stripping them out to follow the general no-<u> rule.');
+  lines.push('- **Formatting**: bold is reserved for section headers/subheaders, per-game header lines, trade header lines, and matchup title lines/labels in the Next Week Preview. Never bold a player name, manager name, score, or stat inside a sentence or paragraph — plain text throughout the prose. Never use HTML tags like <u> — they don\'t render reliably in most viewers.');
   lines.push('- Never include internal methodology, weighting formulas, or calculation notes anywhere in the article — those are for internal computation only, never narrative content.');
   lines.push('- Where the data hands you pre-built bolded lines (game headers, matchup preview blocks), reproduce them EXACTLY as given, each on its own line, preserving any blank lines between them — do not merge them into a paragraph or run them together with spaces.');
   lines.push('- **Bulleted data blocks (Season Outcomes, Rivalry Week Results, and similar) MUST stay as separate bullet points, each with its given icon and bold label — never collapse them into flowing paragraph prose.** This has been a recurring compliance issue; be careful here specifically.');
@@ -1911,7 +1911,7 @@ export function exportWeeklyData({
         ? `${fp(awayPPG)} ppg${awayOddsStr ? `, ${awayOddsStr}` : ''}`
         : null;
 
-      lines.push(`**<u>${homeName}</u>${homeLabel ? ` (${homeLabel})` : ''} vs. <u>${awayName}</u>${awayLabel ? ` (${awayLabel})` : ''}**`);
+      lines.push(`**${homeName}${homeLabel ? ` (${homeLabel})` : ''} vs. ${awayName}${awayLabel ? ` (${awayLabel})` : ''}**`);
       lines.push('');
 
       const h2h = allTimeWeeklyResults
@@ -2135,7 +2135,7 @@ RULES:
 - NEVER mention how Power Rankings are calculated (weights, phase, formulas) anywhere in the article — that's internal-only, not narrative content
 - If rivalry week: call out bet stakes, talk shit about whoever lost
 - Keep it punchy — short sentences, no filler
-- **Formatting**: bold is ONLY for section headers/subheaders, each game's header line (given to you pre-built in the data), trade header lines, and the matchup title + labels in the Next Week Preview (Head-to-Head:, Coming In:, Storyline:). Never bold a player name, manager name, score, or stat inside a sentence — plain text throughout the prose. Never use HTML tags like <u> in your own writing — they don't render reliably. The one exception: each Next Week Preview matchup's title line comes to you with the two manager names already wrapped in <u> tags — reproduce that line exactly as given, underline tags included, don't strip them out.
+- **Formatting**: bold is ONLY for section headers/subheaders, each game's header line (given to you pre-built in the data), trade header lines, and the matchup title + labels in the Next Week Preview (Head-to-Head:, Coming In:, Storyline:). Never bold a player name, manager name, score, or stat inside a sentence — plain text throughout the prose. Never use HTML tags like <u> — they don't render reliably.
 - CRITICAL: wherever the data hands you multiple pre-built bolded lines meant to stack (game headers, matchup preview blocks), reproduce them EXACTLY as given, each on its own line, WITH the blank lines between them preserved. Do not run them together into one paragraph — that has been a recurring bug, be careful here.
 
 STRUCTURE:
