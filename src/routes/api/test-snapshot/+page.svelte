@@ -634,10 +634,9 @@
           const standings     = seasonData.standings || [];
           const weeklyResults = allTimeHistory.weeklyResults.filter((r) => String(r.year) === ys);
           const rosterToMgr   = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
-          const mgrGrades     = seasonManagerGrades[ys] || {};
 
           const freshWeekly = computeAllWeekRankings(
-            standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr, preSeasonRankings
+            standings, weeklyResults, allTimeManagerGrades, rosterToMgr, preSeasonRankings
           );
 
           // A week is provably "in the books" the moment its matchup data
