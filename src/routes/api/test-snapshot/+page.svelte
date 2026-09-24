@@ -557,6 +557,46 @@
     return computePreSeasonRankings(year, priorAllTimeGrades, prevStandings, activeManagerIds);
   }
 
+  // ── Power rankings snapshot freezing ─────────────────────────────────────
+  //
+  // A past week's power rankings must never silently change again once
+  // that week is over — otherwise later weeks' accumulating trade/waiver/
+  // lineup data keeps reshuffling history every time rankings are
+  // recomputed. localStorage persists across sessions (this is a real
+  // deployed app, not a throwaway chat artifact), so once a week is frozen
+  // here it stays frozen until deliberately cleared — e.g. after fixing a
+  // grading bug that affected past weeks, via the "Recompute All Weeks"
+  // control in the Power Rankings tab.
+  const POWER_SNAPSHOT_PREFIX = 'nlfl_power_snapshot';
+
+  function powerSnapshotKey(year, week) {
+    return `${POWER_SNAPSHOT_PREFIX}_${year}_wk${week}`;
+  }
+  function getFrozenWeek(year, week) {
+    try {
+      const raw = localStorage.getItem(powerSnapshotKey(year, week));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+  function freezeWeek(year, week, data) {
+    try {
+      localStorage.setItem(powerSnapshotKey(year, week), JSON.stringify(data));
+    } catch (e) {
+      console.error('Failed to freeze power rankings snapshot:', e);
+    }
+  }
+  function clearFrozenWeek(year, week) {
+    try { localStorage.removeItem(powerSnapshotKey(year, week)); } catch {}
+  }
+  // Deliberate escape hatch: frozen snapshots do NOT self-heal, by design.
+  // Call this (then reload rankings) after a bug fix or data correction
+  // that should propagate to past weeks too.
+  function clearAllFrozenWeeks(year) {
+    for (let w = 0; w <= REGULAR_SEASON_WEEKS; w++) clearFrozenWeek(year, w);
+  }
+
   async function loadPowerRankings(year) {
     loadingPower = true;
     powerYear    = String(year);
@@ -596,15 +636,44 @@
           const rosterToMgr   = (rosterId) => seasonData.rosterToManagerId?.[String(rosterId)] ?? null;
           const mgrGrades     = seasonManagerGrades[ys] || {};
 
-          weeklyProgressionData = computeAllWeekRankings(
+          const freshWeekly = computeAllWeekRankings(
             standings, weeklyResults, mgrGrades, allTimeManagerGrades, rosterToMgr, preSeasonRankings
           );
+
+          // A week is provably "in the books" the moment its matchup data
+          // exists at all — the data engine never fetches an in-progress
+          // week (see getSpecificYearMatchups's lastCompletedWeek cap), so
+          // any week present in weeklyResults was already fully complete
+          // when fetched. Freeze it the first time we see it (idx 0, the
+          // "Pre" point, is always eligible too, since it represents the
+          // state before any games were played). Only a week with no real
+          // data yet stays fully live and keeps recomputing.
+          const playedWeeks = new Set(weeklyResults.filter((r) => !r.isPlayoffs).map((r) => r.week));
+
+          weeklyProgressionData = freshWeekly.map((weekData, idx) => {
+            const eligibleToFreeze = idx === 0 || playedWeeks.has(idx);
+            if (!eligibleToFreeze) return weekData;
+            const frozen = getFrozenWeek(ys, idx);
+            if (frozen) return frozen;
+            freezeWeek(ys, idx, weekData);
+            return weekData;
+          });
+
           endOfSeasonRankings = weeklyProgressionData[REGULAR_SEASON_WEEKS];
         }
       }
     } catch (e) {
       console.error(e);
     } finally { loadingPower = false; }
+  }
+
+  // Deliberate override: clears every frozen weekly snapshot for this
+  // season and recomputes from current data. Use this after a bug fix or
+  // correction that should retroactively apply to past weeks — frozen
+  // snapshots never update on their own, so this is the only way back in.
+  async function recomputeAllFrozenWeeks(year) {
+    clearAllFrozenWeeks(String(year));
+    await loadPowerRankings(year);
   }
 
   // ── Load All ──────────────────────────────────────────────────────────────
@@ -1253,10 +1322,20 @@
       <button on:click={() => powerYear&&loadPowerRankings(powerYear)} disabled={loadingPower||!powerYear}>
         {loadingPower?'Computing...':'Compute Rankings'}
       </button>
+      {#if powerYear && powerYear !== nextSeasonYear}
+        <button on:click={() => powerYear&&recomputeAllFrozenWeeks(powerYear)} disabled={loadingPower||!powerYear} title="Clears every frozen weekly snapshot for this season and rebuilds them from current data. Use only after a bug fix or correction that should apply to past weeks too.">
+          🔓 Recompute All Weeks
+        </button>
+      {/if}
       {#if !Object.keys(seasonManagerGrades).length}
         <span class="muted">⚠ Load Manager Grades first.</span>
       {/if}
     </div>
+    {#if powerYear && powerYear !== nextSeasonYear}
+      <div class="explainer" style="margin-top:-0.5rem;">
+        Past weeks are <strong>frozen</strong> the first time their data appears, and won't change again on their own — later weeks' trades/waivers/lineup decisions can no longer silently reshuffle earlier rankings. Use <strong>🔓 Recompute All Weeks</strong> above only when a bug fix or data correction needs to propagate to past weeks.
+      </div>
+    {/if}
 
     {#if loadingPower}
       <div class="status-msg">Computing rankings...</div>
