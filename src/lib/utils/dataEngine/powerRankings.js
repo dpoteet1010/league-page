@@ -148,7 +148,7 @@ export function computePreSeasonRankings(year, allTimeGradesUpTo, prevStandings,
 /**
  * Computes in-season power rankings for one week (1-14).
  */
-export function computePowerRankings(currentWeek, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId) {
+export function computePowerRankings(currentWeek, standings, weeklyResults, allTimeManagerGrades, rosterToManagerId) {
   const week    = Math.min(Number(currentWeek || 0), REGULAR_SEASON_WEEKS);
   const phase   = getPhase(week);
   const weights = PHASE_WEIGHTS[phase];
@@ -174,8 +174,17 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
     const recordPct = gp > 0 ? (wins + ties * 0.5) / gp : null;
 
     const recentForm = week > 0 ? computeRecentForm(myResults, week) : null;
-    const mgrGrade   = managerGradesThisSeason?.[managerId]?.overallGrade ??
-                       allTimeManagerGrades?.[managerId]?.allTimeGrade ?? null;
+    // The manager-grade component deliberately uses ONLY allTimeManagerGrades
+    // (which, per computeAllTimeManagerGrades' completeness filter, reflects
+    // finished seasons only) — never this season's own in-progress grade.
+    // A past week's rankings need to be reproducible: if this pulled from
+    // the current season's season-to-date draft/trade/waiver/lineup data,
+    // recomputing week 1's rankings after week 3 happened would use a
+    // different, more-complete grade than existed back in week 1, silently
+    // reshuffling history every time later weeks' data accumulated. Since
+    // allTimeManagerGrades never includes the in-progress season, it's
+    // constant for the whole season regardless of when it's computed.
+    const mgrGrade   = allTimeManagerGrades?.[managerId]?.allTimeGrade ?? null;
 
     return { rosterId: team.rosterId, managerId, name: team.name, wins, losses, ties, pf, gp, recordPct, recentForm, mgrGrade };
   });
@@ -226,7 +235,7 @@ export function computePowerRankings(currentWeek, standings, weeklyResults, mana
  * chart (and the Weekly Recap's week 1 Δ/NEW movement, computed against
  * this week-0 baseline) disagreeing with the table.
  */
-export function computeAllWeekRankings(standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId, preSeasonRankings = null) {
+export function computeAllWeekRankings(standings, weeklyResults, allTimeManagerGrades, rosterToManagerId, preSeasonRankings = null) {
   const all = [];
   for (let w = 0; w <= REGULAR_SEASON_WEEKS; w++) {
     if (w === 0 && preSeasonRankings?.rankings?.length) {
@@ -242,7 +251,7 @@ export function computeAllWeekRankings(standings, weeklyResults, managerGradesTh
       });
       continue;
     }
-    all.push(computePowerRankings(w, standings, weeklyResults, managerGradesThisSeason, allTimeManagerGrades, rosterToManagerId));
+    all.push(computePowerRankings(w, standings, weeklyResults, allTimeManagerGrades, rosterToManagerId));
   }
   return all;
 }
