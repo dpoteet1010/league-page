@@ -238,6 +238,17 @@ export async function getAllSeasonsHistory() {
   // ── Season stats + PAR tables ─────────────────────────────────────────────
   const parTablesBySeason = {};
   const allSeasonStats    = {};
+    // Completed weeks per season. A finished season (or legacy year) covers the
+  // full 17 weeks. For an in-progress season, matchup data only ever contains
+  // completed weeks (getSpecificYearMatchups never fetches the live week), so
+  // the highest week present across ALL rows, playoffs included, is the number
+  // of completed weeks. It updates itself every time the data reloads.
+  const MAX_FANTASY_WEEKS = 17;
+  const maxWeekWithData = {};
+  allWeeklyResults.forEach((r) => {
+    const y = String(r.year);
+    maxWeekWithData[y] = Math.max(maxWeekWithData[y] || 0, Number(r.week) || 0);
+  });
 
   for (const output of seasonOutputs) {
     const yearStr = String(output.year);
@@ -258,7 +269,13 @@ export async function getAllSeasonsHistory() {
       debug.push(`[Stats ${yearStr}] ${playerCount} players with stats.`);
 
       const flexSlots = getFlexSlotsForYear(yearStr);
-      const parTables = buildSeasonPARTables(statsResult.totals, allPlayersData, output.numTeams, flexSlots);
+      const completedWeeks = output.isComplete
+        ? MAX_FANTASY_WEEKS
+        : Math.min(maxWeekWithData[yearStr] || 0, MAX_FANTASY_WEEKS);
+      const parTables = buildSeasonPARTables(
+        statsResult.totals, allPlayersData, output.numTeams, flexSlots, completedWeeks
+      );
+      debug.push(`[PAR ${yearStr}] completedWeeks = ${completedWeeks}`);
       parTablesBySeason[yearStr] = parTables;
       debug.push(...parTables.debug.map((line) => `[PAR ${yearStr}] ${line}`));
     } catch (err) {
