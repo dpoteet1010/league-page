@@ -401,8 +401,9 @@
     const baselines = computeRoundBaselines(year, allDrafts, allSeasonStats, parTablesBySeason, allPlayersData);
     if (!baselines) return null;
 
-    const sr = await getSeasonStatTotals(year, allTimeHistory?.sharedScoringSettings).catch(() => null);
-    if (!sr) return null;
+    const seasonMeta = allTimeHistory?.seasons?.find((s) => String(s.year) === ys);
+    const throughWeek = seasonMeta?.isComplete ? null : (pt.completedWeeks ?? null);
+    const sr = await getSeasonStatTotals(year, allTimeHistory?.sharedScoringSettings, throughWeek).catch(() => null);    if (!sr) return null;
 
     const grade = gradeDraftEndOfSeason(draft, sr.totals, baselines, pt, allPlayersData);
     if (grade) {
