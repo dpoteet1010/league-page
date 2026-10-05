@@ -5,8 +5,9 @@
 // (not just rostered ones) gives accurate replacement level rankings.
 //
 // Returns:
-//   totals:      { [playerId]: totalSeasonPts }
+//   totals:      { [playerId]: totalPts }   (through `throughWeek`)
 //   gamesPlayed: { [playerId]: weeksWithStats }
+//   throughWeek: last week included in the totals
 //
 // "gamesPlayed" = number of weeks the player appeared in the stats
 // API response. Players on IR or inactive typically don't appear.
@@ -16,21 +17,29 @@ const statsCache = {};
 
 // Sleeper's regular season runs weeks 1-18 (17 games + 1 bye per team,
 // same convention used for FINAL_POSSIBLE_WEEK elsewhere in this app).
-// This was previously capped at 17, which silently dropped every
-// player's week 18 stats from both totals and gamesPlayed.
 const FINAL_REGULAR_SEASON_WEEK = 18;
 
 /**
  * @param {string|number} year
  * @param {Object|null} scoringSettings - league.scoring_settings from Sleeper
- * @returns {Promise<{ totals: Object, gamesPlayed: Object }>}
+ * @param {number|null} throughWeek - last week to include. Pass the number of
+ *   COMPLETED weeks for an in-progress season so the live week's partial stats
+ *   never leak into totals. Omit/null for a finished season (all weeks).
+ * @returns {Promise<{ totals: Object, gamesPlayed: Object, throughWeek: number }>}
  */
-export async function getSeasonStatTotals(year, scoringSettings) {
+export async function getSeasonStatTotals(year, scoringSettings, throughWeek = null) {
   const yearStr = String(year);
-  if (statsCache[yearStr]) return statsCache[yearStr];
+  const lastWeek = throughWeek == null || !Number.isFinite(Number(throughWeek))
+    ? FINAL_REGULAR_SEASON_WEEK
+    : Math.max(0, Math.min(Number(throughWeek), FINAL_REGULAR_SEASON_WEEK));
+
+  // Cache key includes the week cap, so when a new week completes the
+  // cap changes and the stats are refetched instead of served stale.
+  const cacheKey = `${yearStr}-${lastWeek}`;
+  if (statsCache[cacheKey]) return statsCache[cacheKey];
 
   const weekPromises = [];
-  for (let week = 1; week <= FINAL_REGULAR_SEASON_WEEK; week++) {
+  for (let week = 1; week <= lastWeek; week++) {
     weekPromises.push(
       fetch(
         `https://api.sleeper.app/v1/stats/nfl/regular/${yearStr}/${week}`,
@@ -43,7 +52,7 @@ export async function getSeasonStatTotals(year, scoringSettings) {
 
   const weeklyStatsArr = await Promise.all(weekPromises);
 
-  const playerTotals     = {};
+  const playerTotals      = {};
   const playerGamesPlayed = {};
 
   weeklyStatsArr.forEach((weekStats) => {
@@ -73,7 +82,7 @@ export async function getSeasonStatTotals(year, scoringSettings) {
     });
   });
 
-  const result = { totals: playerTotals, gamesPlayed: playerGamesPlayed };
-  statsCache[yearStr] = result;
+  const result = { totals: playerTotals, gamesPlayed: playerGamesPlayed, throughWeek: lastWeek };
+  statsCache[cacheKey] = result;
   return result;
 }
