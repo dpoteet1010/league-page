@@ -2,8 +2,12 @@
 //
 // Unified PAR (Points Above Replacement) for trades, waivers, and drafts.
 //
-// Replacement level = the Nth-best player at that position by full-season
-// points, where N = numTeams × dedicatedSlots.
+// Replacement level = the Nth-best player at that position by points through
+// the COMPLETED weeks of the season, where N = numTeams × dedicatedSlots.
+//
+// The per-week replacement rate = replacement total / completedWeeks (NOT a
+// fixed 17). During the season this is continuously updated: the replacement
+// player and the divisor both change as each week completes.
 //
 // FLEX HANDLING: RB and WR replacement levels also consider a combined
 // RB+WR flex pool (TE excluded — flex is rarely used for TE in practice).
@@ -14,7 +18,7 @@
 //
 // K and DEF do not participate in flex at all.
 
-const TOTAL_SEASON_WEEKS = 17;
+const TOTAL_SEASON_WEEKS = 17; // max fantasy weeks; only used as a cap/fallback
 
 // Fixed dedicated starter slots — same for all years. FLEX handled separately above.
 const DEDICATED_SLOTS = { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
@@ -28,6 +32,31 @@ const FLEX_SLOTS_BY_YEAR = {
 
 export function getFlexSlotsForYear(year) {
   return FLEX_SLOTS_BY_YEAR[String(year)] ?? 2;
+}
+
+/**
+ * Number of fully completed weeks for a season.
+ *  - Current season, regular season: nflState.week is the week IN PROGRESS,
+ *    so completed = week - 1 (week 4 in progress -> 3 completed).
+ *  - Current season, postseason: regular season is over -> 17.
+ *  - Past seasons (or anything else): highest week that has data, capped at 17.
+ *
+ * Use this to get the value you pass to buildSeasonPARTables.
+ */
+export function getCompletedWeeks(year, nflState, playerResults = []) {
+  const isCurrent = nflState && String(nflState.season) === String(year);
+  if (isCurrent) {
+    if (nflState.season_type === 'regular') {
+      return Math.min(Math.max(Number(nflState.week) - 1, 0), TOTAL_SEASON_WEEKS);
+    }
+    if (nflState.season_type === 'post') return TOTAL_SEASON_WEEKS;
+    if (nflState.season_type === 'pre') return 0;
+  }
+  let max = 0;
+  for (const pr of playerResults || []) {
+    if (Number(pr.year) === Number(year)) max = Math.max(max, Number(pr.week));
+  }
+  return Math.min(max, TOTAL_SEASON_WEEKS);
 }
 
 export function normalizePosition(position, playerId) {
@@ -57,16 +86,24 @@ function playerDisplayName(info, playerId) {
  * Builds replacement level data for one season, including the RB/WR flex
  * pool adjustment.
  *
- * @param {Object} seasonStatTotals - { [playerId]: totalSeasonPts } from getSeasonStatTotals()
+ * @param {Object} seasonStatTotals - { [playerId]: totalPts } through COMPLETED weeks only
  * @param {Object} allPlayersData   - full Sleeper player map
  * @param {number} numTeams         - number of teams in the league that season
  * @param {number} flexSlots        - number of FLEX slots that season (use getFlexSlotsForYear)
+ * @param {number} completedWeeks   - weeks completed so far (use getCompletedWeeks).
+ *                                    Divisor for the per-week replacement rate.
  */
-export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams, flexSlots = 2) {
+export function buildSeasonPARTables(
+  seasonStatTotals,
+  allPlayersData,
+  numTeams,
+  flexSlots = 2,
+  completedWeeks = TOTAL_SEASON_WEEKS
+) {
   const debug = [];
-  debug.push(`Building PAR tables — numTeams: ${numTeams}, dedicated slots: ${JSON.stringify(DEDICATED_SLOTS)}, FLEX slots: ${flexSlots} (RB/WR pool only, TE excluded)`);
+  debug.push(`Building PAR tables — numTeams: ${numTeams}, dedicated slots: ${JSON.stringify(DEDICATED_SLOTS)}, FLEX slots: ${flexSlots} (RB/WR pool only, TE excluded), completedWeeks: ${completedWeeks}`);
 
-  // Group players by position, sorted descending by season total
+  // Group players by position, sorted descending by total through completed weeks
   const playersByPosition = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
 
   Object.entries(seasonStatTotals || {}).forEach(([playerId, totalPts]) => {
@@ -138,7 +175,7 @@ export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams,
 
   // K and DEF never participate in flex — already correct in dedicatedLevels.
 
-  // Per-player full-season PAR for reference
+  // Per-player PAR through completed weeks, for reference
   const playerPAR = {};
   Object.entries(seasonStatTotals || {}).forEach(([playerId, totalPts]) => {
     if (!totalPts || totalPts <= 0) return;
@@ -166,23 +203,39 @@ export function buildSeasonPARTables(seasonStatTotals, allPlayersData, numTeams,
     playerPAR,
     numTeams,
     flexSlots,
+    completedWeeks,     // divisor for per-week replacement rate + upper bound for grading
     debug
   };
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
-function proratedBaseline(replacementSeasonTotal, weeksHeld) {
-  return (replacementSeasonTotal / TOTAL_SEASON_WEEKS) * weeksHeld;
+/**
+ * Replacement points per week = replacement total through completed weeks
+ * divided by completed weeks. Returns 0 if no weeks have completed yet.
+ */
+function getRepPerWeek(parTables, repTotal) {
+  const weeks = Number(parTables?.completedWeeks);
+  if (!Number.isFinite(weeks) || weeks <= 0) return 0;
+  return repTotal / weeks;
 }
 
-function getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek) {
+function proratedBaseline(repPerWeek, weeksHeld) {
+  return repPerWeek * weeksHeld;
+}
+
+function getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek, completedWeeks) {
+  const maxWeek = Number.isFinite(Number(completedWeeks))
+    ? Number(completedWeeks)
+    : TOTAL_SEASON_WEEKS;
+
   const rows = (playerResults || [])
     .filter((pr) =>
       String(pr.playerId)  === String(playerId) &&
       Number(pr.rosterId)  === Number(roster)   &&
       Number(pr.year)      === Number(txYear)   &&
-      Number(pr.week)      >= Number(txWeek)
+      Number(pr.week)      >= Number(txWeek)    &&
+      Number(pr.week)      <= maxWeek           // ignore the in-progress week
     )
     .sort((a, b) => a.week - b.week);
 
@@ -265,12 +318,12 @@ export function gradeTradeByPAR(trade, parTables, playerResults, allPlayersData,
       const position   = normalizePosition(playerInfo?.position, playerId);
 
       const { rows, totalPts, startedPts, weeksHeld, weeksStarted } =
-        getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek);
+        getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek, parTables.completedWeeks);
 
       const repSeasonTotal = parTables.replacementLevels?.[position] ?? 0;
       const repName        = parTables.replacementPlayerNames?.[position] ?? '(none)';
-      const repPerWeek     = repSeasonTotal / TOTAL_SEASON_WEEKS;
-      const baseline       = proratedBaseline(repSeasonTotal, weeksHeld);
+      const repPerWeek     = getRepPerWeek(parTables, repSeasonTotal);
+      const baseline       = proratedBaseline(repPerWeek, weeksHeld);
       const par            = totalPts - baseline;
 
       parTotal   += par;
@@ -344,12 +397,12 @@ export function gradeWaiverByPAR(waiver, parTables, playerResults, allPlayersDat
   const position   = normalizePosition(playerInfo?.position, playerId);
 
   const { rows, totalPts, startedPts, weeksHeld, weeksStarted } =
-    getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek);
+    getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek, parTables.completedWeeks);
 
   const repSeasonTotal = parTables.replacementLevels?.[position] ?? 0;
   const repName        = parTables.replacementPlayerNames?.[position] ?? '(none)';
-  const repPerWeek     = repSeasonTotal / TOTAL_SEASON_WEEKS;
-  const baseline       = proratedBaseline(repSeasonTotal, weeksHeld);
+  const repPerWeek     = getRepPerWeek(parTables, repSeasonTotal);
+  const baseline       = proratedBaseline(repPerWeek, weeksHeld);
   const par            = totalPts - baseline;
   const isStream       = weeksHeld <= 2;
 
@@ -424,12 +477,12 @@ export function gradeCompositeTrade(compositeTrade, parTables, playerResults, al
       const position   = normalizePosition(playerInfo?.position, playerId);
 
       const { rows, totalPts, startedPts, weeksHeld, weeksStarted } =
-        getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek);
+        getPlayerHoldData(playerResults, playerId, roster, txYear, txWeek, parTables.completedWeeks);
 
       const repSeasonTotal = parTables.replacementLevels?.[position] ?? 0;
       const repName        = parTables.replacementPlayerNames?.[position] ?? '(none)';
-      const repPerWeek     = repSeasonTotal / TOTAL_SEASON_WEEKS;
-      const baseline       = proratedBaseline(repSeasonTotal, weeksHeld);
+      const repPerWeek     = getRepPerWeek(parTables, repSeasonTotal);
+      const baseline       = proratedBaseline(repPerWeek, weeksHeld);
       const par            = totalPts - baseline;
 
       parTotal   += par;
