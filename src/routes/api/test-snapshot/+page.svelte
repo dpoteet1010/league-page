@@ -1016,7 +1016,7 @@
                 <p class="narrative">{g.gradeSummary}</p>
                 <div class="waiver-grid">
                   <div class="w-section"><div class="w-header">📥 Pickup</div><div class="p-row"><span class="pos">{g.position}</span><strong>{g.name}</strong></div><div class="p-stats">{fp(g.totalPts)} total · {g.weeksHeld} wks{g.isStream?' (stream)':''}</div></div>
-                  <div class="w-section"><div class="w-header">📊 Replacement</div><div class="p-row"><strong>{g.repName}</strong></div><div class="p-stats">{fp(g.repSeasonTotal)}/season ÷ 17 = {fp(g.repPerWeek)}/wk × {g.weeksHeld} = {fp(g.baseline)}</div></div>
+                  <div class="w-section"><div class="w-header">📊 Replacement</div><div class="p-row"><strong>{g.repName}</strong></div><div class="p-stats">{fp(g.repSeasonTotal)} through {allTimeHistory?.parTablesBySeason?.[String(tx.seasonKey||tx.season)]?.completedWeeks ?? '?'} wks = {fp(g.repPerWeek)}/wk × {g.weeksHeld} = {fp(g.baseline)}</div></div>
                   <div class="w-section"><div class="w-header">🎯 Result</div><div class="formula">{fp(g.totalPts)} − {fp(g.baseline)} = <strong class="{parClass(g.par)}">{signedFp(g.par)} PAR</strong></div></div>
                 </div>
               {/if}
